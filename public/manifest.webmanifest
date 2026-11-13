@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "SoulDolls — RPG 2.5D de Marionetas",
+  "short_name": "SoulDolls",
+  "description": "RPG táctico 2.5D de marionetas poseídas por almas con gráficos pixel-art procedurales.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#14101C",
+  "theme_color": "#14101C",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

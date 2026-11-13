@@ -1,0 +1,6 @@
+{
+  "name": "Remix Monstrix",
+  "description": "A procedural, turn-based monster-collecting RPG built for mobile web browsers using Three.js and TypeScript.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

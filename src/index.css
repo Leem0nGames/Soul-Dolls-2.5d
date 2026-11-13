@@ -1,0 +1,292 @@
+@import "tailwindcss";
+
+@theme {
+  /* 1. Brand Core */
+  --color-crypt-ink: #14101C;
+  --color-smoked-wood: #2A1F2D;
+  --color-old-bronze: #8A6A3B;
+  --color-resonant-gold: #E8B84A;
+  --color-porcelain: #F2E6C9;
+  --color-ki-cyan: #5FE3D2;
+  --color-soul-violet: #9B6BFF;
+  --color-rift-crimson: #C2234B;
+  --color-porcelain-pink: #FF8FB8;
+
+  /* 2. Neutrals */
+  --color-void-black: #000000;
+  --color-abyss-ink: #0B080E;
+  --color-ash-purple: #3D3242;
+  --color-cold-stone: #6B5C70;
+  --color-bone-gray: #A89BA8;
+  --color-warm-white: #FFF9F0;
+
+  /* 3. Wood, Leather & Bronze */
+  --color-dark-oak: #3B2B1A;
+  --color-burnt-umber: #5C4227;
+  --color-tarnished-gold: #A67F46;
+  --color-bright-brass: #F4D073;
+  --color-pale-gold: #FCEDB8;
+  --color-rust: #6E3A1B;
+  --color-leather-brown: #7A4F2E;
+
+  /* 4. Reds & Pinks */
+  --color-dried-blood: #4A0B18;
+  --color-blood-moon: #6E0C25;
+  --color-rosewood: #911934;
+  --color-ruby-glow: #E23E66;
+  --color-coral-red: #F06060;
+  --color-peach-blush: #FFB3CE;
+  --color-pale-rose: #FFD6E4;
+  --color-cherry-blossom: #FFEBF2;
+
+  /* 5. Violets & Arcane */
+  --color-nightshade: #24123B;
+  --color-deep-amethyst: #3C1C6E;
+  --color-royal-purple: #5E329E;
+  --color-arcane-lilac: #7F4AD6;
+  --color-ethereal-orchid: #B691FF;
+  --color-ghost-violet: #D1BEFF;
+  --color-lavender-mist: #F4EFFF;
+  --color-hex-purple: #6C3B8A;
+
+  /* 6. Cyans, Teals & Nature */
+  --color-dark-slate: #1B2A2A;
+  --color-deep-abyss: #123F3C;
+  --color-oceanic-teal: #1F6B65;
+  --color-vibrant-aqua: #32A89D;
+  --color-neon-mint: #85EADD;
+  --color-ice-cyan: #B8F4EE;
+  --color-frosted-glass: #D9FBF7;
+  --color-emerald-base: #2D8C55;
+
+  /* 7. Environment & Tilesets */
+  --color-pitch-black-green: #10160D;
+  --color-forest-green: #2A3D24;
+  --color-olive-drab: #4C5C36;
+  --color-moss: #7A8B3F;
+  --color-dirt-brown: #453322;
+  --color-stone-shadow: #2F3640;
+  --color-stone-mid: #4B5563;
+  --color-stone-highlight: #6B778C;
+  --color-sand-desert: #C2A77C;
+  --color-wood-highlight: #9E7D5A;
+
+  /* 8. UI Accents */
+  --color-ui-danger: #FF0000;
+  --color-ui-warning: #FFAA00;
+  --color-ui-success: #00E639;
+  --color-ui-mana-info: #0077FF;
+  --color-ui-poison: #8F00FF;
+  --color-ui-gold: #FFD700;
+  --color-pure-white: #FFFFFF;
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    background: #14101C;
+    color: #F2E6C9;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+}
+
+.touch-scroll {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.pixel-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.safe-pad {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+@keyframes battleSlideInLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(-28px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes battleSlideInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(28px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes battleArrowBob {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, 3px, 0);
+  }
+}
+
+@keyframes battleLowHpPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.015);
+  }
+}
+
+@keyframes battleFloatNum {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, 6px, 0) scale(0.8);
+  }
+  18% {
+    opacity: 1;
+    transform: translate3d(-50%, -10px, 0) scale(1.12);
+  }
+  75% {
+    opacity: 1;
+    transform: translate3d(-50%, -28px, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -40px, 0) scale(0.95);
+  }
+}
+
+@keyframes battleXpBurst {
+  0% {
+    opacity: 0.95;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1.03);
+  }
+  100% {
+    opacity: 0.95;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes battleWipeSlash {
+  0% {
+    transform: translate3d(-115%, 0, 0) skewX(-18deg);
+  }
+  50% {
+    transform: translate3d(0%, 0, 0) skewX(-18deg);
+  }
+  100% {
+    transform: translate3d(115%, 0, 0) skewX(-18deg);
+  }
+}
+
+.battle-slide-left {
+  animation: battleSlideInLeft 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.battle-slide-right {
+  animation: battleSlideInRight 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.battle-arrow-bob {
+  animation: battleArrowBob 720ms ease-in-out infinite;
+}
+
+.battle-low-hp {
+  animation: battleLowHpPulse 750ms ease-in-out infinite;
+}
+
+.battle-float-num {
+  animation: battleFloatNum 950ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.battle-xp-burst {
+  animation: battleXpBurst 450ms ease-out;
+}
+
+.battle-wipe-slash {
+  animation: battleWipeSlash 760ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes battlePartHit {
+  0% {
+    opacity: 1;
+    filter: brightness(1.85);
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+  50% {
+    opacity: 0.65;
+    transform: translate3d(1px, 0, 0) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.battle-part-hit {
+  animation: battlePartHit 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pixel-limb-wrap {
+  border-radius: 0;
+  border: 1px solid var(--color-cold-stone);
+  background-color: var(--color-crypt-ink);
+  box-shadow:
+    0 2px 0 0 var(--color-abyss-ink),
+    inset 1px 1px 0 0 rgba(242, 230, 201, 0.06);
+}
+
+.pixel-limb-wrap--broken {
+  border-color: var(--color-rift-crimson);
+  background-color: var(--color-abyss-ink);
+}
+
+.pixel-limb-bar-track {
+  border-radius: 0;
+  border: 1px solid var(--color-ash-purple);
+  background-color: var(--color-abyss-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-slide-left,
+  .battle-slide-right,
+  .battle-arrow-bob,
+  .battle-low-hp,
+  .battle-float-num,
+  .battle-xp-burst,
+  .battle-wipe-slash,
+  .battle-part-hit {
+    animation: none !important;
+  }
+}
