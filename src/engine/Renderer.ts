@@ -4,6 +4,52 @@ import type { FxQualityTier } from '../domain/FxPool.ts';
 export const BASE_RENDER_W = 427;
 export const BASE_RENDER_H = 240;
 
+export interface RenderSize {
+  width: number;
+  height: number;
+}
+
+export function computeRenderSize(
+  viewportWidth: number,
+  viewportHeight: number,
+  pixelEffect: boolean,
+  scale: number,
+  devicePixelRatio = 1
+): RenderSize {
+  const aspect =
+    viewportWidth > 0 && viewportHeight > 0
+      ? Math.max(0.42, Math.min(2.35, viewportWidth / viewportHeight))
+      : BASE_RENDER_W / BASE_RENDER_H;
+
+  if (!pixelEffect) {
+    const pixelCount = Math.max(1, viewportWidth * viewportHeight);
+    const maxPixels = 4_194_304;
+    const ratio = Math.min(
+      Math.max(1, devicePixelRatio),
+      2,
+      Math.sqrt(maxPixels / pixelCount)
+    );
+    return {
+      width: Math.max(1, Math.floor(viewportWidth * ratio)),
+      height: Math.max(1, Math.floor(viewportHeight * ratio)),
+    };
+  }
+
+  if (aspect >= 1) {
+    const height = Math.max(144, Math.round(BASE_RENDER_H * scale));
+    return {
+      width: Math.max(200, Math.round(height * aspect)),
+      height,
+    };
+  }
+
+  const width = Math.max(160, Math.round(BASE_RENDER_H * scale));
+  return {
+    width,
+    height: Math.max(220, Math.round(width / aspect)),
+  };
+}
+
 export class PixelRenderer {
   readonly webgl: THREE.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
@@ -12,6 +58,7 @@ export class PixelRenderer {
   private avgFrameMs = 16.6;
   private resizeCooldown = 0;
   private contextLost = false;
+  private pixelEffect = true;
   private onContextLostCb?: () => void;
   private onContextRestoredCb?: () => void;
 
@@ -64,21 +111,20 @@ export class PixelRenderer {
   private applyInternalSize(): void {
     const vw = window.visualViewport?.width ?? window.innerWidth;
     const vh = window.visualViewport?.height ?? window.innerHeight;
-    const aspect =
-      vw > 0 && vh > 0
-        ? Math.max(0.42, Math.min(2.35, vw / vh))
-        : BASE_RENDER_W / BASE_RENDER_H;
+    const size = computeRenderSize(
+      vw,
+      vh,
+      this.pixelEffect,
+      this.scale,
+      window.devicePixelRatio
+    );
+    this.webgl.setSize(size.width, size.height, false);
+  }
 
-    let w: number;
-    let h: number;
-    if (aspect >= 1) {
-      h = Math.max(144, Math.round(BASE_RENDER_H * this.scale));
-      w = Math.max(200, Math.round(h * aspect));
-    } else {
-      w = Math.max(160, Math.round(BASE_RENDER_H * this.scale));
-      h = Math.max(220, Math.round(w / aspect));
-    }
-    this.webgl.setSize(w, h, false);
+  setPixelEffect(enabled: boolean): void {
+    if (this.pixelEffect === enabled) return;
+    this.pixelEffect = enabled;
+    this.applyInternalSize();
   }
 
   getAspect(): number {

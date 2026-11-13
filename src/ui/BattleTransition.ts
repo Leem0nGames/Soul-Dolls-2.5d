@@ -117,7 +117,11 @@ export class BattleTransition {
     onDone: () => void
   ): void {
     const isBoss = Boolean(trainer.isBoss || trainer.isRival);
-    const trainerImg = assets.getCharacterDataUrl(trainer.role as CharacterRole, 'down');
+    const trainerImg = assets.getCharacterDataUrl(
+      trainer.role as CharacterRole,
+      'down',
+      trainer.id
+    );
     const playerImg = assets.getCharacterDataUrl('player', 'down');
     const accent = isBoss
       ? 'border-resonant-gold from-dried-blood/95 to-dark-oak/90'

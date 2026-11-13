@@ -1,10 +1,10 @@
-import type { CharacterRole, Direction } from '../domain/types.ts';
+import type { CharacterFrame, CharacterRole, Direction } from '../domain/types.ts';
 import { CHARACTER_PALETTES, PALETTE } from './Palette.ts';
 
 export function generateCharacterSpriteCanvas(
   role: CharacterRole,
   dir: Direction,
-  frame: 0 | 1
+  frame: CharacterFrame
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = 16;
@@ -21,7 +21,7 @@ export function generateCharacterSpriteCanvas(
   px(4, 22, 8, 2, 'rgba(11,8,14,0.34)');
 
   // Outline silhouette base
-  const step = frame === 1 ? 1 : 0;
+  const step = frame % 2;
 
   // Legs
   px(5, 17 - step, 2, 5 + step, PALETTE.cryptInk);
@@ -43,7 +43,7 @@ export function generateCharacterSpriteCanvas(
   }
 
   // Arms
-  const armBob = frame === 1 ? 1 : 0;
+  const armBob = frame % 2;
   if (dir === 'left') {
     px(6, 12 + armBob, 2, 4, pal.skin);
   } else if (dir === 'right') {

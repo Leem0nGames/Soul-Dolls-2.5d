@@ -193,7 +193,12 @@ export class BattleScene implements Scene {
     if (params.trainer) {
       const charGeo = createBottomPivotPlaneGeometry(0.67, 1.0);
       const trainerMat = new THREE.MeshBasicMaterial({
-        map: game.assets.getCharacterTexture(params.trainer.role as CharacterRole, 'down', 0),
+        map: game.assets.getCharacterTexture(
+          params.trainer.role as CharacterRole,
+          'down',
+          0,
+          params.trainer.id
+        ),
         alphaTest: 0.5,
         side: THREE.DoubleSide,
       });

@@ -124,6 +124,7 @@ export const ES = {
     yes: 'Sí',
     no: 'No',
     batterySaver: 'Ahorro batería (30 FPS)',
+    pixelEffect: 'Efecto pixel',
     textSpeed: 'Velocidad de texto',
     normal: 'Normal',
     fast: 'Rápida',

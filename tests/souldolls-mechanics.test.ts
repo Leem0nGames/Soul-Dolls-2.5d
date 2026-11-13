@@ -115,7 +115,7 @@ describe('SoulDolls lore, 4-part body HP, containers & AR gacha', () => {
     });
 
     expect(migrated).not.toBeNull();
-    expect(migrated!.version).toBe(4);
+    expect(migrated!.version).toBe(5);
     expect(migrated!.vessels?.cuerpo_aprendiz).toBe(1);
     expect(migrated!.party[0].bodyParts).toBeDefined();
     expect(migrated!.party[0].containerId).toBe('cuerpo_asesina');

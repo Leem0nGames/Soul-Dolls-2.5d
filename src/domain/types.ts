@@ -345,6 +345,8 @@ export interface StorageBox {
 
 export type Direction = 'down' | 'up' | 'left' | 'right';
 
+export type CharacterFrame = 0 | 1 | 2 | 3;
+
 export type CharacterRole =
   | 'player'
   | 'rival'
@@ -659,6 +661,7 @@ export interface GameOptions {
   volume: number;
   muted: boolean;
   batterySaver: boolean;
+  pixelEffect: boolean;
   textSpeed: 'normal' | 'fast';
 }
 

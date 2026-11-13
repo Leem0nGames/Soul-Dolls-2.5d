@@ -183,6 +183,10 @@ export class PauseMenu {
             <span>${ES.options.batterySaver}</span>
             <span class="font-bold text-resonant-gold">${opt.batterySaver ? ES.options.yes : ES.options.no}</span>
           </button>
+          <button data-pixel-effect class="w-full min-h-[44px] px-3 rounded-lg bg-ash-purple border border-cold-stone/70 flex justify-between items-center">
+            <span>${ES.options.pixelEffect}</span>
+            <span class="font-bold text-resonant-gold">${opt.pixelEffect ? ES.options.yes : ES.options.no}</span>
+          </button>
           <button data-speed class="w-full min-h-[44px] px-3 rounded-lg bg-ash-purple border border-cold-stone/70 flex justify-between items-center">
             <span>${ES.options.textSpeed}</span>
             <span class="font-bold text-resonant-gold">${opt.textSpeed === 'fast' ? ES.options.fast : ES.options.normal}</span>
@@ -208,6 +212,11 @@ export class PauseMenu {
     });
     this.root.querySelector('[data-battery]')?.addEventListener('click', () => {
       opt.batterySaver = !opt.batterySaver;
+      callbacks.onOptionsChanged(opt);
+      this.renderOptions(save, callbacks);
+    });
+    this.root.querySelector('[data-pixel-effect]')?.addEventListener('click', () => {
+      opt.pixelEffect = !opt.pixelEffect;
       callbacks.onOptionsChanged(opt);
       this.renderOptions(save, callbacks);
     });

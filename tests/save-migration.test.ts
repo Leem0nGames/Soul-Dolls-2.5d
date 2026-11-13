@@ -26,6 +26,16 @@ describe('Save migrations', () => {
     expect(migrated!.repelSteps).toBe(0);
     expect(migrated!.stats.creaturesCaught).toBe(1);
     expect(migrated!.options.textSpeed).toBe('normal');
+    expect(migrated!.options.pixelEffect).toBe(true);
+  });
+
+  it('preserves the pixel effect option when migrating a saved game', () => {
+    const migrated = migrateSaveData({
+      version: 4,
+      options: { pixelEffect: false },
+    });
+
+    expect(migrated?.options.pixelEffect).toBe(false);
   });
 
   it('returns null for invalid payloads', () => {

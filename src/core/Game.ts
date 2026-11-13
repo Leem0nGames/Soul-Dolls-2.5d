@@ -185,6 +185,8 @@ export class Game {
     this.synth.setMuted(opt.muted);
     this.loop.setBatterySaver(opt.batterySaver);
     this.dialog.setFastMode(opt.textSpeed === 'fast');
+    this.renderer.setPixelEffect(opt.pixelEffect);
+    document.documentElement.classList.toggle('pixel-effect-off', !opt.pixelEffect);
   }
 
   showToast(message: string): void {

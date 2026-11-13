@@ -3,13 +3,14 @@ import { ensureBodyParts, ensureSaveVesselState } from '../domain/BodyParts.ts';
 import { createDefaultStorageBoxes, normalizeStorageBoxes } from '../domain/Storage.ts';
 import type { BestiaryEntry, CapturedSoul, CreatureInstance, GameOptions, SaveData } from '../domain/types.ts';
 
-export const CURRENT_SAVE_VERSION = 4;
+export const CURRENT_SAVE_VERSION = 5;
 
 export function defaultOptions(): GameOptions {
   return {
     volume: 0.6,
     muted: false,
     batterySaver: false,
+    pixelEffect: true,
     textSpeed: 'normal',
   };
 }
@@ -231,6 +232,7 @@ export function migrateSaveData(raw: unknown): SaveData | null {
       volume: typeof opt.volume === 'number' ? opt.volume : 0.6,
       muted: typeof opt.muted === 'boolean' ? opt.muted : false,
       batterySaver: typeof opt.batterySaver === 'boolean' ? opt.batterySaver : false,
+      pixelEffect: typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : true,
       textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
     };
   }

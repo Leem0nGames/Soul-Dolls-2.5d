@@ -114,6 +114,10 @@
   image-rendering: crisp-edges;
 }
 
+.pixel-effect-off .pixel-canvas {
+  image-rendering: auto;
+}
+
 .safe-pad {
   padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);

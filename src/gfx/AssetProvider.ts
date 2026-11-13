@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import type { CharacterRole, Direction, PropKind } from '../domain/types.ts';
+import type { CharacterFrame, CharacterRole, Direction, PropKind } from '../domain/types.ts';
 import { generateCharacterSpriteCanvas } from './CharacterSprites.ts';
 import { generateCreatureSpriteCanvas } from './CreatureSpriteGen.ts';
 import { generateItemIconCanvas } from './ItemIconGen.ts';
 import { PALETTE } from './Palette.ts';
 import { buildTileAtlasCanvas } from './ProceduralTiles.ts';
 import { generatePropCanvas } from './PropSprites.ts';
+import npcSheet07Url from '../../NPC07.jpg';
+import npcSheet08Url from '../../NPC08.jpg';
+import playerSheetUrl from '../../PLAYER.jpeg';
 
 export type BattleIconKind = 'fight' | 'bag' | 'party' | 'run';
 export type RoofTextureKind = 'terracotta' | 'indigo' | 'patina' | 'wood';
@@ -23,9 +26,10 @@ export interface AssetProvider {
   getCharacterTexture(
     role: CharacterRole,
     dir: Direction,
-    frame: 0 | 1
+    frame: CharacterFrame,
+    variant?: string
   ): THREE.CanvasTexture;
-  getCharacterDataUrl(role: CharacterRole, dir?: Direction): string;
+  getCharacterDataUrl(role: CharacterRole, dir?: Direction, variant?: string): string;
   getPropTexture(kind: PropKind): THREE.CanvasTexture;
   getBattleIconDataUrl(kind: BattleIconKind): string;
   dispose(): void;
@@ -39,6 +43,32 @@ function makePixelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
+}
+
+interface CharacterTextureRequest {
+  role: CharacterRole;
+  dir: Direction;
+  frame: CharacterFrame;
+  variant?: string;
+}
+
+function getNpcSpriteIndex(variant: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < variant.length; i++) {
+    hash = Math.imul(hash ^ variant.charCodeAt(i), 16777619);
+  }
+  return (hash >>> 0) % 32;
+}
+
+function getCharacterTextureKey(
+  role: CharacterRole,
+  dir: Direction,
+  frame: CharacterFrame,
+  variant?: string
+): string {
+  return role === 'player'
+    ? `player_${dir}_${frame}`
+    : `npc_${getNpcSpriteIndex(variant ?? role)}`;
 }
 
 function makeTintedSilhouetteCanvas(
@@ -229,6 +259,7 @@ export class ProceduralAssetProvider implements AssetProvider {
   private itemIconUrls = new Map<string, string>();
   private itemTextures = new Map<string, THREE.CanvasTexture>();
   private charCache = new Map<string, THREE.CanvasTexture>();
+  private charRequests = new Map<string, CharacterTextureRequest>();
   private charUrls = new Map<string, string>();
   private propCache = new Map<PropKind, THREE.CanvasTexture>();
   private roofCache = new Map<RoofTextureKind, THREE.CanvasTexture>();
@@ -247,6 +278,8 @@ export class ProceduralAssetProvider implements AssetProvider {
   private tallGrassFlowerImg: HTMLImageElement | null = null;
   private grassImg: HTMLImageElement | null = null;
   private lampsSheetImg: HTMLImageElement | null = null;
+  private playerSpriteSheetImg: HTMLImageElement | null = null;
+  private npcSpriteSheetImgs: [HTMLImageElement | null, HTMLImageElement | null] = [null, null];
   private disposed = false;
 
   constructor() {
@@ -255,6 +288,8 @@ export class ProceduralAssetProvider implements AssetProvider {
 
   private preloadExternalProps(): void {
     if (typeof Image === 'undefined') return;
+
+    this.preloadCharacterSpriteSheets();
 
     const treeImg = new Image();
     treeImg.onload = () => {
@@ -459,6 +494,165 @@ export class ProceduralAssetProvider implements AssetProvider {
     }
   }
 
+  private preloadCharacterSpriteSheets(): void {
+    const load = (
+      url: string,
+      onLoad: (image: HTMLImageElement) => void
+    ): void => {
+      const image = new Image();
+      image.onload = () => {
+        if (this.disposed) return;
+        onLoad(image);
+        this.refreshCharacterTextures();
+      };
+      image.onerror = () => console.error(`Failed to load character sprite sheet: ${url}`);
+      image.src = url;
+    };
+
+    load(playerSheetUrl, (image) => {
+      this.playerSpriteSheetImg = image;
+    });
+    load(npcSheet07Url, (image) => {
+      this.npcSpriteSheetImgs[0] = image;
+    });
+    load(npcSheet08Url, (image) => {
+      this.npcSpriteSheetImgs[1] = image;
+    });
+  }
+
+  private createKeyedSpriteCell(
+    image: HTMLImageElement,
+    row: number,
+    column: number
+  ): HTMLCanvasElement {
+    const cellWidth = image.naturalWidth / 4;
+    const cellHeight = image.naturalHeight / 4;
+    if (!Number.isInteger(cellWidth) || !Number.isInteger(cellHeight)) {
+      throw new Error('Character sprite sheets must be divisible into a 4x4 grid');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = cellWidth;
+    canvas.height = cellHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Unable to create character sprite canvas context');
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      image,
+      column * cellWidth,
+      row * cellHeight,
+      cellWidth,
+      cellHeight,
+      0,
+      0,
+      cellWidth,
+      cellHeight
+    );
+
+    const imageData = ctx.getImageData(0, 0, cellWidth, cellHeight);
+    const { data } = imageData;
+    const pixelCount = cellWidth * cellHeight;
+    const visited = new Uint8Array(pixelCount);
+    const queue = new Int32Array(pixelCount);
+    let head = 0;
+    let tail = 0;
+    const isGreenBackground = (pixel: number): boolean => {
+      const offset = pixel * 4;
+      const red = data[offset];
+      const green = data[offset + 1];
+      const blue = data[offset + 2];
+      return green > 75 && green - red > 22 && green - blue > 22;
+    };
+    const enqueue = (x: number, y: number): void => {
+      const pixel = y * cellWidth + x;
+      if (visited[pixel] || !isGreenBackground(pixel)) return;
+      visited[pixel] = 1;
+      queue[tail++] = pixel;
+    };
+
+    for (let x = 0; x < cellWidth; x++) {
+      enqueue(x, 0);
+      enqueue(x, cellHeight - 1);
+    }
+    for (let y = 0; y < cellHeight; y++) {
+      enqueue(0, y);
+      enqueue(cellWidth - 1, y);
+    }
+
+    while (head < tail) {
+      const pixel = queue[head++];
+      data[pixel * 4 + 3] = 0;
+      const x = pixel % cellWidth;
+      const y = Math.floor(pixel / cellWidth);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < cellWidth && ny >= 0 && ny < cellHeight) {
+            enqueue(nx, ny);
+          }
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  }
+
+  private createCharacterCanvas(request: CharacterTextureRequest): HTMLCanvasElement {
+    if (request.role === 'player' && this.playerSpriteSheetImg) {
+      const directionRows: Record<Direction, number> = {
+        down: 0,
+        left: 1,
+        right: 2,
+        up: 3,
+      };
+      return this.createKeyedSpriteCell(
+        this.playerSpriteSheetImg,
+        directionRows[request.dir],
+        request.frame
+      );
+    }
+
+    if (request.role !== 'player') {
+      const index = getNpcSpriteIndex(request.variant ?? request.role);
+      const sheetIndex = Math.floor(index / 16);
+      const image = this.npcSpriteSheetImgs[sheetIndex];
+      if (image) {
+        const cell = index % 16;
+        return this.createKeyedSpriteCell(image, Math.floor(cell / 4), cell % 4);
+      }
+    }
+
+    return generateCharacterSpriteCanvas(request.role, request.dir, request.frame);
+  }
+
+  private updateTextureFromCanvas(
+    texture: THREE.CanvasTexture,
+    source: HTMLCanvasElement
+  ): void {
+    const canvas = texture.image as HTMLCanvasElement;
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Unable to update character sprite texture');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(source, 0, 0);
+    texture.needsUpdate = true;
+  }
+
+  private refreshCharacterTextures(): void {
+    this.charUrls.clear();
+    for (const [key, texture] of this.charCache) {
+      const request = this.charRequests.get(key);
+      if (request) {
+        this.updateTextureFromCanvas(texture, this.createCharacterCanvas(request));
+      }
+    }
+  }
+
   private applyImageToTexture(
     tex: THREE.CanvasTexture,
     img: HTMLImageElement,
@@ -606,22 +800,29 @@ export class ProceduralAssetProvider implements AssetProvider {
   getCharacterTexture(
     role: CharacterRole,
     dir: Direction,
-    frame: 0 | 1
+    frame: CharacterFrame,
+    variant?: string
   ): THREE.CanvasTexture {
-    const key = `${role}_${dir}_${frame}`;
+    const request = { role, dir, frame, variant };
+    const key = getCharacterTextureKey(role, dir, frame, variant);
     let tex = this.charCache.get(key);
     if (!tex) {
-      tex = makePixelTexture(generateCharacterSpriteCanvas(role, dir, frame));
+      tex = makePixelTexture(this.createCharacterCanvas(request));
       this.charCache.set(key, tex);
+      this.charRequests.set(key, request);
     }
     return tex;
   }
 
-  getCharacterDataUrl(role: CharacterRole, dir: Direction = 'down'): string {
-    const key = `${role}_${dir}`;
+  getCharacterDataUrl(
+    role: CharacterRole,
+    dir: Direction = 'down',
+    variant?: string
+  ): string {
+    const key = getCharacterTextureKey(role, dir, 0, variant);
     let url = this.charUrls.get(key);
     if (!url) {
-      url = generateCharacterSpriteCanvas(role, dir, 0).toDataURL('image/png');
+      url = this.createCharacterCanvas({ role, dir, frame: 0, variant }).toDataURL('image/png');
       this.charUrls.set(key, url);
     }
     return url;
@@ -752,6 +953,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     this.silhouetteCache.clear();
     for (const t of this.charCache.values()) t.dispose();
     this.charCache.clear();
+    this.charRequests.clear();
     for (const t of this.propCache.values()) t.dispose();
     this.propCache.clear();
     for (const t of this.roofCache.values()) t.dispose();
@@ -763,6 +965,8 @@ export class ProceduralAssetProvider implements AssetProvider {
     this.silhouetteUrls.clear();
     this.itemIconUrls.clear();
     this.charUrls.clear();
+    this.playerSpriteSheetImg = null;
+    this.npcSpriteSheetImgs = [null, null];
     this.battleIconUrls.clear();
   }
 }

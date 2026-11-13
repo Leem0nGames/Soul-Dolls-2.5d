@@ -36,6 +36,7 @@ import {
   sampleInterpolatedHeight,
 } from '../domain/TerrainRules.ts';
 import type {
+  CharacterFrame,
   CharacterRole,
   Direction,
   MapDef,
@@ -123,7 +124,7 @@ export class OverworldScene implements Scene {
   private moveToX = 24;
   private moveToY = 26;
   private moveProgress = 0;
-  private walkFrame: 0 | 1 = 0;
+  private walkFrame: CharacterFrame = 0;
   private walkAnimTimer = 0;
   private waterTimer = 0;
   private waterFrame: 0 | 1 = 0;
@@ -461,7 +462,12 @@ export class OverworldScene implements Scene {
         ? this.game.assets.getPropTexture('capsule_pedestal')
         : isHealMachine
           ? this.game.assets.getPropTexture('heal_machine')
-          : this.game.assets.getCharacterTexture(npcDef.role as CharacterRole, relDir, 0);
+          : this.game.assets.getCharacterTexture(
+              npcDef.role as CharacterRole,
+              relDir,
+              0,
+              npcDef.trainerId ?? npcDef.id
+            );
 
       const mat = new THREE.MeshBasicMaterial({
         map: tex,
@@ -567,7 +573,8 @@ export class OverworldScene implements Scene {
         const tex = this.game.assets.getCharacterTexture(
           npc.def.role as CharacterRole,
           relDir,
-          0
+          0,
+          npc.def.trainerId ?? npc.def.id
         );
         if (npc.mat.map !== tex) {
           npc.mat.map = tex;
@@ -657,14 +664,15 @@ export class OverworldScene implements Scene {
       const speed = this.game.input.isHeld('b') ? 7.4 : 4.4;
       this.moveProgress += dt * speed;
       this.walkAnimTimer += dt * speed;
-      if (this.walkAnimTimer >= 0.5) {
-        this.walkAnimTimer = 0;
-        this.walkFrame = this.walkFrame === 0 ? 1 : 0;
+      if (this.walkAnimTimer >= 0.25) {
+        this.walkAnimTimer -= 0.25;
+        this.walkFrame = ((this.walkFrame + 1) % 4) as CharacterFrame;
       }
 
       if (this.moveProgress >= 1) {
         this.moving = false;
         this.moveProgress = 0;
+        this.walkFrame = 0;
         this.gridX = this.moveToX;
         this.gridY = this.moveToY;
         this.game.saveData.playerX = this.gridX;
