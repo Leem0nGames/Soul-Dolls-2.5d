@@ -43,6 +43,7 @@ import type {
   PropKind,
 } from '../domain/types.ts';
 import {
+  buildEncounterGrassPlacements,
   buildInstancedPropBatches,
   createBottomPivotPlaneGeometry,
   updatePropBatchAnimation,
@@ -258,6 +259,8 @@ export class OverworldScene implements Scene {
       mark(s.x, s.y, true);
     }
 
+    placements.push(...buildEncounterGrassPlacements(map));
+
     // Seeded decoration pass across terrain
     const dec = map.decoration;
     const rng = createRng(dec.seed);
@@ -393,18 +396,11 @@ export class OverworldScene implements Scene {
       map: this.game.assets.getGrassTexture(),
       vertexColors: true,
     });
-    const tallGrassTex = this.game.assets.getTallGrassTexture();
-    const tallGrassMat = new THREE.MeshBasicMaterial({
-      map: tallGrassTex,
-      vertexColors: true,
-    });
     this.mapDisposables.track(atlasMat);
     this.mapDisposables.track(grassMat);
-    this.mapDisposables.track(tallGrassTex);
-    this.mapDisposables.track(tallGrassMat);
 
     // 1. Heightfield terrain chunks
-    this.chunks = buildTerrainChunks(map, atlasMat, grassMat, tallGrassMat);
+    this.chunks = buildTerrainChunks(map, atlasMat, grassMat);
     for (const chunk of this.chunks) {
       this.mapDisposables.track(chunk.mesh.geometry);
       this.scene.add(chunk.mesh);

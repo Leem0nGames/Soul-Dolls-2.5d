@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import type { PropKind } from '../domain/types.ts';
+import { createRng } from '../core/Rng.ts';
+import { getTileWorldY } from '../domain/TerrainRules.ts';
+import type { MapDef, PropKind } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 
 const _dummy = new THREE.Object3D();
@@ -16,6 +18,29 @@ export interface PropBatchGroup {
   kind: PropKind;
   mesh: THREE.InstancedMesh;
   items: PropInstancePlacement[];
+}
+
+export function buildEncounterGrassPlacements(map: MapDef): PropInstancePlacement[] {
+  const placements: PropInstancePlacement[] = [];
+  const rng = createRng(map.decoration.seed ^ 0x54475253);
+
+  for (let z = 0; z < map.grid.length; z++) {
+    const row = map.grid[z];
+    for (let x = 0; x < row.length; x++) {
+      const legend = map.legend[row[x]];
+      if (!legend?.encounter || legend.tile !== 'tall_grass') continue;
+
+      placements.push({
+        kind: rng.next() < 0.18 ? 'tall_grass_flower' : 'tall_grass_clump',
+        x,
+        y: getTileWorldY(map, x, z),
+        z,
+        scale: 0.92 + rng.next() * 0.16,
+      });
+    }
+  }
+
+  return placements;
 }
 
 function getPropDimensions(kind: PropKind): [number, number] {

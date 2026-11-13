@@ -453,18 +453,11 @@ export class BattleStage {
       map: assets.getGrassTexture(),
       vertexColors: true,
     });
-    const tallGrassTex = assets.getTallGrassTexture();
-    const tallGrassMat = new THREE.MeshBasicMaterial({
-      map: tallGrassTex,
-      vertexColors: true,
-    });
     this.disposables.track(atlasMat);
     this.disposables.track(grassMat);
-    this.disposables.track(tallGrassTex);
-    this.disposables.track(tallGrassMat);
 
     const stageMap = buildStageMapDef(biome, theme);
-    const chunks = buildTerrainChunks(stageMap, atlasMat, grassMat, tallGrassMat);
+    const chunks = buildTerrainChunks(stageMap, atlasMat, grassMat);
     for (const c of chunks) {
       c.mesh.matrixAutoUpdate = true;
       c.mesh.position.set(-11.5, -0.05, -11.5);

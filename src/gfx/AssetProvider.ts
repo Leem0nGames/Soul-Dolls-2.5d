@@ -13,7 +13,6 @@ export type RoofTextureKind = 'terracotta' | 'indigo' | 'patina' | 'wood';
 export interface AssetProvider {
   getTileAtlasTexture(): THREE.CanvasTexture;
   getGrassTexture(): THREE.CanvasTexture;
-  getTallGrassTexture(): THREE.CanvasTexture;
   getRoofTexture(kind: RoofTextureKind): THREE.CanvasTexture;
   getCreatureTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
   getCreatureSilhouetteTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
@@ -223,7 +222,6 @@ function makeRoofFallbackCanvas(kind: RoofTextureKind): HTMLCanvasElement {
 export class ProceduralAssetProvider implements AssetProvider {
   private tileAtlas: THREE.CanvasTexture | null = null;
   private grassTexture: THREE.CanvasTexture | null = null;
-  private tallGrassTexture: THREE.CanvasTexture | null = null;
   private creatureCache = new LruTextureCache(48);
   private silhouetteCache = new LruTextureCache(48);
   private creatureUrls = new Map<string, string>();
@@ -513,32 +511,6 @@ export class ProceduralAssetProvider implements AssetProvider {
     return this.grassTexture;
   }
 
-  getTallGrassTexture(): THREE.CanvasTexture {
-    if (!this.tallGrassTexture) {
-      const tex = new THREE.CanvasTexture(makeGrassFallbackCanvas());
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.LinearFilter;
-      tex.generateMipmaps = false;
-      tex.needsUpdate = true;
-      this.tallGrassTexture = tex;
-
-      if (this.tallGrassFlowerImg) {
-        this.applyImageToTexture(
-          tex,
-          this.tallGrassFlowerImg,
-          0,
-          0,
-          this.tallGrassFlowerImg.naturalWidth,
-          this.tallGrassFlowerImg.naturalHeight
-        );
-      }
-    }
-    return this.tallGrassTexture;
-  }
-
   getRoofTexture(kind: RoofTextureKind): THREE.CanvasTexture {
     let tex = this.roofCache.get(kind);
     if (!tex) {
@@ -776,8 +748,6 @@ export class ProceduralAssetProvider implements AssetProvider {
     this.tileAtlas = null;
     this.grassTexture?.dispose();
     this.grassTexture = null;
-    this.tallGrassTexture?.dispose();
-    this.tallGrassTexture = null;
     this.creatureCache.clear();
     this.silhouetteCache.clear();
     for (const t of this.charCache.values()) t.dispose();

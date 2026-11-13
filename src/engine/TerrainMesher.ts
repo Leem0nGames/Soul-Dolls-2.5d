@@ -54,8 +54,7 @@ const _sun = new THREE.Vector3(0.45, 0.82, 0.35).normalize();
 export function buildTerrainChunks(
   map: MapDef,
   material: THREE.MeshBasicMaterial,
-  grassMaterial?: THREE.MeshBasicMaterial,
-  tallGrassMaterial?: THREE.MeshBasicMaterial
+  grassMaterial?: THREE.MeshBasicMaterial
 ): TerrainChunk[] {
   const height = map.grid.length;
   const width = map.grid[0]?.length ?? 0;
@@ -79,7 +78,6 @@ export function buildTerrainChunks(
       const colors = new Float32Array(tileCount * 4 * 3);
       const atlasIndices: number[] = [];
       const grassIndices: number[] = [];
-      const tallGrassIndices: number[] = [];
       const waterUvIndices: number[] = [];
 
       let vPtr = 0;
@@ -103,6 +101,7 @@ export function buildTerrainChunks(
           const tileLevel = getTileHeightLevel(map, x, z);
           const slopeDelta = maxH - minH;
 
+          const isTallGrass = legend.tile === 'tall_grass';
           let tileKey: TileAtlasKey = legend.tile;
           if (
             tileKey !== 'water' &&
@@ -137,9 +136,10 @@ export function buildTerrainChunks(
           positions[vPtr++] = x1; positions[vPtr++] = y10; positions[vPtr++] = z0;
           positions[vPtr++] = x0; positions[vPtr++] = y00; positions[vPtr++] = z0;
 
-          const useCustomGrass = Boolean(grassMaterial && tileKey === 'grass');
-          const useCustomTallGrass = Boolean(tallGrassMaterial && tileKey === 'tall_grass');
-          if (useCustomGrass || useCustomTallGrass) {
+          const useCustomGrass = Boolean(
+            grassMaterial && (tileKey === 'grass' || isTallGrass)
+          );
+          if (useCustomGrass) {
             const gu0 = (x % 2) * 0.5;
             const gu1 = gu0 + 0.5;
             const gv1 = 1 - (z % 2) * 0.5;
@@ -173,7 +173,7 @@ export function buildTerrainChunks(
             colors[cPtr++] = shade;
           }
 
-          const targetIndices = useCustomGrass ? grassIndices : useCustomTallGrass ? tallGrassIndices : atlasIndices;
+          const targetIndices = useCustomGrass ? grassIndices : atlasIndices;
           targetIndices.push(
             vertBase,
             vertBase + 1,
@@ -198,12 +198,6 @@ export function buildTerrainChunks(
         mats.push(grassMaterial);
         geo.addGroup(indices.length, grassIndices.length, idx);
         indices.push(...grassIndices);
-      }
-      if (tallGrassMaterial && tallGrassIndices.length > 0) {
-        const idx = mats.length;
-        mats.push(tallGrassMaterial);
-        geo.addGroup(indices.length, tallGrassIndices.length, idx);
-        indices.push(...tallGrassIndices);
       }
       geo.addGroup(0, atlasIndices.length, 0);
       if (indices.length > 0) {
