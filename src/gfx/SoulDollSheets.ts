@@ -3,7 +3,7 @@ export const SOULDOLL_MAX_SHEET_ID = 52;
 
 const PAD_X = 6;
 const PAD_TOP = 6;
-const PAD_BOTTOM = 4;
+const PAD_BOTTOM = 1;
 const ALPHA_SCAN_THRESHOLD = 12;
 const ALPHA_CLEAN_THRESHOLD = 16;
 
@@ -88,7 +88,16 @@ export function detectSoulDollTorsoAnchor(
   drawH: number
 ): SoulDollTorsoAnchor {
   const charHeight = Math.max(0.35, Math.min(0.99, drawH / Math.max(1, height)));
-  const yBottom = Math.min(height - 1, height - PAD_BOTTOM - 1);
+  let yBottom = Math.min(height - 1, height - PAD_BOTTOM - 1);
+  outer: for (let y = height - 1; y >= 0; y--) {
+    const rowOffset = y * width;
+    for (let x = 0; x < width; x++) {
+      if (rgba[(rowOffset + x) * 4 + 3] > 128) {
+        yBottom = y;
+        break outer;
+      }
+    }
+  }
 
   // 1. Locate head core centerline (charY 0.76..0.88): free of swinging weapons, censers, skirts, and wings
   let headSum = 0;
@@ -105,7 +114,7 @@ export function detectSoulDollTorsoAnchor(
         if (curStart < 0) curStart = x;
       } else if (curStart >= 0) {
         const s = curStart / width;
-        const e = (x - 1) / width;
+        const e = x / width;
         if (bestStart < 0 || e - s > bestEnd - bestStart) {
           bestStart = s;
           bestEnd = e;
@@ -162,8 +171,8 @@ export function detectSoulDollTorsoAnchor(
         if (curStart < 0) curStart = x;
       } else if (curStart >= 0) {
         const rawS = curStart / width;
-        const rawE = (x - 1) / width;
-        const overlapsSpine = rawE >= spineX - 0.08 && rawS <= spineX + 0.12;
+        const rawE = x / width;
+        const overlapsSpine = rawE >= spineX - 0.10 && rawS <= spineX + 0.10;
         const s = Math.max(rawS, spineX - 0.15);
         const e = Math.min(rawE, spineX + 0.15);
         if (overlapsSpine && e > s && (bestStart < 0 || e - s > bestEnd - bestStart)) {
@@ -179,7 +188,10 @@ export function detectSoulDollTorsoAnchor(
     }
   }
   const coreMid = coreRows > 0 ? sumMid / coreRows : spineX;
-  const torsoX = Math.max(0.39, Math.min(0.61, Math.max(spineX - 0.035, Math.min(coreMid + 0.012, spineX + 0.04))));
+  const torsoX = Math.max(
+    0.39,
+    Math.min(0.61, Math.max(spineX - 0.035, Math.min(coreMid, spineX + 0.035)))
+  );
 
   // Bust sits just below the neck/collarbone notch
   const bustY = Math.max(0.595, Math.min(0.66, neckCy - 0.085));

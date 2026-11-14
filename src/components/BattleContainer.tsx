@@ -195,7 +195,7 @@ function PixelMarionetteSilhouette({
       viewBox="0 0 16 20"
       shapeRendering="crispEdges"
       className={`pixel-canvas shrink-0 select-none ${
-        scale === 2 ? 'w-7 h-[35px] sm:w-8 sm:h-10' : ''
+        scale === 2 ? 'w-6 h-[30px] sm:w-8 sm:h-10' : ''
       }`}
       aria-hidden="true"
     >
@@ -344,7 +344,7 @@ export const BattleContainer: React.FC<BattleContainerProps> = ({
 
   return (
     <div
-      className={`flex items-center ${isCompact ? 'gap-1.5 sm:gap-2' : 'gap-3'} ${className}`}
+      className={`flex items-center ${isCompact ? 'gap-2 sm:gap-2.5' : 'gap-3'} ${className}`}
       data-battle-container
     >
       {showSilhouette && (
@@ -358,7 +358,7 @@ export const BattleContainer: React.FC<BattleContainerProps> = ({
 
       <div
         className={`flex-1 min-w-0 grid ${
-          isCompact ? 'grid-cols-2 gap-1' : 'grid-cols-1 sm:grid-cols-2 gap-1.5'
+          isCompact ? 'grid-cols-2 gap-[3px] sm:gap-1' : 'grid-cols-1 sm:grid-cols-2 gap-1.5'
         }`}
       >
         {BODY_PART_ORDER.map((partKey) => {
@@ -388,7 +388,7 @@ export const BattleContainer: React.FC<BattleContainerProps> = ({
               className={`pixel-limb-wrap ${
                 tone.broken ? 'pixel-limb-wrap--broken' : ''
               } ${isHit ? 'battle-part-hit border-warm-white' : ''} ${
-                isCompact ? 'px-1 py-[2px] gap-1' : 'px-1.5 py-[3px] gap-1.5'
+                isCompact ? 'px-1 py-[1px] gap-1' : 'px-1.5 py-[3px] gap-1.5'
               } flex items-center min-w-0`}
               aria-label={`${resolvedLabels[partKey]}: ${p.current}/${p.max} (${statusText})`}
             >

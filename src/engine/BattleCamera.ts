@@ -63,44 +63,61 @@ export class BattleCamera {
     this.applyPose();
   }
 
+  private getPortraitBlend(): number {
+    const aspect = this.camera.aspect;
+    if (aspect >= 1) return 0;
+    return Math.min(1, Math.max(0, (1 - aspect) / 0.55));
+  }
+
   private getAdaptiveFov(baseFov: number): number {
     const aspect = this.camera.aspect;
     if (aspect >= 1) return baseFov;
     return Math.min(
-      76,
+      66,
       THREE.MathUtils.radToDeg(
         2 *
           Math.atan(
             Math.tan(THREE.MathUtils.degToRad(baseFov * 0.5)) *
-              Math.min(1.7, 1.05 / Math.max(0.5, aspect))
+              Math.min(1.42, 0.98 / Math.max(0.5, aspect))
           )
       )
     );
   }
 
   private applyPose(): void {
-    this.camera.position.set(this.pose.pos.x, this.pose.pos.y, this.pose.pos.z);
+    const portraitT =
+      this.script.getCurrentShot() === 'victory_orbit' ? 0 : this.getPortraitBlend();
+    const px = this.pose.pos.x - 1.1 * portraitT;
+    const py = this.pose.pos.y - 0.27 * portraitT;
+    const pz = this.pose.pos.z + 0.55 * portraitT;
+    const lx = this.pose.lookAt.x - 0.52 * portraitT;
+    const ly = this.pose.lookAt.y - 0.32 * portraitT;
+    const lz = this.pose.lookAt.z + 0.1 * portraitT;
+
+    this.camera.position.set(px, py, pz);
     const targetFov = this.getAdaptiveFov(this.pose.fov);
     if (Math.abs(this.camera.fov - targetFov) > 0.02) {
       this.camera.fov = targetFov;
       this.camera.updateProjectionMatrix();
     }
-    this.camera.lookAt(this.pose.lookAt.x, this.pose.lookAt.y, this.pose.lookAt.z);
+    this.camera.lookAt(lx, ly, lz);
+    this.camera.updateMatrixWorld();
   }
 
   /**
    * Computes a world-space scale for a normalized SoulDoll sprite (256x256 bottom-aligned)
    * so that at default battle framing it occupies ~targetViewportRatio of screen height
-   * consistently regardless of internal pixelation resolution, clamped cleanly in portrait.
+   * consistently regardless of internal pixelation resolution, adapted cleanly for portrait.
    */
   computeNormalizedSpriteScale(
     stationPos: THREE.Vector3,
     targetViewportRatio: number
   ): number {
+    const portraitT = this.getPortraitBlend();
     _camDelta.set(
-      stationPos.x - DEFAULT_BATTLE_POSE.pos.x,
-      stationPos.y - DEFAULT_BATTLE_POSE.pos.y,
-      stationPos.z - DEFAULT_BATTLE_POSE.pos.z
+      stationPos.x - (DEFAULT_BATTLE_POSE.pos.x - 1.1 * portraitT),
+      stationPos.y - (DEFAULT_BATTLE_POSE.pos.y - 0.27 * portraitT),
+      stationPos.z - (DEFAULT_BATTLE_POSE.pos.z + 0.55 * portraitT)
     );
     const dist = _camDelta.length();
     const fov = this.getAdaptiveFov(DEFAULT_BATTLE_POSE.fov);
@@ -108,7 +125,7 @@ export class BattleCamera {
     const aspect = this.camera.aspect;
     const adjustedRatio =
       aspect < 1
-        ? targetViewportRatio * Math.max(0.84, Math.min(1, aspect * 1.52))
+        ? targetViewportRatio * Math.max(0.66, Math.min(1, 0.48 + aspect * 0.48))
         : targetViewportRatio;
     return adjustedRatio * vpHeightWorld;
   }
@@ -123,10 +140,11 @@ export class BattleCamera {
     targetViewportRatio: number,
     internalHeight: number
   ): number {
+    const portraitT = this.getPortraitBlend();
     _camDelta.set(
-      stationPos.x - DEFAULT_BATTLE_POSE.pos.x,
-      stationPos.y - DEFAULT_BATTLE_POSE.pos.y,
-      stationPos.z - DEFAULT_BATTLE_POSE.pos.z
+      stationPos.x - (DEFAULT_BATTLE_POSE.pos.x - 1.1 * portraitT),
+      stationPos.y - (DEFAULT_BATTLE_POSE.pos.y - 0.27 * portraitT),
+      stationPos.z - (DEFAULT_BATTLE_POSE.pos.z + 0.55 * portraitT)
     );
     const dist = _camDelta.length();
     const fov = this.getAdaptiveFov(DEFAULT_BATTLE_POSE.fov);

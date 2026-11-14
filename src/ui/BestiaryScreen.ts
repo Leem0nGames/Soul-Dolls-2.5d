@@ -12,6 +12,7 @@ import {
 import type { EvolutionRule, SaveData, StatName } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { AnimatedSoulDollView } from './components/AnimatedSoulDollView.ts';
 import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 type BestiaryFilter = 'all' | 'caught' | 'seen' | 'unseen';
@@ -41,6 +42,7 @@ export class BestiaryScreen {
   private filter: BestiaryFilter = 'all';
   private selectedId: number | null = null;
   private unbindImages: (() => void) | null = null;
+  private activeAnimView: AnimatedSoulDollView | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -261,7 +263,7 @@ export class BestiaryScreen {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="space-y-3">
             <div class="flex items-center gap-3 rounded-lg border border-ash-purple bg-crypt-ink p-3">
-              <img src="${this.assets.getCreatureDataUrl(speciesId, 'front')}" data-souldoll-id="${speciesId}" data-souldoll-view="front" class="souldoll-img w-24 h-24 object-contain" alt="${spec.name}" />
+              <div data-anim-portrait class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center"></div>
               <div>
                 <div class="text-lg font-bold">${spec.name}</div>
                 <div class="mt-1 flex gap-1">${typeBadges}</div>
@@ -306,9 +308,15 @@ export class BestiaryScreen {
     `;
 
     this.root.querySelector('[data-back]')?.addEventListener('click', onBack);
+
+    this.activeAnimView?.dispose();
+    this.activeAnimView = new AnimatedSoulDollView(this.assets, speciesId, 'front', 84);
+    this.root.querySelector('[data-anim-portrait]')?.replaceChildren(this.activeAnimView.root);
   }
 
   close(): void {
+    this.activeAnimView?.dispose();
+    this.activeAnimView = null;
     this.unbindImages?.();
     this.unbindImages = null;
     this.root.classList.add('hidden');
@@ -316,6 +324,8 @@ export class BestiaryScreen {
   }
 
   dispose(): void {
+    this.activeAnimView?.dispose();
+    this.activeAnimView = null;
     this.unbindImages?.();
     this.unbindImages = null;
     this.root.remove();

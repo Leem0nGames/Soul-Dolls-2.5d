@@ -39,14 +39,14 @@ export class EvolutionScene implements Scene {
     this.oldName = getCreatureDisplayName(creature);
     this.currentTexSpeciesId = creature.speciesId;
 
-    const geo = createBottomPivotPlaneGeometry(2.5, 2.5, 24, 32);
+    const geo = createBottomPivotPlaneGeometry(1, 1, 24, 32);
     this.spriteMatHandle = createBattleSpriteMaterial(
       this.game.assets.getCreatureTexture(creature.speciesId, 'front')
     );
     this.rig = new SoulDollIdleRig({
       view: 'front',
       flipX: false,
-      cycleDuration: 3.4,
+      cycleDuration: 3.5,
       initialPhase: 0.2,
     });
     const anchor = this.game.assets.getCreatureRigAnchor?.(creature.speciesId, 'front');
@@ -54,6 +54,7 @@ export class EvolutionScene implements Scene {
 
     this.spriteMesh = new THREE.Mesh(geo, this.spriteMatHandle.material);
     this.spriteMesh.position.set(0, 0, 0);
+    this.spriteMesh.scale.set(2.5, 2.5, 2.5);
     this.scene.add(this.spriteMesh);
     this.disposables.track(geo);
     this.disposables.track(this.spriteMatHandle.material);
@@ -87,7 +88,7 @@ export class EvolutionScene implements Scene {
     this.game.dialog.update(dt, this.game.input);
 
     this.rig.update(dt, this.phase === 'done');
-    this.rig.applyToMaterial(this.spriteMatHandle);
+    this.rig.applyToMesh(this.spriteMesh, this.spriteMatHandle);
 
     if (this.phase === 'anim') {
       this.elapsed += dt;
@@ -102,13 +103,13 @@ export class EvolutionScene implements Scene {
         const anchor = this.game.assets.getCreatureRigAnchor?.(activeId, 'front');
         if (anchor) this.rig.setAnchor(anchor);
       }
-      const s = 1 + Math.sin(this.elapsed * 10) * 0.12;
-      this.spriteMesh.scale.set(s, s, 1);
+      const s = 2.5 * (1 + Math.sin(this.elapsed * 10) * 0.12);
+      this.spriteMesh.scale.set(s, s, 2.5);
 
       if (this.game.input.justPressed('b')) {
         this.cancelled = true;
         this.phase = 'done';
-        this.spriteMesh.scale.set(1, 1, 1);
+        this.spriteMesh.scale.set(2.5, 2.5, 2.5);
         this.currentTexSpeciesId = creature.speciesId;
         this.spriteMatHandle.setTexture(
           this.game.assets.getCreatureTexture(creature.speciesId, 'front')
@@ -128,7 +129,7 @@ export class EvolutionScene implements Scene {
         const res = applyEvolution(creature, this.targetSpeciesId);
         this.game.markSpeciesCaught(this.targetSpeciesId, creature.level, false);
         const newSpec = getSpecies(this.targetSpeciesId);
-        this.spriteMesh.scale.set(1.15, 1.15, 1);
+        this.spriteMesh.scale.set(2.5 * 1.15, 2.5 * 1.15, 2.5);
         this.currentTexSpeciesId = this.targetSpeciesId;
         this.spriteMatHandle.setTexture(
           this.game.assets.getCreatureTexture(this.targetSpeciesId, 'front')

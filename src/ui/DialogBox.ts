@@ -24,18 +24,19 @@ export class DialogBox {
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
     this.root.className =
-      'pointer-events-auto fixed inset-x-0 bottom-2 sm:bottom-3 z-30 mx-auto hidden w-[min(94vw,680px)] rounded-xl border-2 border-porcelain bg-crypt-ink/95 p-3.5 sm:p-4 shadow-xl';
+      'pointer-events-auto fixed inset-x-0 bottom-1.5 sm:bottom-3 z-30 mx-auto hidden w-[min(95vw,680px)] rounded-xl border-2 border-resonant-gold bg-smoked-wood px-3.5 py-2.5 sm:p-4 text-porcelain';
     this.root.style.marginBottom = 'env(safe-area-inset-bottom, 0px)';
 
     this.textEl = document.createElement('div');
-    this.textEl.className = 'min-h-[3.0rem] text-sm sm:text-base leading-relaxed text-porcelain';
+    this.textEl.className =
+      'min-h-[2.1rem] sm:min-h-[2.8rem] text-[13px] sm:text-base leading-snug sm:leading-relaxed text-porcelain';
 
     this.choicesEl = document.createElement('div');
-    this.choicesEl.className = 'mt-3 hidden flex-wrap gap-2 justify-end';
+    this.choicesEl.className = 'mt-2.5 sm:mt-3 hidden flex-wrap gap-2 justify-end';
 
     this.nextHint = document.createElement('div');
     this.nextHint.className =
-      'mt-1 text-right text-xs font-bold text-resonant-gold battle-arrow-bob';
+      'mt-0.5 sm:mt-1 text-right text-[11px] sm:text-xs font-bold text-resonant-gold battle-arrow-bob';
     this.nextHint.textContent = '▼ Continuar';
 
     this.root.appendChild(this.textEl);

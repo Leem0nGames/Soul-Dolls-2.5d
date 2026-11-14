@@ -1,58 +1,82 @@
 import * as THREE from 'three';
 
 const VERTEX_SHADER = `
-uniform float uBreath;
-uniform vec2 uBustOffset;
-uniform float uBustExpand;
+uniform float uBreathWeight;
+uniform float uSecondaryWeight;
+uniform vec2 uBustJiggle;
+uniform float uVolumeScale;
+uniform vec2 uTorsoRecoil;
 uniform vec2 uTorsoAnchor;
 uniform float uCharHeight;
 uniform float uFlipSign;
 uniform float uIsBack;
 
 varying vec2 vUv;
-varying vec2 vSpritePos;
 
 void main() {
   vUv = uv;
-  // Normalized screen-aligned sprite coords: x in [0, 1], y in [0, 1] (0 = ground, 1 = quad top)
-  vec2 sp = vec2(position.x + 0.5, position.y);
-  vSpritePos = sp;
+  // Normalized screen-aligned sprite coords: x in [0, 1], y in [0, 1] (0 = ground, 1 = quad top).
+  float screenX = uFlipSign < 0.0 ? 1.0 - uv.x : uv.x;
+  vec2 sp = vec2(screenX, uv.y);
 
   float ch = max(0.32, uCharHeight);
-  float charY = clamp((sp.y - 0.0156) / ch, 0.0, 1.0);
+  float charY = clamp((sp.y - 0.0039) / ch, 0.0, 1.0);
+  float bw = clamp(uBreathWeight, 0.0, 1.0);
+  float sw = clamp(uSecondaryWeight, 0.0, 1.0);
+  float swayLag = sw - bw;
   vec3 pos = position;
 
-  // 1. Grounded foot lock: strictly 0 displacement on feet/ankles/lower shins (charY <= 0.24)
-  float legRise = smoothstep(0.24, 0.56, charY);
-  // Subtle coherent upper-body rise on inhale; head & neck ride rigidly with zero stretching
-  float breathLift = legRise * uBreath * 0.0085 * ch;
+  // 1. Grounded foot lock: feet, ankles, and lower shins (charY <= 0.24) remain strictly anchored (0).
+  // Smooth anatomical transition across waist into the unified ribcage/upper-torso region.
+  float waistToThorax = smoothstep(0.24, 0.48, charY);
+  float upperBodyRise = smoothstep(0.24, 0.60, charY);
+  float chestArch = smoothstep(0.30, 0.56, charY) * (1.0 - smoothstep(0.70, 0.88, charY));
 
-  // Gentle clavicle/shoulder lift synchronized with inhale
-  float collarBand = exp(-pow((charY - (uTorsoAnchor.y + 0.072)) / 0.065, 2.0)) * exp(-pow((sp.x - uTorsoAnchor.x) / 0.145, 2.0));
-  breathLift += collarBand * uBreath * 0.0025 * ch;
+  // 2. Unified torso-driven thoracic cage envelope centered on the spine axis (uTorsoAnchor.x).
+  // Strictly linear scaling in dx (zero per-lobe centers, zero non-linear radial pinch) preserves
+  // the exact 3/4 bust silhouette, proportions, separation, and drawn volume on both sides.
+  float ribVertBand = smoothstep(0.30, 0.48, charY) * (1.0 - smoothstep(0.74, 0.90, charY));
+  float dx = sp.x - uTorsoAnchor.x;
+  float frontFactor = mix(1.0, 0.72, uIsBack);
 
-  // 2. Dual symmetric pectoral lobes for 3/4 profile: guarantees both breasts expand equally and naturally
-  float belowCut = smoothstep(uTorsoAnchor.y - 0.135, uTorsoAnchor.y - 0.065, charY);
-  float aboveCut = 1.0 - smoothstep(uTorsoAnchor.y + 0.055, uTorsoAnchor.y + 0.105, charY);
-  float vertMask = belowCut * aboveCut;
+  // Expressive unified thoracic expansion (5.5% max) and heave lift (2.8% upper body + 1.6% chest arch)
+  float thoraxExpand = bw * 0.055 * frontFactor;
+  float thoraxLift = bw * (upperBodyRise * 0.028 + chestArch * 0.016) * ch;
 
-  float frontWeight = mix(1.0, 0.24, uIsBack);
-  vec2 lobe1 = vec2(uTorsoAnchor.x - 0.024, uTorsoAnchor.y - 0.002);
-  vec2 lobe2 = vec2(uTorsoAnchor.x + 0.024, uTorsoAnchor.y + 0.002);
+  // 3. Secondary organic follow-through (phase-offset uSecondaryWeight) on crown/hair,
+  // outer shoulder tips, and peripheral drape/sleeves/skirt strictly outside the bust corridor (|dx| >= 0.16).
+  float headCrownBand = smoothstep(0.76, 0.94, charY);
+  float outerLimbDrape = smoothstep(0.16, 0.34, abs(dx)) * waistToThorax;
+  float shoulderTipBand =
+    smoothstep(0.62, 0.76, charY) *
+    (1.0 - smoothstep(0.84, 0.95, charY)) *
+    smoothstep(0.08, 0.22, abs(dx));
 
-  vec2 d1 = (sp.xy - lobe1) / vec2(0.046, 0.040);
-  vec2 d2 = (sp.xy - lobe2) / vec2(0.046, 0.040);
-  float w1 = exp(-dot(d1, d1));
-  float w2 = exp(-dot(d2, d2));
-  float thoraxMask = clamp(w1 + w2, 0.0, 1.0) * vertMask * frontWeight;
+  float secondaryX = dx * outerLimbDrape * (sw * 0.012 + swayLag * 0.014) * frontFactor;
+  float secondaryY = (
+    headCrownBand * (sw * 0.010 + swayLag * 0.008) +
+    shoulderTipBand * (sw * 0.009) -
+    outerLimbDrape * swayLag * 0.006
+  ) * ch;
 
-  float expandAmp = uBreath * 0.0055 + uBustExpand * 0.012;
-  vec2 dirFromCenter = sp.xy - uTorsoAnchor;
-  float distFromCenter = length(dirFromCenter);
-  vec2 radialDir = distFromCenter > 0.0001 ? dirFromCenter / distFromCenter : vec2(0.0, 1.0);
+  // 4. Cohesive 120Hz soft-body chest jiggle & 2D volume preservation centered on torso spine.
+  // Neck/clavicle & waist remain strictly pinned (bustBounds -> 0) so meshes never separate.
+  float bustVertDist = (charY - uTorsoAnchor.y) / 0.11;
+  float bustHorzDist = dx / 0.145;
+  float bustBounds =
+    smoothstep(uTorsoAnchor.y - 0.15, uTorsoAnchor.y - 0.04, charY) *
+    (1.0 - smoothstep(uTorsoAnchor.y + 0.05, uTorsoAnchor.y + 0.14, charY));
+  float bustSoftMask =
+    exp(-0.5 * (bustVertDist * bustVertDist + bustHorzDist * bustHorzDist)) *
+    bustBounds *
+    mix(1.0, 0.28, uIsBack);
 
-  pos.xy += radialDir * thoraxMask * expandAmp + uBustOffset * thoraxMask * 0.28;
-  pos.y += breathLift;
+  float jigglePosX = uBustJiggle.x * bustSoftMask;
+  float jigglePosY = uBustJiggle.y * bustSoftMask * ch;
+  float jiggleVolX = dx * bustSoftMask * uVolumeScale;
+
+  pos.x += dx * ribVertBand * thoraxExpand + secondaryX + jigglePosX + jiggleVolX + uTorsoRecoil.x * waistToThorax;
+  pos.y += thoraxLift + secondaryY + jigglePosY + uTorsoRecoil.y * waistToThorax;
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -63,16 +87,8 @@ uniform sampler2D map;
 uniform float uDissolve;
 uniform float uOpacity;
 uniform float uFlash;
-uniform float uBreath;
-uniform vec2 uBustOffset;
-uniform float uBustExpand;
-uniform vec2 uTorsoAnchor;
-uniform float uCharHeight;
-uniform float uFlipSign;
-uniform float uIsBack;
 
 varying vec2 vUv;
-varying vec2 vSpritePos;
 
 float bayer4x4(vec2 p) {
   int x = int(mod(p.x, 4.0));
@@ -97,29 +113,9 @@ float bayer4x4(vec2 p) {
 }
 
 void main() {
-  float ch = max(0.32, uCharHeight);
-  float charY = clamp((vSpritePos.y - 0.0156) / ch, 0.0, 1.0);
-  vec2 charPos = vec2(vSpritePos.x, charY);
-
-  // 3/4 Profile symmetric thoracic & chest envelope centered on sternum with balanced depth weighting
-  float frontWeight = mix(1.0, 0.32, uIsBack);
-  float belowCut = smoothstep(uTorsoAnchor.y - 0.13, uTorsoAnchor.y - 0.055, charY);
-  float aboveCut = 1.0 - smoothstep(uTorsoAnchor.y + 0.052, uTorsoAnchor.y + 0.102, charY);
-  float verticalSafe = belowCut * aboveCut;
-
-  vec2 dChest = (charPos - uTorsoAnchor) / vec2(0.115, 0.088);
-  float wChest = exp(-dot(dChest, dChest)) * verticalSafe * frontWeight;
-
-  vec2 dirChest = charPos - uTorsoAnchor;
-  float distChest = length(dirChest);
-  vec2 normChest = distChest > 0.0001 ? dirChest / distChest : vec2(0.0, 1.0);
-
-  // Perfectly symmetrical thoracic expansion multiplier applied equally to both sides in 3/4 view
-  vec2 expandVec = normChest * wChest * (uBreath * 0.006 + uBustExpand * 0.014);
-  vec2 springDisp = vec2(uBustOffset.x * 0.25, uBustOffset.y * 0.48 + uBreath * 0.0015) * wChest;
-
-  vec2 totalDisp = vec2(expandVec.x + springDisp.x, (expandVec.y + springDisp.y) * ch);
-  vec2 sampleUv = clamp(vUv - totalDisp, vec2(0.001), vec2(0.999));
+  // Sample strictly at interpolated mesh vUv without fragment-level UV warping,
+  // preventing mipmap LOD pumping, cel-outline shimmer, and luminosity flicker across breath phases.
+  vec2 sampleUv = clamp(vUv, vec2(0.001), vec2(0.999));
 
   vec4 texel = texture2D(map, sampleUv);
   if (texel.a < 0.45) discard;
@@ -130,7 +126,8 @@ void main() {
 
   vec3 flashLinear = vec3(1.0, 0.948, 0.874);
   vec3 color = mix(texel.rgb, flashLinear, clamp(uFlash, 0.0, 1.0));
-  gl_FragColor = vec4(color, texel.a * uOpacity);
+  float cleanAlpha = smoothstep(0.45, 0.60, texel.a);
+  gl_FragColor = vec4(color, cleanAlpha * uOpacity);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -143,10 +140,13 @@ export interface BattleSpriteMaterialHandle {
   setOpacity(v: number): void;
   setFlash(v: number): void;
   setIdleDeform(
-    breath: number,
-    bustX: number,
-    bustY: number,
-    bustExpand: number,
+    breathWeight: number,
+    secondaryWeight: number,
+    jiggleX: number,
+    jiggleY: number,
+    volumeScale: number,
+    recoilX: number,
+    recoilY: number,
     torsoX: number,
     bustCenterY: number,
     charHeight: number,
@@ -158,7 +158,8 @@ export interface BattleSpriteMaterialHandle {
 export function createBattleSpriteMaterial(
   initialTexture: THREE.Texture
 ): BattleSpriteMaterialHandle {
-  const bustOffset = new THREE.Vector2(0, 0);
+  const bustJiggle = new THREE.Vector2(0, 0);
+  const torsoRecoil = new THREE.Vector2(0, 0);
   const torsoAnchor = new THREE.Vector2(0.5, 0.635);
 
   const material = new THREE.ShaderMaterial({
@@ -167,9 +168,11 @@ export function createBattleSpriteMaterial(
       uDissolve: { value: 0 },
       uOpacity: { value: 1 },
       uFlash: { value: 0 },
-      uBreath: { value: 0 },
-      uBustOffset: { value: bustOffset },
-      uBustExpand: { value: 0 },
+      uBreathWeight: { value: 0 },
+      uSecondaryWeight: { value: 0 },
+      uBustJiggle: { value: bustJiggle },
+      uVolumeScale: { value: 0 },
+      uTorsoRecoil: { value: torsoRecoil },
       uTorsoAnchor: { value: torsoAnchor },
       uCharHeight: { value: 0.96 },
       uFlipSign: { value: 1 },
@@ -178,6 +181,7 @@ export function createBattleSpriteMaterial(
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     transparent: true,
+    premultipliedAlpha: false,
     side: THREE.DoubleSide,
   });
 
@@ -196,19 +200,24 @@ export function createBattleSpriteMaterial(
       material.uniforms.uFlash.value = v;
     },
     setIdleDeform(
-      breath: number,
-      bustX: number,
-      bustY: number,
-      bustExpand: number,
+      breathWeight: number,
+      secondaryWeight: number,
+      jiggleX: number,
+      jiggleY: number,
+      volumeScale: number,
+      recoilX: number,
+      recoilY: number,
       torsoX: number,
       bustCenterY: number,
       charHeight: number,
       flipSign: number,
       isBack: number
     ) {
-      material.uniforms.uBreath.value = breath;
-      bustOffset.set(bustX, bustY);
-      material.uniforms.uBustExpand.value = bustExpand;
+      material.uniforms.uBreathWeight.value = breathWeight;
+      material.uniforms.uSecondaryWeight.value = secondaryWeight;
+      bustJiggle.set(jiggleX, jiggleY);
+      material.uniforms.uVolumeScale.value = volumeScale;
+      torsoRecoil.set(recoilX, recoilY);
       torsoAnchor.set(torsoX, bustCenterY);
       material.uniforms.uCharHeight.value = charHeight;
       material.uniforms.uFlipSign.value = flipSign;

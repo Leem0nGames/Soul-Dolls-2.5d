@@ -49,23 +49,23 @@ export class BattleHud {
 
     this.enemyBox = document.createElement('div');
     this.enemyBox.className =
-      'pointer-events-none absolute top-[calc(0.5rem+env(safe-area-inset-top,0px))] inset-x-2 sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[344px] rounded-xl border-2 border-porcelain/90 bg-crypt-ink/88 p-1.5 sm:p-2 text-porcelain shadow-xl';
+      'pointer-events-none absolute top-[calc(0.375rem+env(safe-area-inset-top,0px))] inset-x-2 mx-auto max-w-[400px] sm:mx-0 sm:max-w-none sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[328px] rounded-lg border border-tarnished-gold/75 bg-crypt-ink/90 backdrop-blur-[2px] px-2.5 py-1.5 sm:p-2 text-porcelain shadow-[0_6px_18px_rgba(11,8,14,0.72),inset_0_1px_0_rgba(242,230,201,0.12)]';
 
     this.bannerEl = document.createElement('div');
     this.bannerEl.className =
-      'pointer-events-none absolute hidden max-w-[220px] rounded-lg border border-ki-cyan/80 bg-crypt-ink/95 px-2.5 py-1 text-right shadow-lg top-[calc(6.5rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
+      'pointer-events-none absolute hidden max-w-[220px] rounded-lg border border-ki-cyan/80 bg-crypt-ink/95 px-2.5 py-1 text-right shadow-lg top-[calc(6.4rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
 
     this.bottomDock = document.createElement('div');
     this.bottomDock.className =
-      'pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-stretch gap-1.5 p-2 sm:flex-row-reverse sm:items-end sm:justify-between sm:gap-3 sm:p-3 safe-pad';
+      'pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-stretch gap-2.5 p-2 sm:flex-row-reverse sm:items-end sm:justify-between sm:gap-5 sm:p-4 safe-pad';
 
     this.playerBox = document.createElement('div');
     this.playerBox.className =
-      'pointer-events-none w-full sm:w-[344px] sm:shrink-0 sm:ml-auto mb-[108px] sm:mb-24 rounded-xl border-2 border-porcelain/90 bg-crypt-ink/88 p-1.5 sm:p-2 text-porcelain shadow-xl';
+      'pointer-events-none w-full max-w-[400px] mx-auto sm:mx-0 sm:max-w-none sm:w-[328px] sm:shrink-0 sm:ml-auto mb-[76px] sm:mb-24 rounded-lg border border-tarnished-gold/75 bg-crypt-ink/90 backdrop-blur-[2px] px-2.5 py-1.5 sm:p-2 text-porcelain shadow-[0_6px_18px_rgba(11,8,14,0.72),inset_0_1px_0_rgba(242,230,201,0.12)]';
 
     this.menuBox = document.createElement('div');
     this.menuBox.className =
-      'pointer-events-auto w-full sm:flex-1 sm:max-w-[460px] hidden rounded-xl border-2 border-porcelain bg-crypt-ink/95 p-2 sm:p-2.5 shadow-2xl';
+      'pointer-events-auto w-full max-w-[400px] mx-auto sm:mx-0 sm:flex-1 sm:max-w-[424px] hidden rounded-lg border border-resonant-gold/80 bg-crypt-ink/94 backdrop-blur-[2px] p-2 sm:p-3 shadow-[0_8px_24px_rgba(11,8,14,0.82),inset_0_1px_0_rgba(242,230,201,0.14)]';
 
     this.replaceModal = document.createElement('div');
     this.replaceModal.className =
@@ -170,7 +170,7 @@ export class BattleHud {
     return spec.types
       .map((t) => {
         const v = TYPE_VISUALS[t];
-        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wide border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
+        return `<span class="px-1 py-[1px] rounded-sm text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider border leading-none" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
       })
       .join('');
   }
@@ -185,7 +185,7 @@ export class BattleHud {
             : c.status !== 'none'
               ? 'bg-ui-warning border-pale-gold'
               : 'bg-rift-crimson border-warm-white';
-        return `<span class="inline-block w-2.5 h-2.5 rounded-full border ${cls}"></span>`;
+        return `<span class="inline-block w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border ${cls}"></span>`;
       })
       .join('');
   }
@@ -255,11 +255,11 @@ export class BattleHud {
             <span class="text-[11px] sm:text-xs font-bold text-resonant-gold tabular-nums" data-lv></span>
           </div>
         </div>
-        <div class="relative mt-1 h-2 w-full rounded-full bg-smoked-wood border border-cold-stone/70 overflow-hidden">
+        <div class="relative mt-1 h-[7px] w-full rounded-sm bg-abyss-ink border border-cold-stone/75 overflow-hidden">
           <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold/80 transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
           <div data-hp-fill class="relative h-full ${barColor} transition-[width] duration-300 ease-out" style="width:${pct}%"></div>
         </div>
-        <div data-parts class="mt-1 pt-1 border-t border-ash-purple/75"></div>
+        <div data-parts class="mt-1 pt-1 border-t border-ash-purple/60"></div>
       `;
       const partsSlot = this.enemyBox.querySelector('[data-parts]') as HTMLElement;
       this.enemyPartsRoot = createRoot(partsSlot);
@@ -334,14 +334,14 @@ export class BattleHud {
           </div>
         </div>
         <div class="mt-1 flex items-center gap-1.5">
-          <div class="relative h-2 flex-1 rounded-full bg-smoked-wood border border-cold-stone/70 overflow-hidden">
+          <div class="relative h-[7px] flex-1 rounded-sm bg-abyss-ink border border-cold-stone/75 overflow-hidden">
             <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold/80 transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
             <div data-hp-fill class="relative h-full ${barColor} transition-[width] duration-300 ease-out" style="width:${pct}%"></div>
           </div>
-          <span data-hp-text class="text-[10px] sm:text-[11px] font-bold text-porcelain tabular-nums shrink-0">${c.currentHp}/${c.stats.hp} ${ES.party.hp}</span>
+          <span data-hp-text class="text-[10px] sm:text-[11px] font-bold text-porcelain tabular-nums shrink-0 leading-none">${c.currentHp}/${c.stats.hp} ${ES.party.hp}</span>
         </div>
-        <div data-parts class="mt-1 pt-1 border-t border-ash-purple/75"></div>
-        <div class="mt-1 h-[3px] w-full rounded bg-smoked-wood overflow-hidden">
+        <div data-parts class="mt-1 pt-1 border-t border-ash-purple/60"></div>
+        <div class="mt-1 h-[3px] w-full rounded-sm bg-abyss-ink overflow-hidden">
           <div data-xp-fill class="h-full bg-ki-cyan transition-[width] duration-500 ease-out" style="width:${expPct}%"></div>
         </div>
       `;
@@ -378,9 +378,11 @@ export class BattleHud {
     this.lastPlayerXp = c.xp;
 
     if (isLow) {
+      this.playerBox.classList.remove('border-tarnished-gold/75');
       this.playerBox.classList.add('border-rift-crimson');
     } else {
       this.playerBox.classList.remove('border-rift-crimson');
+      this.playerBox.classList.add('border-tarnished-gold/75');
     }
   }
 
@@ -403,7 +405,7 @@ export class BattleHud {
               : 'text-warm-white text-base';
     el.className = `pointer-events-none absolute font-black drop-shadow-[0_2px_2px_rgba(11,8,14,0.95)] battle-float-num ${colorCls}`;
     el.style.left = `${Math.round(Math.max(12, Math.min(88, normX * 100)))}%`;
-    el.style.top = `${Math.round(Math.max(12, Math.min(80, normY * 100)))}%`;
+    el.style.top = `${Math.round(Math.max(18, Math.min(72, normY * 100)))}%`;
     el.textContent = text;
     this.fxOverlay.appendChild(el);
     window.setTimeout(() => {
@@ -423,7 +425,8 @@ export class BattleHud {
     }
   ): void {
     this.menuBox.classList.remove('hidden');
-    this.playerBox.classList.remove('mb-[108px]', 'sm:mb-24');
+    this.playerBox.classList.remove('mb-[76px]', 'sm:mb-24');
+    this.playerBox.classList.add('mb-1', 'sm:mb-0');
 
     const icon = (kind: 'fight' | 'bag' | 'party' | 'run') => {
       if (!this.assets) return '';
@@ -432,15 +435,15 @@ export class BattleHud {
 
     const renderRoot = () => {
       this.menuBox.innerHTML = `
-        <div class="flex flex-col gap-1.5">
-          <div class="text-xs sm:text-sm font-bold text-porcelain px-0.5 truncate">${ES.battle.whatWillDo(getCreatureDisplayName(creature))}</div>
-          <div class="grid grid-cols-2 gap-1.5">
-            <button data-act="fight" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border-2 border-peach-blush/80 bg-rift-crimson hover:bg-ruby-glow active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow">${icon('fight')}<span>${ES.battle.fight}</span></button>
-            <button data-act="bag" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border-2 border-pale-gold/80 bg-old-bronze hover:bg-tarnished-gold active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow">${icon('bag')}<span>${ES.battle.bag}</span></button>
-            <button data-act="party" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border-2 border-ice-cyan/80 bg-emerald-base hover:bg-moss active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow">${icon('party')}<span>${ES.battle.party}</span></button>
-            <button data-act="run" ${isWild ? '' : 'disabled'} class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow ${
+        <div class="flex flex-col gap-2">
+          <div class="text-xs sm:text-sm font-bold text-porcelain px-0.5 pb-1 border-b border-ash-purple/50 truncate">${ES.battle.whatWillDo(getCreatureDisplayName(creature))}</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button data-act="fight" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border border-peach-blush/70 bg-rift-crimson hover:bg-ruby-glow active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.22),0_2px_0_rgba(11,8,14,0.8)]">${icon('fight')}<span>${ES.battle.fight}</span></button>
+            <button data-act="bag" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border border-pale-gold/70 bg-old-bronze hover:bg-tarnished-gold active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.22),0_2px_0_rgba(11,8,14,0.8)]">${icon('bag')}<span>${ES.battle.bag}</span></button>
+            <button data-act="party" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border border-ice-cyan/70 bg-emerald-base hover:bg-moss active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.22),0_2px_0_rgba(11,8,14,0.8)]">${icon('party')}<span>${ES.battle.party}</span></button>
+            <button data-act="run" ${isWild ? '' : 'disabled'} class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.18),0_2px_0_rgba(11,8,14,0.8)] ${
               isWild
-                ? 'border-ice-cyan/80 bg-oceanic-teal hover:bg-vibrant-aqua active:scale-[0.98] text-warm-white'
+                ? 'border-ice-cyan/70 bg-oceanic-teal hover:bg-vibrant-aqua active:scale-[0.98] text-warm-white'
                 : 'border-cold-stone bg-ash-purple text-bone-gray/60 cursor-not-allowed'
             }">${icon('run')}<span>${ES.battle.run}</span></button>
           </div>
@@ -475,7 +478,7 @@ export class BattleHud {
             : '';
 
           return `
-            <button data-move="${idx}" ${disabled ? 'disabled' : ''} style="border-color:${v.border};background:linear-gradient(135deg, ${v.bg}cc, ${PALETTE.cryptInk}ee)" class="min-h-[46px] sm:min-h-[50px] rounded-lg border-2 p-1.5 sm:p-2 text-left flex flex-col justify-between transition-transform active:scale-[0.98] ${
+            <button data-move="${idx}" ${disabled ? 'disabled' : ''} style="border-color:${v.border};background:linear-gradient(135deg, ${v.bg}cc, ${PALETTE.cryptInk}ee)" class="min-h-[46px] sm:min-h-[50px] rounded-lg border p-1.5 sm:p-2 text-left flex flex-col justify-between shadow-[inset_0_1px_0_rgba(255,249,240,0.16),0_2px_0_rgba(11,8,14,0.75)] transition-transform active:scale-[0.98] ${
               disabled ? 'opacity-45 cursor-not-allowed' : ''
             }">
               <div class="flex items-center justify-between gap-1">
@@ -495,8 +498,8 @@ export class BattleHud {
         .join('');
 
       this.menuBox.innerHTML = `
-        <div class="flex flex-col gap-1.5">
-          <div class="grid grid-cols-2 gap-1.5">${movesHtml}</div>
+        <div class="flex flex-col gap-2">
+          <div class="grid grid-cols-2 gap-2">${movesHtml}</div>
           <button data-back class="min-h-[40px] sm:min-h-[44px] self-end px-3.5 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold text-porcelain">${ES.party.back}</button>
         </div>
       `;
@@ -515,7 +518,8 @@ export class BattleHud {
 
   hideMenu(): void {
     this.menuBox.classList.add('hidden');
-    this.playerBox.classList.add('mb-[108px]', 'sm:mb-24');
+    this.playerBox.classList.remove('mb-1', 'sm:mb-0');
+    this.playerBox.classList.add('mb-[76px]', 'sm:mb-24');
   }
 
   showLearnMovePrompt(

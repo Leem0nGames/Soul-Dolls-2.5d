@@ -17,8 +17,8 @@ import {
 } from './SkyBackdrop.ts';
 import { buildTerrainChunks } from './TerrainMesher.ts';
 
-export const PLAYER_STATION_POS = new THREE.Vector3(-2.15, 0.28, 2.0);
-export const ENEMY_STATION_POS = new THREE.Vector3(2.25, 0.62, -2.35);
+export const PLAYER_STATION_POS = new THREE.Vector3(-2.15, 0.24, 2.0);
+export const ENEMY_STATION_POS = new THREE.Vector3(2.25, 0.5, -2.35);
 
 interface BiomeTheme {
   skyTop: number;
@@ -338,8 +338,8 @@ function createBlobShadowTexture(): THREE.CanvasTexture {
   canvas.height = 32;
   const ctx = canvas.getContext('2d')!;
   const grad = ctx.createRadialGradient(16, 16, 2, 16, 16, 15);
-  grad.addColorStop(0, 'rgba(11, 8, 14, 0.72)');
-  grad.addColorStop(0.6, 'rgba(11, 8, 14, 0.42)');
+  grad.addColorStop(0, 'rgba(11, 8, 14, 0.84)');
+  grad.addColorStop(0.55, 'rgba(11, 8, 14, 0.50)');
   grad.addColorStop(1, 'rgba(11, 8, 14, 0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 32, 32);
@@ -551,13 +551,13 @@ export class BattleStage {
       this.disposables.track(c.mesh.geometry);
     }
 
-    // Two circular raised platforms (widened slightly to accommodate larger SoulDolls)
+    // Two circular raised platforms seated firmly into their surrounding terrain terraces
     const pGeo = buildPlatformGeometry(
       PLAYER_STATION_POS.x,
       PLAYER_STATION_POS.y,
       PLAYER_STATION_POS.z,
-      1.85,
-      0.42,
+      1.88,
+      0.38,
       theme.platformTop,
       theme.platformRim
     );
@@ -565,8 +565,8 @@ export class BattleStage {
       ENEMY_STATION_POS.x,
       ENEMY_STATION_POS.y,
       ENEMY_STATION_POS.z,
-      1.78,
-      0.72,
+      1.72,
+      0.6,
       theme.platformTop,
       theme.platformRim
     );
@@ -690,30 +690,33 @@ export class BattleStage {
       this.disposables.track(auraMat);
     }
 
-    // Soft procedural blob shadows under both creatures
+    // Soft procedural contact shadows flush on top of each station platform beneath the feet
     const shadowTex = createBlobShadowTexture();
-    const shadowGeo = new THREE.PlaneGeometry(1.75, 1.12);
-    shadowGeo.rotateX(-Math.PI / 2);
+    const playerShadowGeo = new THREE.PlaneGeometry(1.88, 1.2);
+    playerShadowGeo.rotateX(-Math.PI / 2);
+    const enemyShadowGeo = new THREE.PlaneGeometry(1.62, 1.12);
+    enemyShadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
       map: shadowTex,
       transparent: true,
       depthWrite: false,
     });
     this.disposables.track(shadowTex);
-    this.disposables.track(shadowGeo);
+    this.disposables.track(playerShadowGeo);
+    this.disposables.track(enemyShadowGeo);
     this.disposables.track(shadowMat);
 
-    this.playerShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    this.playerShadow = new THREE.Mesh(playerShadowGeo, shadowMat);
     this.playerShadow.position.set(
       PLAYER_STATION_POS.x,
-      PLAYER_STATION_POS.y + 0.02,
+      PLAYER_STATION_POS.y + 0.008,
       PLAYER_STATION_POS.z
     );
-    this.enemyShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    this.enemyShadow = new THREE.Mesh(enemyShadowGeo, shadowMat);
     this.enemyShadow.position.set(
       ENEMY_STATION_POS.x,
-      ENEMY_STATION_POS.y + 0.02,
-      ENEMY_STATION_POS.z
+      ENEMY_STATION_POS.y + 0.008,
+      ENEMY_STATION_POS.z - 0.06
     );
     scene.add(this.playerShadow, this.enemyShadow);
   }

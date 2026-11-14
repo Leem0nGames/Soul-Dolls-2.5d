@@ -6,7 +6,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { FxQualityTier } from '../domain/FxPool.ts';
 
-const ImpactShockwaveShader = {
+export const ImpactShockwaveShader = {
   uniforms: {
     tDiffuse: { value: null },
     uCenter: { value: new THREE.Vector2(0.5, 0.5) },
@@ -57,7 +57,7 @@ const ImpactShockwaveShader = {
       }
 
       if (uDimAmount > 0.001) {
-        float edge = smoothstep(0.24, 0.88, length(vUv - 0.5));
+        float edge = smoothstep(0.54, 1.02, length(vUv - 0.5));
         base.rgb *= 1.0 - edge * uDimAmount;
       }
 
@@ -128,9 +128,9 @@ export class BattlePostFx {
 
       this.bloomPass = new UnrealBloomPass(
         new THREE.Vector2(w, h),
-        0.38, // strength: crisp glow on HDR VFX without washing out sky or SoulDolls
-        0.32, // radius
-        1.02 // threshold > 1.0: prevents SDR sky/clouds/sprites from blooming
+        0.2, // strength: crisp localized glow on HDR VFX cores without washing out SoulDolls
+        0.2, // radius
+        1.15 // threshold > 1.0: keeps SDR sky/clouds/sprites untouched
       );
       this.composer.addPass(this.bloomPass);
 
@@ -147,7 +147,7 @@ export class BattlePostFx {
 
   setQualityTier(tier: FxQualityTier): void {
     if (this.bloomPass) {
-      this.bloomPass.strength = 0.36;
+      this.bloomPass.strength = 0.2;
       this.bloomPass.enabled = tier !== 'low';
     }
   }
@@ -165,10 +165,10 @@ export class BattlePostFx {
     }
   }
 
-  pulseArenaDim(peak = 0.38, duration = 0.52): void {
+  pulseArenaDim(peak = 0.22, duration = 0.52): void {
     this.dimElapsed = 0.001;
     this.dimDuration = Math.max(0.15, duration);
-    this.dimPeak = Math.min(0.55, Math.max(0, peak));
+    this.dimPeak = Math.min(0.24, Math.max(0, peak));
   }
 
   update(dt: number): void {

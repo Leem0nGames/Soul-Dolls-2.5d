@@ -27,9 +27,9 @@ export interface QueuedShot {
 }
 
 export const DEFAULT_BATTLE_POSE: CameraPose = {
-  pos: { x: -4.1, y: 2.1, z: 5.85 },
-  lookAt: { x: 0.4, y: 1.38, z: -0.4 },
-  fov: 50,
+  pos: { x: -2.45, y: 1.88, z: 7.65 },
+  lookAt: { x: 0.14, y: 0.62, z: -0.25 },
+  fov: 52,
   timeScale: 1,
 };
 

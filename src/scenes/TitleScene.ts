@@ -230,8 +230,9 @@ export class TitleScene implements Scene {
       const rig = new SoulDollIdleRig({
         view: 'front',
         flipX: false,
-        cycleDuration: 3.3 + idx * 0.24,
+        cycleDuration: 3.5,
         initialPhase: idx * 0.34,
+        breathingEnabled: !this.reducedMotion,
       });
       const anchor = this.game.assets.getCreatureRigAnchor?.(id, 'front');
       if (anchor) rig.setAnchor(anchor);
@@ -357,7 +358,7 @@ export class TitleScene implements Scene {
       const r3 = ((seed * 11 + 29) % 233280) / 233280;
       positions[i * 3] = (r1 - 0.5) * 7.6;
       positions[i * 3 + 1] = 0.2 + r2 * 3.1;
-      positions[i * 3 + 2] = -2.6 + r3 * 4.8;
+      positions[i * 3 + 2] = -3.0 + r3 * 3.2;
       speeds[i] = 0.14 + r2 * 0.22;
       phases[i] = r3 * Math.PI * 2;
 
@@ -574,9 +575,9 @@ export class TitleScene implements Scene {
       if (!this.reducedMotion) {
         slot.rig.update(dt, true);
       }
-      slot.rig.applyToMaterial(slot.matHandle);
       slot.mesh.position.set(slot.baseX, y, slot.baseZ);
       slot.mesh.lookAt(_camPos.x, slot.mesh.position.y, _camPos.z);
+      slot.rig.applyToMesh(slot.mesh, slot.matHandle);
     });
 
     if (this.wisps && !this.reducedMotion) {
