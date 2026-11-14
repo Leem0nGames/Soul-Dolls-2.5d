@@ -5,11 +5,13 @@ import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
 import { TYPE_VISUALS } from '../data/types.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
+import { bindSoulDollImageUpdates } from '../ui/bindSoulDollImages.ts';
 
 export class GalleryScene implements Scene {
   readonly name = 'gallery';
   private emptyScene = new THREE.Scene();
   private overlay: HTMLDivElement;
+  private unbindImages: (() => void) | null = null;
 
   constructor(private readonly game: Game) {
     this.emptyScene.background = new THREE.Color(hexToNumber(PALETTE.cryptInk));
@@ -27,6 +29,8 @@ export class GalleryScene implements Scene {
       battleTransition: false,
     });
     this.renderGallery();
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.overlay, this.game.assets);
     this.game.uiLayer.appendChild(this.overlay);
   }
 
@@ -57,11 +61,11 @@ export class GalleryScene implements Scene {
           </div>
           <div class="grid grid-cols-2 gap-1.5 bg-crypt-ink/80 rounded-lg p-1.5">
             <div class="flex flex-col items-center">
-              <img src="${frontUrl}" alt="${s.name} ${ES.gallery.front}" class="w-16 h-16" style="image-rendering:pixelated" />
+              <img src="${frontUrl}" data-souldoll-id="${id}" data-souldoll-view="front" alt="${s.name} ${ES.gallery.front}" class="souldoll-img w-20 h-20 object-contain" />
               <span class="text-[9px] text-bone-gray">${ES.gallery.front}</span>
             </div>
             <div class="flex flex-col items-center">
-              <img src="${backUrl}" alt="${s.name} ${ES.gallery.back}" class="w-16 h-16" style="image-rendering:pixelated" />
+              <img src="${backUrl}" data-souldoll-id="${id}" data-souldoll-view="back" alt="${s.name} ${ES.gallery.back}" class="souldoll-img w-20 h-20 object-contain" />
               <span class="text-[9px] text-bone-gray">${ES.gallery.back}</span>
             </div>
           </div>
@@ -103,6 +107,8 @@ export class GalleryScene implements Scene {
   }
 
   onExit(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.overlay.remove();
   }
 }

@@ -11,6 +11,7 @@ import {
   pickBestVesselForSpecies,
   rebindCreatureContainer,
 } from '../domain/BodyParts.ts';
+import { addCardToAlbum, formatCardBonuses, getCardDef } from '../domain/Cards.ts';
 import { getCreatureDisplayName } from '../domain/Creature.ts';
 import { replaceCreatureMove } from '../domain/Experience.ts';
 import { addCapturedCreature } from '../domain/Storage.ts';
@@ -38,6 +39,7 @@ import { FxSystem } from '../engine/FxSystem.ts';
 import { TweenRunner } from '../engine/Tween.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
+import { CARD_RARITY_STYLES } from '../ui/cardRarityStyles.ts';
 
 const _camPos = new THREE.Vector3();
 const _fromPos = new THREE.Vector3();
@@ -119,21 +121,24 @@ export class BattleScene implements Scene {
     this.fx = new FxSystem(this.scene);
     this.fx.setFlashCallback((css, ms) => this.game.battleTransition.flashScreen(css, ms));
 
-    const internalH = game.renderer.getInternalHeight();
     this.lastAspect = game.renderer.getAspect();
-    this.lastInternalH = internalH;
-    this.playerScale = this.battleCamera.computeIntegerPixelScale(
+    this.lastInternalH = game.renderer.getInternalHeight();
+    this.playerScale = this.battleCamera.computeNormalizedSpriteScale(
       PLAYER_STATION_POS,
-      0.36,
-      internalH
+      0.34
     );
-    this.enemyScale = this.battleCamera.computeIntegerPixelScale(
+    this.enemyScale = this.battleCamera.computeNormalizedSpriteScale(
       ENEMY_STATION_POS,
-      0.26,
-      internalH
+      0.27
     );
 
     const unitGeo = createBottomPivotPlaneGeometry(1, 1);
+    // Flip horizontally so raw 3/4 profile sheets (front ↘, back ↖) face each other along the battle diagonal
+    const uvAttr = unitGeo.getAttribute('uv') as THREE.BufferAttribute;
+    for (let i = 0; i < uvAttr.count; i++) {
+      uvAttr.setX(i, 1 - uvAttr.getX(i));
+    }
+    uvAttr.needsUpdate = true;
     this.disposables.track(unitGeo);
 
     const activePlayer = this.engine.getActive('player');
@@ -624,7 +629,11 @@ export class BattleScene implements Scene {
               );
               if (t >= 0.45 && !fxFired) {
                 fxFired = true;
-                this.fx.playTypeMove(move.type, _fromPos, _toPos, 'physical');
+                this.fx.playTypeMove(move.type, _fromPos, _toPos, 'physical', {
+                  power: move.power,
+                  fromGroundY: home.y,
+                  toGroundY: target.y,
+                });
                 this.fx.burst(_toPos, {
                   count: 10,
                   speedMin: 2.2,
@@ -663,13 +672,21 @@ export class BattleScene implements Scene {
               mesh.position.y = home.y + hop * 0.22;
               if (t >= 0.36 && !fxFired) {
                 fxFired = true;
-                this.fx.playTypeMove(move.type, _fromPos, _toPos, 'special');
+                this.fx.playTypeMove(move.type, _fromPos, _toPos, 'special', {
+                  power: move.power,
+                  fromGroundY: home.y,
+                  toGroundY: target.y,
+                });
               }
             },
             finishMoveAnim
           );
         } else {
-          this.fx.playTypeMove(move.type, _fromPos, _toPos, 'status');
+          this.fx.playTypeMove(move.type, _fromPos, _toPos, 'status', {
+            power: move.power,
+            fromGroundY: home.y,
+            toGroundY: target.y,
+          });
           this.tweens.start(
             0.36,
             (t) => {
@@ -765,6 +782,7 @@ export class BattleScene implements Scene {
         this.game.bus.emit('audio:sfx', { sfx: 'heal' });
         const home = ev.target === 'player' ? PLAYER_STATION_POS : ENEMY_STATION_POS;
         _toPos.set(home.x, home.y + 0.6, home.z);
+        this.fx.abilityVfx.playHealOrBuff(_toPos, home.y, true);
         this.fx.ring(_toPos, {
           count: 16,
           radius: 0.45,
@@ -787,6 +805,8 @@ export class BattleScene implements Scene {
         const side = ev.target;
         const home = side === 'player' ? PLAYER_STATION_POS : ENEMY_STATION_POS;
         _toPos.set(home.x, home.y + 0.65, home.z);
+        const isPos = ev.type === 'status_clear' || (ev.type === 'stat_change' && ev.delta > 0);
+        this.fx.abilityVfx.playHealOrBuff(_toPos, home.y, isPos);
         this.fx.ring(_toPos, {
           count: 14,
           radius: 0.4,
@@ -989,6 +1009,7 @@ export class BattleScene implements Scene {
                 );
                 if (ev.caught) {
                   this.game.bus.emit('audio:sfx', { sfx: 'capture' });
+                  this.fx.abilityVfx.playCaptureBurst(_toPos, ENEMY_STATION_POS.y, true);
                   this.fx.burst(_toPos, {
                     count: 34,
                     speedMin: 1.8,
@@ -1122,6 +1143,35 @@ export class BattleScene implements Scene {
         done();
         break;
 
+      case 'card_drop': {
+        const { isNew } = addCardToAlbum(this.game.saveData, ev.speciesId);
+        const card = getCardDef(ev.speciesId);
+        const rarityStyle = CARD_RARITY_STYLES[card.rarity];
+        const rarityTag = ES.cards.rarity[card.rarity];
+        this.game.bus.emit('audio:sfx', { sfx: 'capture' });
+        _toPos.set(ENEMY_STATION_POS.x, ENEMY_STATION_POS.y + 0.7, ENEMY_STATION_POS.z);
+        this.fx.burst(_toPos, {
+          count: 24,
+          speedMin: 1.5,
+          speedMax: 3.8,
+          lifeMin: 0.35,
+          lifeMax: 0.7,
+          sizeStart: 0.28,
+          sizeEnd: 0.04,
+          colorHex: hexToNumber(rarityStyle.fxColor || PALETTE.resonantGold),
+          gravity: -1.8,
+        });
+        this.game.battleHud.showBanner(
+          isNew
+            ? `Nueva Carta [${rarityTag}]: ${card.name}`
+            : `Carta [${rarityTag}]: ${card.name} (+1 copia)`,
+          formatCardBonuses(card.bonuses)
+        );
+        this.game.showToast(`[${rarityTag}] ${card.name} · ${formatCardBonuses(card.bonuses)}`);
+        done();
+        break;
+      }
+
       case 'run_success':
       case 'run_fail':
         done();
@@ -1182,15 +1232,13 @@ export class BattleScene implements Scene {
     ) {
       this.lastAspect = curAspect;
       this.lastInternalH = curInternalH;
-      this.playerScale = this.battleCamera.computeIntegerPixelScale(
+      this.playerScale = this.battleCamera.computeNormalizedSpriteScale(
         PLAYER_STATION_POS,
-        0.36,
-        curInternalH
+        0.34
       );
-      this.enemyScale = this.battleCamera.computeIntegerPixelScale(
+      this.enemyScale = this.battleCamera.computeNormalizedSpriteScale(
         ENEMY_STATION_POS,
-        0.26,
-        curInternalH
+        0.27
       );
       if (this.trainerMesh && this.trainerMesh.visible) {
         this.trainerMesh.scale.setScalar(this.enemyScale * 0.94);

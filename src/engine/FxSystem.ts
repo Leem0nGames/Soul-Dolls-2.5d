@@ -7,6 +7,7 @@ import {
 } from '../domain/FxPool.ts';
 import type { BattleBiome, CreatureType, MoveCategory } from '../domain/types.ts';
 import { hexToNumber, hexToRgb01, PALETTE } from '../gfx/Palette.ts';
+import { AbilityVfxSystem, type MoveVfxOptions } from './AbilityVfxSystem.ts';
 import { DisposableRegistry } from './Disposables.ts';
 
 const _dummy = new THREE.Object3D();
@@ -83,12 +84,14 @@ function getTypeRgb(type: CreatureType): [number, number, number] {
 export class FxSystem {
   readonly pool = new FxPool(MAX_FX_PARTICLES);
   readonly mesh: THREE.InstancedMesh;
+  readonly abilityVfx: AbilityVfxSystem;
   private disposables = new DisposableRegistry();
   private flashCb?: (colorCss: string, durationMs: number) => void;
   private ambientAccum = 0;
   private seedState = 0x1234567;
 
   constructor(scene: THREE.Scene) {
+    this.abilityVfx = new AbilityVfxSystem(scene);
     const tex = createSparkTexture();
     const geo = new THREE.PlaneGeometry(1, 1);
     const mat = new THREE.MeshBasicMaterial({
@@ -126,6 +129,7 @@ export class FxSystem {
 
   setQualityTier(tier: FxQualityTier): void {
     this.pool.setQualityTier(tier);
+    this.abilityVfx.setQualityTier(tier);
   }
 
   setFlashCallback(cb: (colorCss: string, durationMs: number) => void): void {
@@ -235,8 +239,10 @@ export class FxSystem {
     type: CreatureType,
     from: THREE.Vector3,
     to: THREE.Vector3,
-    category: MoveCategory
+    category: MoveCategory,
+    opts?: MoveVfxOptions
   ): void {
+    this.abilityVfx.playMove(type, from, to, category, opts);
     const [r, g, b] = getTypeRgb(type);
     const hex =
       (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255);
@@ -554,6 +560,7 @@ export class FxSystem {
   }
 
   update(dt: number, cameraPos: THREE.Vector3): void {
+    this.abilityVfx.update(dt);
     this.pool.update(dt);
     let activeIdx = 0;
     const slots = this.pool.slots;
@@ -587,6 +594,7 @@ export class FxSystem {
 
   dispose(): void {
     this.pool.clear();
+    this.abilityVfx.dispose();
     this.disposables.disposeAll();
   }
 }

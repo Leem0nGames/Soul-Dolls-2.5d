@@ -30,14 +30,14 @@ export class EvolutionScene implements Scene {
     const creature = this.game.saveData.party[partyIndex];
     this.oldName = getCreatureDisplayName(creature);
 
-    const geo = new THREE.PlaneGeometry(2.6, 2.6);
+    const geo = new THREE.PlaneGeometry(2.5, 2.5);
     this.spriteMat = new THREE.MeshBasicMaterial({
       map: this.game.assets.getCreatureTexture(creature.speciesId, 'front'),
-      alphaTest: 0.5,
+      alphaTest: 0.45,
       side: THREE.DoubleSide,
     });
     this.spriteMesh = new THREE.Mesh(geo, this.spriteMat);
-    this.spriteMesh.position.set(0, 1.3, 0);
+    this.spriteMesh.position.set(0, 1.25, 0);
     this.scene.add(this.spriteMesh);
     this.disposables.track(geo);
     this.disposables.track(this.spriteMat);
@@ -54,6 +54,7 @@ export class EvolutionScene implements Scene {
     this.game.touchControls.setVisible(true);
     this.game.cameraRig.setPreset('battle');
     this.game.cameraRig.snapTo(0, 0, 0);
+    this.spriteMesh.lookAt(this.game.cameraRig.camera.position);
     this.game.dialog.show([
       ES.evolution.evolving(this.oldName),
       ES.evolution.cancelHint,
@@ -61,6 +62,7 @@ export class EvolutionScene implements Scene {
   }
 
   fixedUpdate(dt: number): void {
+    this.spriteMesh.lookAt(this.game.cameraRig.camera.position);
     this.game.dialog.update(dt, this.game.input);
 
     if (this.phase === 'anim') {

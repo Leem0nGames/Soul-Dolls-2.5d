@@ -12,6 +12,7 @@ import {
 import type { EvolutionRule, SaveData, StatName } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 type BestiaryFilter = 'all' | 'caught' | 'seen' | 'unseen';
 
@@ -39,6 +40,7 @@ export class BestiaryScreen {
   readonly root: HTMLDivElement;
   private filter: BestiaryFilter = 'all';
   private selectedId: number | null = null;
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -124,7 +126,7 @@ export class BestiaryScreen {
                   ? 'border-cold-stone bg-crypt-ink'
                   : 'border-ash-purple bg-crypt-ink/70'
             } hover:border-ki-cyan p-2 flex items-center gap-2.5 min-h-[64px]">
-              <img src="${imgSrc}" class="pixel-canvas w-12 h-12 object-contain shrink-0 ${
+              <img src="${imgSrc}" data-souldoll-id="${id}" data-souldoll-view="${seen ? 'front' : 'silhouette'}" class="souldoll-img w-12 h-12 object-contain shrink-0 ${
                 seen ? '' : 'opacity-70'
               }" alt="${seen ? spec.name : ES.bestiary.unknown}" />
               <div class="min-w-0 flex-1">
@@ -173,6 +175,8 @@ export class BestiaryScreen {
       });
     };
 
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
     render();
@@ -192,7 +196,7 @@ export class BestiaryScreen {
             <button data-back class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold">${ES.bestiary.back}</button>
           </div>
           <div class="flex flex-col items-center py-6 gap-4 text-center">
-            <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" class="pixel-canvas w-28 h-28 object-contain opacity-80" alt="${ES.bestiary.unknown}" />
+            <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain opacity-80" alt="${ES.bestiary.unknown}" />
             <p class="text-sm text-bone-gray">${ES.bestiary.unseenDetail}</p>
           </div>
         </div>
@@ -257,7 +261,7 @@ export class BestiaryScreen {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="space-y-3">
             <div class="flex items-center gap-3 rounded-lg border border-ash-purple bg-crypt-ink p-3">
-              <img src="${this.assets.getCreatureDataUrl(speciesId, 'front')}" class="pixel-canvas w-24 h-24 object-contain" alt="${spec.name}" />
+              <img src="${this.assets.getCreatureDataUrl(speciesId, 'front')}" data-souldoll-id="${speciesId}" data-souldoll-view="front" class="souldoll-img w-24 h-24 object-contain" alt="${spec.name}" />
               <div>
                 <div class="text-lg font-bold">${spec.name}</div>
                 <div class="mt-1 flex gap-1">${typeBadges}</div>
@@ -305,11 +309,15 @@ export class BestiaryScreen {
   }
 
   close(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.remove();
   }
 }

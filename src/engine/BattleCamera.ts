@@ -89,6 +89,31 @@ export class BattleCamera {
   }
 
   /**
+   * Computes a world-space scale for a normalized SoulDoll sprite (256x256 bottom-aligned)
+   * so that at default battle framing it occupies ~targetViewportRatio of screen height
+   * consistently regardless of internal pixelation resolution, clamped cleanly in portrait.
+   */
+  computeNormalizedSpriteScale(
+    stationPos: THREE.Vector3,
+    targetViewportRatio: number
+  ): number {
+    _camDelta.set(
+      stationPos.x - DEFAULT_BATTLE_POSE.pos.x,
+      stationPos.y - DEFAULT_BATTLE_POSE.pos.y,
+      stationPos.z - DEFAULT_BATTLE_POSE.pos.z
+    );
+    const dist = _camDelta.length();
+    const fov = this.getAdaptiveFov(DEFAULT_BATTLE_POSE.fov);
+    const vpHeightWorld = 2 * dist * Math.tan(THREE.MathUtils.degToRad(fov * 0.5));
+    const aspect = this.camera.aspect;
+    const adjustedRatio =
+      aspect < 1
+        ? Math.min(targetViewportRatio, targetViewportRatio * aspect * 1.38)
+        : targetViewportRatio;
+    return adjustedRatio * vpHeightWorld;
+  }
+
+  /**
    * Computes a world-space scale for a 32x32 sprite so that at default framing
    * it occupies ~targetViewportRatio of screen height (capped cleanly in portrait),
    * snapped to an integer multiple of 32px at the current internal render resolution.

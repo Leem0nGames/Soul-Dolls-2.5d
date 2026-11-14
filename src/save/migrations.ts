@@ -1,7 +1,15 @@
+import { SPECIES } from '../data/species.ts';
 import { resolveDeterministicAbility } from '../domain/Abilities.ts';
 import { ensureBodyParts, ensureSaveVesselState } from '../domain/BodyParts.ts';
 import { createDefaultStorageBoxes, normalizeStorageBoxes } from '../domain/Storage.ts';
-import type { BestiaryEntry, CapturedSoul, CreatureInstance, GameOptions, SaveData } from '../domain/types.ts';
+import type {
+  BestiaryEntry,
+  CapturedSoul,
+  CardEntry,
+  CreatureInstance,
+  GameOptions,
+  SaveData,
+} from '../domain/types.ts';
 
 export const CURRENT_SAVE_VERSION = 5;
 
@@ -43,6 +51,7 @@ export function createInitialSave(): SaveData {
     vessels: { cuerpo_aprendiz: 1 },
     bodyPartShards: {},
     soulReserve: [],
+    cardAlbum: {},
     stats: {
       battlesWon: 0,
       creaturesCaught: 0,
@@ -57,6 +66,9 @@ export function createInitialSave(): SaveData {
 function hydrateCreature(c: CreatureInstance, indexSeed: number): CreatureInstance {
   if (!c.abilityId) {
     c.abilityId = resolveDeterministicAbility(c.speciesId, indexSeed);
+  }
+  if (c.socketedCardId !== undefined && !SPECIES[c.socketedCardId]) {
+    delete c.socketedCardId;
   }
   ensureBodyParts(c);
   return c;
@@ -205,6 +217,38 @@ export function migrateSaveData(raw: unknown): SaveData | null {
     }
   }
   migrated.bestiary = bestiary;
+
+  const cardAlbum: Record<number, CardEntry> = {};
+  if (obj.cardAlbum && typeof obj.cardAlbum === 'object') {
+    for (const [k, v] of Object.entries(obj.cardAlbum as Record<string, unknown>)) {
+      const id = Number(k);
+      if (!Number.isFinite(id) || !SPECIES[id] || !v || typeof v !== 'object') continue;
+      const e = v as Partial<CardEntry>;
+      const count = typeof e.count === 'number' && e.count > 0 ? Math.floor(e.count) : 0;
+      if (count <= 0) continue;
+      cardAlbum[id] = {
+        speciesId: id,
+        count,
+        firstObtainedAt:
+          typeof e.firstObtainedAt === 'number' ? e.firstObtainedAt : migrated.savedAt,
+      };
+    }
+  }
+  const socketCounts: Record<number, number> = {};
+  for (const mon of allOwned) {
+    if (mon.socketedCardId !== undefined && SPECIES[mon.socketedCardId]) {
+      socketCounts[mon.socketedCardId] = (socketCounts[mon.socketedCardId] ?? 0) + 1;
+    }
+  }
+  for (const [idStr, needed] of Object.entries(socketCounts)) {
+    const id = Number(idStr);
+    if (!cardAlbum[id]) {
+      cardAlbum[id] = { speciesId: id, count: needed, firstObtainedAt: migrated.savedAt };
+    } else if (cardAlbum[id].count < needed) {
+      cardAlbum[id].count = needed;
+    }
+  }
+  migrated.cardAlbum = cardAlbum;
 
   if (version < 2) {
     migrated.stats = {

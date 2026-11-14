@@ -12,6 +12,7 @@ import type { CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import type { SummaryScreen } from './SummaryScreen.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 type SelectedSource =
   | { kind: 'party'; partyIndex: number }
@@ -26,6 +27,7 @@ export class StorageScreen {
   private renaming = false;
   private confirmRelease: { boxIndex: number; slotIndex: number } | null = null;
   private notice = '';
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -77,7 +79,7 @@ export class StorageScreen {
             <button data-party="${idx}" class="w-full rounded-lg border ${
               isSel ? 'border-resonant-gold bg-ash-purple' : 'border-ash-purple bg-crypt-ink'
             } p-1.5 flex items-center gap-2 text-left min-h-[48px]">
-              <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" class="pixel-canvas w-9 h-9 object-contain shrink-0" alt="" />
+              <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="" />
               <div class="min-w-0 flex-1">
                 <div class="font-bold text-xs truncate">${getCreatureDisplayName(c)}</div>
                 <div class="text-[10px] text-resonant-gold tabular-nums">${ES.party.lv}${c.level}</div>
@@ -114,7 +116,7 @@ export class StorageScreen {
                   ? 'border-resonant-gold bg-ash-purple'
                   : 'border-ash-purple bg-crypt-ink'
             } p-1 flex flex-col items-center justify-center relative">
-              <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" class="pixel-canvas w-9 h-9 object-contain" alt="${getSpecies(c.speciesId).name}" />
+              <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain" alt="${getSpecies(c.speciesId).name}" />
               <span class="text-[9px] text-pale-gold tabular-nums leading-none">${ES.party.lv}${c.level}</span>
             </button>
           `;
@@ -142,7 +144,7 @@ export class StorageScreen {
         actionBar = `
           <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
             <div class="flex items-center gap-2 min-w-0">
-              <img src="${this.assets.getCreatureDataUrl(selCreature.speciesId, 'front')}" class="pixel-canvas w-10 h-10 object-contain shrink-0" alt="" />
+              <img src="${this.assets.getCreatureDataUrl(selCreature.speciesId, 'front')}" data-souldoll-id="${selCreature.speciesId}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0" alt="" />
               <div class="min-w-0">
                 <div class="font-bold text-sm truncate">${getCreatureDisplayName(selCreature)}</div>
                 <div class="text-xs text-resonant-gold tabular-nums">${ES.party.lv}${selCreature.level} · ${selCreature.currentHp}/${selCreature.stats.hp} ${ES.party.hp}</div>
@@ -352,7 +354,12 @@ export class StorageScreen {
 
       this.root.querySelector('[data-act="summary"]')?.addEventListener('click', () => {
         if (!selCreature) return;
-        this.summary.open(selCreature, () => {});
+        this.summary.open(
+          selCreature,
+          () => {},
+          { bag: save.bag, onChanged: () => render() },
+          { save, onChanged: () => render() }
+        );
       });
 
       this.root.querySelector('[data-act="release"]')?.addEventListener('click', () => {
@@ -365,17 +372,23 @@ export class StorageScreen {
       });
     };
 
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
     render();
   }
 
   close(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.remove();
   }
 }

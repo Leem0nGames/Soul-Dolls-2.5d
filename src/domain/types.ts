@@ -279,6 +279,7 @@ export interface CreatureInstance {
   sleepTurns: number;
   abilityId?: string;
   heldItemId?: string;
+  socketedCardId?: number;
   moves: MoveSlot[];
 }
 
@@ -341,6 +342,24 @@ export interface BestiaryEntry {
 export interface StorageBox {
   name: string;
   slots: (CreatureInstance | null)[];
+}
+
+export type CardRarity = 'comun' | 'rara' | 'epica' | 'legendaria';
+
+export interface CardEntry {
+  speciesId: number;
+  count: number;
+  firstObtainedAt: number;
+}
+
+export interface CardDef {
+  speciesId: number;
+  name: string;
+  title: string;
+  rarity: CardRarity;
+  types: [CreatureType] | [CreatureType, CreatureType];
+  description: string;
+  bonuses: Partial<Stats>;
 }
 
 export type Direction = 'down' | 'up' | 'left' | 'right';
@@ -653,6 +672,7 @@ export type BattleEvent =
   | { type: 'level_up'; partyIndex: number; newLevel: number; creature: CreatureInstance }
   | { type: 'learn_move_prompt'; partyIndex: number; moveId: string }
   | { type: 'evolution_ready'; partyIndex: number; targetSpeciesId: number }
+  | { type: 'card_drop'; speciesId: number; creatureName: string }
   | { type: 'run_success' }
   | { type: 'run_fail' }
   | { type: 'battle_end'; outcome: 'win' | 'lose' | 'caught' | 'ran'; rewardMoney: number };
@@ -695,6 +715,7 @@ export interface SaveData {
   vessels?: Record<string, number>;
   bodyPartShards?: Record<string, number>;
   soulReserve?: CapturedSoul[];
+  cardAlbum?: Record<number, CardEntry>;
   stats: PlayStats;
   options: GameOptions;
   savedAt: number;

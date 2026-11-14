@@ -118,6 +118,10 @@
   image-rendering: auto;
 }
 
+.souldoll-img {
+  image-rendering: auto;
+}
+
 .safe-pad {
   padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);
@@ -282,6 +286,118 @@
   background-color: var(--color-abyss-ink);
 }
 
+@keyframes cardSocketRing {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.9);
+  }
+}
+
+@keyframes cardSocketSpark {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  70% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(var(--tx, 0px), var(--ty, 0px), 0) scale(0.25) rotate(var(--rot, 90deg));
+  }
+}
+
+@keyframes cardSocketFlash {
+  0% {
+    transform: scale(0.97);
+    filter: brightness(1.45);
+    box-shadow: 0 0 0 0 rgba(95, 227, 210, 0.75), inset 0 0 18px rgba(232, 184, 74, 0.45);
+  }
+  45% {
+    transform: scale(1.015);
+    filter: brightness(1.2);
+    box-shadow: 0 0 22px 4px rgba(95, 227, 210, 0.45), inset 0 0 14px rgba(95, 227, 210, 0.3);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+    box-shadow: 0 0 12px 0 rgba(95, 227, 210, 0.16);
+  }
+}
+
+@keyframes cardSocketAmbientGlow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(95, 227, 210, 0.14), inset 0 0 8px rgba(232, 184, 74, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(95, 227, 210, 0.28), inset 0 0 12px rgba(232, 184, 74, 0.16);
+  }
+}
+
+@keyframes cardStatBoostFlash {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  30% {
+    transform: scale(1.1);
+    filter: brightness(1.4);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.card-socket-active {
+  animation: cardSocketAmbientGlow 2.8s ease-in-out infinite;
+}
+
+.card-socket-flash {
+  animation: cardSocketFlash 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.card-stat-boosted {
+  display: inline-block;
+  animation: cardStatBoostFlash 540ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-socket-ring {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  border-radius: 9999px;
+  border: 2px solid var(--fx-color, #5FE3D2);
+  pointer-events: none;
+  animation: cardSocketRing 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.card-socket-spark {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+  animation: cardSocketSpark 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.card-drop-target-ready {
+  border-style: dashed !important;
+  border-color: var(--color-ki-cyan) !important;
+  background-color: rgba(31, 107, 101, 0.22);
+}
+
+.card-drop-target-hover {
+  border-style: solid !important;
+  border-color: var(--color-resonant-gold) !important;
+  background-color: rgba(31, 107, 101, 0.45);
+  box-shadow: 0 0 18px rgba(95, 227, 210, 0.45);
+  transform: scale(1.015);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .battle-slide-left,
   .battle-slide-right,
@@ -290,7 +406,12 @@
   .battle-float-num,
   .battle-xp-burst,
   .battle-wipe-slash,
-  .battle-part-hit {
+  .battle-part-hit,
+  .card-socket-active,
+  .card-socket-flash,
+  .card-stat-boosted,
+  .card-socket-ring,
+  .card-socket-spark {
     animation: none !important;
   }
 }

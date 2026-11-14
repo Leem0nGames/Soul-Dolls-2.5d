@@ -1089,8 +1089,10 @@ export class OverworldScene implements Scene {
       onParty: () => {
         this.game.partyScreen.open(
           this.game.saveData.party,
-          { kind: 'manage', bag: this.game.saveData.bag },
-          () => {}
+          { kind: 'manage', bag: this.game.saveData.bag, save: this.game.saveData },
+          () => {
+            this.game.saveManager.save(this.game.saveData);
+          }
         );
       },
       onBag: () => {
@@ -1109,6 +1111,16 @@ export class OverworldScene implements Scene {
       },
       onBestiary: () => {
         this.game.bestiaryScreen.open(this.game.saveData, () => {});
+      },
+      onCards: () => {
+        this.game.cardAlbumScreen.open(
+          this.game.saveData,
+          () => {},
+          () => {
+            this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+            this.game.saveManager.save(this.game.saveData);
+          }
+        );
       },
       onSave: () => {
         const ok = this.game.saveManager.save(this.game.saveData);

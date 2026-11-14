@@ -56,7 +56,7 @@ export class PixelRenderer {
   private scale = 1.0;
   private qualityTier: FxQualityTier = 'high';
   private avgFrameMs = 16.6;
-  private resizeCooldown = 0;
+  private resizeCooldown = 2000;
   private contextLost = false;
   private pixelEffect = true;
   private onContextLostCb?: () => void;

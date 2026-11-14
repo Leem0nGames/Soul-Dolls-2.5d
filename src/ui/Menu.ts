@@ -2,15 +2,18 @@ import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
 import { TYPE_VISUALS } from '../data/types.ts';
 import { getBestiaryCounts } from '../domain/Bestiary.ts';
 import { getTotalVesselCount } from '../domain/BodyParts.ts';
+import { getAlbumCounts } from '../domain/Cards.ts';
 import type { GameOptions, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 export interface MenuCallbacks {
   onParty: () => void;
   onBag: () => void;
   onVessels?: () => void;
   onBestiary?: () => void;
+  onCards?: () => void;
   onSave: () => boolean;
   onOptionsChanged: (options: GameOptions) => void;
   onClose: () => void;
@@ -19,6 +22,7 @@ export interface MenuCallbacks {
 export class PauseMenu {
   readonly root: HTMLDivElement;
   private isOpenFlag = false;
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -36,6 +40,8 @@ export class PauseMenu {
 
   open(save: SaveData, callbacks: MenuCallbacks): void {
     this.isOpenFlag = true;
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
     this.renderMain(save, callbacks);
@@ -43,6 +49,7 @@ export class PauseMenu {
 
   private renderMain(save: SaveData, callbacks: MenuCallbacks, notice = ''): void {
     const counts = getBestiaryCounts(save);
+    const cardCounts = getAlbumCounts(save);
     const vesselCount = getTotalVesselCount(save);
     const reserveCount = save.soulReserve?.length ?? 0;
     const repelInfo =
@@ -71,6 +78,10 @@ export class PauseMenu {
             <span class="text-xs text-ki-cyan tabular-nums">${vesselCount}C · ${reserveCount}A</span>
           </button>
           <button data-act="dex" class="min-h-[44px] px-3 rounded-lg bg-ash-purple hover:bg-cold-stone/40 text-left font-semibold text-sm border border-cold-stone/60">${ES.menu.dex} (${counts.caught}/${counts.total})</button>
+          <button data-act="cards" class="min-h-[44px] px-3 rounded-lg bg-ash-purple hover:bg-cold-stone/40 text-left font-semibold text-sm border border-cold-stone/60 flex items-center justify-between">
+            <span>${ES.menu.cards}</span>
+            <span class="text-xs text-resonant-gold tabular-nums">${cardCounts.collected}/${cardCounts.total}</span>
+          </button>
           <button data-act="save" class="min-h-[44px] px-3 rounded-lg bg-ash-purple hover:bg-cold-stone/40 text-left font-semibold text-sm border border-cold-stone/60">${ES.menu.save}</button>
           <button data-act="options" class="min-h-[44px] px-3 rounded-lg bg-ash-purple hover:bg-cold-stone/40 text-left font-semibold text-sm border border-cold-stone/60">${ES.menu.options}</button>
           <button data-act="close" class="min-h-[44px] px-3 rounded-lg bg-blood-moon/80 hover:bg-rosewood text-left font-semibold text-sm border border-rift-crimson/70">${ES.menu.close}</button>
@@ -98,6 +109,12 @@ export class PauseMenu {
         callbacks.onBestiary();
       } else {
         this.renderDex(save, callbacks);
+      }
+    });
+    this.root.querySelector('[data-act="cards"]')?.addEventListener('click', () => {
+      if (callbacks.onCards) {
+        this.close();
+        callbacks.onCards();
       }
     });
     this.root.querySelector('[data-act="save"]')?.addEventListener('click', () => {
@@ -130,7 +147,7 @@ export class PauseMenu {
         <div class="rounded-lg border ${caught ? 'border-resonant-gold/75' : 'border-ash-purple'} bg-crypt-ink p-2 flex items-center gap-2">
           ${
             seen
-              ? `<img src="${this.assets.getCreatureDataUrl(id, 'front')}" class="pixel-canvas w-12 h-12 object-contain shrink-0" alt="${spec.name}" />`
+              ? `<img src="${this.assets.getCreatureDataUrl(id, 'front')}" data-souldoll-id="${id}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0" alt="${spec.name}" />`
               : `<div class="w-12 h-12 rounded bg-smoked-wood flex items-center justify-center text-cold-stone font-bold">?</div>`
           }
           <div class="min-w-0">
@@ -229,11 +246,15 @@ export class PauseMenu {
 
   close(): void {
     this.isOpenFlag = false;
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.remove();
   }
 }

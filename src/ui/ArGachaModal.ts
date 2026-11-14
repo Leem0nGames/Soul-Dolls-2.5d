@@ -8,6 +8,7 @@ import { getItemCount, removeItem } from '../domain/Inventory.ts';
 import type { CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 interface BarcodeDetectorLike {
   detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
@@ -22,6 +23,7 @@ export class ArGachaModal {
   private lastReward: ArGachaReward | null = null;
   private teachTargetIdx: number | null = null;
   private notice = '';
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -186,7 +188,7 @@ export class ArGachaModal {
                       const knows = doll.moves.some((m) => m.moveId === move.id);
                       return `
                         <button data-teach="${idx}" ${knows ? 'disabled' : ''} class="min-h-[44px] rounded-lg border border-ash-purple bg-smoked-wood hover:border-resonant-gold px-2.5 py-1.5 flex items-center gap-2 text-left ${knows ? 'opacity-50 cursor-not-allowed' : ''}">
-                          <img src="${this.assets.getCreatureDataUrl(doll.speciesId, 'front')}" class="pixel-canvas w-7 h-7 object-contain shrink-0" alt="" />
+                          <img src="${this.assets.getCreatureDataUrl(doll.speciesId, 'front')}" data-souldoll-id="${doll.speciesId}" data-souldoll-view="front" class="souldoll-img w-9 h-9 object-contain shrink-0" alt="" />
                           <div class="min-w-0 flex-1">
                             <div class="text-xs font-bold truncate">${getCreatureDisplayName(doll)}</div>
                             <div class="text-[11px] text-bone-gray tabular-nums">${knows ? 'Ya aprendido' : `Nv.${doll.level} · ${doll.moves.length}/4 mov.`}</div>
@@ -332,6 +334,8 @@ export class ArGachaModal {
       });
     };
 
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
     render();
@@ -352,12 +356,16 @@ export class ArGachaModal {
   }
 
   close(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.stopCamera();
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.stopCamera();
     this.root.remove();
   }

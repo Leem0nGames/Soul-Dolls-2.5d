@@ -1,4 +1,5 @@
 import type { Rng } from '../core/Rng.ts';
+import { getCardBonuses } from '../data/cards.ts';
 import { getDefaultContainerForTypes } from '../data/containers.ts';
 import { getMove } from '../data/moves.ts';
 import { getSpecies } from '../data/species.ts';
@@ -24,19 +25,20 @@ export function calculateStats(
   base: Stats,
   ivs: Stats,
   level: number,
-  evBonuses?: Partial<Stats>
+  evBonuses?: Partial<Stats>,
+  cardBonuses?: Partial<Stats>
 ): Stats {
-  const hpBonus = evBonuses?.hp ?? 0;
+  const hpBonus = (evBonuses?.hp ?? 0) + (cardBonuses?.hp ?? 0);
   const hp = Math.floor(((2 * base.hp + ivs.hp) * level) / 100) + level + 10 + hpBonus;
   const calc = (b: number, iv: number, bonus = 0) =>
     Math.floor(((2 * b + iv) * level) / 100) + 5 + bonus;
   return {
     hp,
-    atk: calc(base.atk, ivs.atk, evBonuses?.atk ?? 0),
-    def: calc(base.def, ivs.def, evBonuses?.def ?? 0),
-    spa: calc(base.spa, ivs.spa, evBonuses?.spa ?? 0),
-    spd: calc(base.spd, ivs.spd, evBonuses?.spd ?? 0),
-    spe: calc(base.spe, ivs.spe, evBonuses?.spe ?? 0),
+    atk: calc(base.atk, ivs.atk, (evBonuses?.atk ?? 0) + (cardBonuses?.atk ?? 0)),
+    def: calc(base.def, ivs.def, (evBonuses?.def ?? 0) + (cardBonuses?.def ?? 0)),
+    spa: calc(base.spa, ivs.spa, (evBonuses?.spa ?? 0) + (cardBonuses?.spa ?? 0)),
+    spd: calc(base.spd, ivs.spd, (evBonuses?.spd ?? 0) + (cardBonuses?.spd ?? 0)),
+    spe: calc(base.spe, ivs.spe, (evBonuses?.spe ?? 0) + (cardBonuses?.spe ?? 0)),
   };
 }
 
@@ -109,16 +111,18 @@ export function healCreatureFull(creature: CreatureInstance): void {
 export function recalculateCreatureStats(creature: CreatureInstance): void {
   const spec = getSpecies(creature.speciesId);
   const prevMax = creature.stats.hp;
+  const cardBonuses = getCardBonuses(creature.socketedCardId);
   const nextStats = calculateStats(
     spec.baseStats,
     creature.ivs,
     creature.level,
-    creature.evBonuses
+    creature.evBonuses,
+    cardBonuses
   );
   const hpGain = Math.max(0, nextStats.hp - prevMax);
   creature.stats = nextStats;
   if (creature.currentHp > 0) {
-    creature.currentHp = Math.min(nextStats.hp, creature.currentHp + hpGain);
+    creature.currentHp = Math.min(nextStats.hp, Math.max(1, creature.currentHp + hpGain));
   }
   const containerId = creature.containerId ?? getDefaultContainerForTypes(spec.types);
   creature.containerId = containerId;

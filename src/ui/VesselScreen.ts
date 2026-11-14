@@ -16,6 +16,7 @@ import { addCapturedCreature } from '../domain/Storage.ts';
 import type { SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 type VesselTab = 'reserve' | 'containers' | 'shards';
 
@@ -25,6 +26,7 @@ export class VesselScreen {
   private notice = '';
   private bindingSoulUid: string | null = null;
   private equippingContainerId: string | null = null;
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -105,7 +107,7 @@ export class VesselScreen {
                   const cur = getBodyContainer(doll.containerId ?? 'cuerpo_aprendiz');
                   return `
                     <button data-confirm-equip="${idx}" class="w-full min-h-[48px] rounded-lg border border-ash-purple bg-smoked-wood hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
-                      <img src="${this.assets.getCreatureDataUrl(doll.speciesId, 'front')}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />
+                      <img src="${this.assets.getCreatureDataUrl(doll.speciesId, 'front')}" data-souldoll-id="${doll.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="" />
                       <div class="min-w-0 flex-1">
                         <div class="text-xs font-bold truncate">${getCreatureDisplayName(doll)}</div>
                         <div class="text-[11px] text-bone-gray">Actual: ${cur.name}</div>
@@ -128,7 +130,7 @@ export class VesselScreen {
                   return `
                     <div class="flex items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
                       <div class="flex items-center gap-2.5 min-w-0">
-                        <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" class="pixel-canvas w-10 h-10 object-contain shrink-0 opacity-85" alt="" />
+                        <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0 opacity-85" alt="" />
                         <div class="min-w-0">
                           <div class="text-sm font-bold text-porcelain truncate">Alma de ${spec.name}</div>
                           <div class="text-xs text-bone-gray tabular-nums">${ES.party.lv}${soul.level} · Esperando cuerpo</div>
@@ -295,17 +297,23 @@ export class VesselScreen {
       });
     };
 
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
     render();
   }
 
   close(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.remove();
   }
 }

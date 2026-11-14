@@ -8,6 +8,7 @@ import { BagScreen } from '../ui/BagScreen.ts';
 import { BattleHud } from '../ui/BattleHud.ts';
 import { BattleTransition } from '../ui/BattleTransition.ts';
 import { BestiaryScreen } from '../ui/BestiaryScreen.ts';
+import { CardAlbumScreen } from '../ui/CardAlbumScreen.ts';
 import { DialogBox } from '../ui/DialogBox.ts';
 import { EndingModal } from '../ui/EndingModal.ts';
 import { PauseMenu } from '../ui/Menu.ts';
@@ -64,6 +65,7 @@ export class Game {
   readonly partyScreen: PartyScreen;
   readonly bagScreen: BagScreen;
   readonly bestiaryScreen: BestiaryScreen;
+  readonly cardAlbumScreen: CardAlbumScreen;
   readonly storageScreen: StorageScreen;
   readonly battleHud: BattleHud;
   readonly battleTransition: BattleTransition;
@@ -100,6 +102,7 @@ export class Game {
     this.partyScreen = new PartyScreen(this.uiLayer, this.assets, this.summary);
     this.bagScreen = new BagScreen(this.uiLayer, this.assets);
     this.bestiaryScreen = new BestiaryScreen(this.uiLayer, this.assets);
+    this.cardAlbumScreen = new CardAlbumScreen(this.uiLayer, this.assets);
     this.storageScreen = new StorageScreen(this.uiLayer, this.assets, this.summary);
     this.menu = new PauseMenu(this.uiLayer, this.assets);
     this.battleHud = new BattleHud(this.uiLayer);
@@ -125,6 +128,7 @@ export class Game {
       this.partyScreen.root,
       this.bagScreen.root,
       this.bestiaryScreen.root,
+      this.cardAlbumScreen.root,
       this.storageScreen.root,
       this.summary.root,
       this.endingModal.root,
@@ -304,6 +308,7 @@ export class Game {
     this.battleHud.dispose();
     this.arGachaModal.dispose();
     this.vesselScreen.dispose();
+    this.cardAlbumScreen.dispose();
     this.assets.dispose();
     this.renderer.dispose();
     this.uiLayer.remove();

@@ -6,6 +6,12 @@ import { generateItemIconCanvas } from './ItemIconGen.ts';
 import { PALETTE } from './Palette.ts';
 import { buildTileAtlasCanvas } from './ProceduralTiles.ts';
 import { generatePropCanvas } from './PropSprites.ts';
+import {
+  extractAndNormalizeSoulDollPair,
+  getSoulDollSheetId,
+  getSoulDollSheetUrl,
+  type NormalizedSoulDollPair,
+} from './SoulDollSheets.ts';
 import npcSheet07Url from '../../NPC07.jpg';
 import npcSheet08Url from '../../NPC08.jpg';
 import playerSheetUrl from '../../PLAYER.jpeg';
@@ -21,6 +27,7 @@ export interface AssetProvider {
   getCreatureSilhouetteTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
   getCreatureDataUrl(speciesId: number, view?: 'front' | 'back'): string;
   getCreatureSilhouetteDataUrl(speciesId: number): string;
+  onCreatureLoaded?(listener: (speciesId: number) => void): () => void;
   getItemIconDataUrl(itemId: string): string;
   getItemTexture(itemId: string): THREE.CanvasTexture;
   getCharacterTexture(
@@ -41,6 +48,16 @@ function makePixelTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeSoulDollTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
   tex.needsUpdate = true;
   return tex;
 }
@@ -148,6 +165,10 @@ class LruTextureCache {
     this.maxEntries = maxEntries;
   }
 
+  peek(key: string): THREE.CanvasTexture | undefined {
+    return this.map.get(key);
+  }
+
   get(key: string): THREE.CanvasTexture | undefined {
     const val = this.map.get(key);
     if (!val) return undefined;
@@ -252,10 +273,16 @@ function makeRoofFallbackCanvas(kind: RoofTextureKind): HTMLCanvasElement {
 export class ProceduralAssetProvider implements AssetProvider {
   private tileAtlas: THREE.CanvasTexture | null = null;
   private grassTexture: THREE.CanvasTexture | null = null;
-  private creatureCache = new LruTextureCache(48);
-  private silhouetteCache = new LruTextureCache(48);
+  private creatureCache = new LruTextureCache(104);
+  private silhouetteCache = new LruTextureCache(104);
   private creatureUrls = new Map<string, string>();
   private silhouetteUrls = new Map<number, string>();
+  private souldollPairs = new Map<number, NormalizedSoulDollPair>();
+  private souldollLoading = new Set<number>();
+  private souldollAttempted = new Set<number>();
+  private souldollQueue: number[] = [];
+  private souldollActiveLoads = 0;
+  private creatureListeners = new Set<(speciesId: number) => void>();
   private itemIconUrls = new Map<string, string>();
   private itemTextures = new Map<string, THREE.CanvasTexture>();
   private charCache = new Map<string, THREE.CanvasTexture>();
@@ -289,6 +316,7 @@ export class ProceduralAssetProvider implements AssetProvider {
   private preloadExternalProps(): void {
     if (typeof Image === 'undefined') return;
 
+    this.preloadSoulDollSheets();
     this.preloadCharacterSpriteSheets();
 
     const treeImg = new Image();
@@ -633,6 +661,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     source: HTMLCanvasElement
   ): void {
     const canvas = texture.image as HTMLCanvasElement;
+    const resized = canvas.width !== source.width || canvas.height !== source.height;
     canvas.width = source.width;
     canvas.height = source.height;
     const ctx = canvas.getContext('2d');
@@ -640,7 +669,116 @@ export class ProceduralAssetProvider implements AssetProvider {
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(source, 0, 0);
+    if (resized) {
+      texture.dispose();
+    }
     texture.needsUpdate = true;
+  }
+
+  private preloadSoulDollSheets(): void {
+    // Prioritize starter SoulDolls first, then queue remaining sheets 1..50
+    for (const id of [1, 4, 7]) {
+      this.enqueueSoulDollLoad(id, true);
+    }
+    for (let id = 1; id <= 50; id++) {
+      this.enqueueSoulDollLoad(id, false);
+    }
+  }
+
+  private enqueueSoulDollLoad(speciesId: number, highPriority: boolean): void {
+    if (this.disposed || typeof Image === 'undefined') return;
+    const sheetId = getSoulDollSheetId(speciesId);
+    if (
+      this.souldollPairs.has(sheetId) ||
+      this.souldollLoading.has(sheetId) ||
+      this.souldollAttempted.has(sheetId)
+    ) {
+      return;
+    }
+
+    const existingIdx = this.souldollQueue.indexOf(sheetId);
+    if (existingIdx !== -1) {
+      if (highPriority && existingIdx > 0) {
+        this.souldollQueue.splice(existingIdx, 1);
+        this.souldollQueue.unshift(sheetId);
+      }
+    } else if (highPriority) {
+      this.souldollQueue.unshift(sheetId);
+    } else {
+      this.souldollQueue.push(sheetId);
+    }
+
+    this.pumpSoulDollQueue();
+  }
+
+  private pumpSoulDollQueue(): void {
+    const maxConcurrent = 6;
+    while (!this.disposed && this.souldollActiveLoads < maxConcurrent && this.souldollQueue.length > 0) {
+      const sheetId = this.souldollQueue.shift()!;
+      if (this.souldollPairs.has(sheetId) || this.souldollLoading.has(sheetId)) {
+        continue;
+      }
+      this.souldollLoading.add(sheetId);
+      this.souldollAttempted.add(sheetId);
+      this.souldollActiveLoads += 1;
+
+      const img = new Image();
+      const url = getSoulDollSheetUrl(sheetId);
+      const finish = () => {
+        this.souldollLoading.delete(sheetId);
+        this.souldollActiveLoads = Math.max(0, this.souldollActiveLoads - 1);
+        this.pumpSoulDollQueue();
+      };
+
+      img.onload = () => {
+        if (this.disposed) return;
+        const pair = extractAndNormalizeSoulDollPair(img);
+        if (pair) {
+          this.souldollPairs.set(sheetId, pair);
+          this.refreshSoulDollAssets(sheetId, pair);
+        }
+        finish();
+      };
+      img.onerror = () => {
+        finish();
+      };
+      img.src = url;
+    }
+  }
+
+  private refreshSoulDollAssets(sheetId: number, pair: NormalizedSoulDollPair): void {
+    this.creatureUrls.delete(`${sheetId}_front`);
+    this.creatureUrls.delete(`${sheetId}_back`);
+    this.silhouetteUrls.delete(sheetId);
+
+    for (const view of ['front', 'back'] as const) {
+      const key = `${sheetId}_${view}`;
+      const tex = this.creatureCache.peek(key);
+      if (tex) {
+        this.updateTextureFromCanvas(tex, pair[view]);
+      }
+      const silTex = this.silhouetteCache.peek(key);
+      if (silTex) {
+        this.updateTextureFromCanvas(
+          silTex,
+          makeTintedSilhouetteCanvas(pair[view], PALETTE.warmWhite)
+        );
+      }
+    }
+
+    for (const listener of this.creatureListeners) {
+      listener(sheetId);
+    }
+  }
+
+  private getCreatureCanvas(speciesId: number, view: 'front' | 'back'): HTMLCanvasElement {
+    const sheetId = getSoulDollSheetId(speciesId);
+    this.enqueueSoulDollLoad(sheetId, true);
+    const pair = this.souldollPairs.get(sheetId);
+    if (pair) {
+      return pair[view];
+    }
+    return generateCreatureSpriteCanvas(speciesId, view);
   }
 
   private refreshCharacterTextures(): void {
@@ -662,6 +800,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     sh: number
   ): void {
     const canvas = tex.image as HTMLCanvasElement;
+    const resized = canvas.width !== sw || canvas.height !== sh;
     canvas.width = sw;
     canvas.height = sh;
     const ctx = canvas.getContext('2d');
@@ -669,6 +808,14 @@ export class ProceduralAssetProvider implements AssetProvider {
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, sw, sh);
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    if (sw >= 64 && sh >= 64) {
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps = true;
+    }
+    if (resized) {
+      tex.dispose();
+    }
     tex.needsUpdate = true;
   }
 
@@ -733,14 +880,24 @@ export class ProceduralAssetProvider implements AssetProvider {
     return tex;
   }
 
+  onCreatureLoaded(listener: (speciesId: number) => void): () => void {
+    this.creatureListeners.add(listener);
+    return () => {
+      this.creatureListeners.delete(listener);
+    };
+  }
+
   getCreatureTexture(
     speciesId: number,
     view: 'front' | 'back'
   ): THREE.CanvasTexture {
     const key = `${speciesId}_${view}`;
     const hit = this.creatureCache.get(key);
-    if (hit) return hit;
-    const tex = makePixelTexture(generateCreatureSpriteCanvas(speciesId, view));
+    if (hit) {
+      this.enqueueSoulDollLoad(speciesId, true);
+      return hit;
+    }
+    const tex = makeSoulDollTexture(this.getCreatureCanvas(speciesId, view));
     this.creatureCache.set(key, tex);
     return tex;
   }
@@ -751,9 +908,12 @@ export class ProceduralAssetProvider implements AssetProvider {
   ): THREE.CanvasTexture {
     const key = `${speciesId}_${view}`;
     const hit = this.silhouetteCache.get(key);
-    if (hit) return hit;
-    const base = generateCreatureSpriteCanvas(speciesId, view);
-    const tex = makePixelTexture(makeTintedSilhouetteCanvas(base, PALETTE.warmWhite));
+    if (hit) {
+      this.enqueueSoulDollLoad(speciesId, true);
+      return hit;
+    }
+    const base = this.getCreatureCanvas(speciesId, view);
+    const tex = makeSoulDollTexture(makeTintedSilhouetteCanvas(base, PALETTE.warmWhite));
     this.silhouetteCache.set(key, tex);
     return tex;
   }
@@ -762,7 +922,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     const key = `${speciesId}_${view}`;
     let url = this.creatureUrls.get(key);
     if (!url) {
-      const canvas = generateCreatureSpriteCanvas(speciesId, view);
+      const canvas = this.getCreatureCanvas(speciesId, view);
       url = canvas.toDataURL('image/png');
       this.creatureUrls.set(key, url);
     }
@@ -772,7 +932,7 @@ export class ProceduralAssetProvider implements AssetProvider {
   getCreatureSilhouetteDataUrl(speciesId: number): string {
     let url = this.silhouetteUrls.get(speciesId);
     if (!url) {
-      const base = generateCreatureSpriteCanvas(speciesId, 'front');
+      const base = this.getCreatureCanvas(speciesId, 'front');
       url = makeTintedSilhouetteCanvas(base, PALETTE.smokedWood).toDataURL('image/png');
       this.silhouetteUrls.set(speciesId, url);
     }
@@ -963,6 +1123,11 @@ export class ProceduralAssetProvider implements AssetProvider {
     this.itemTextures.clear();
     this.creatureUrls.clear();
     this.silhouetteUrls.clear();
+    this.souldollPairs.clear();
+    this.souldollLoading.clear();
+    this.souldollAttempted.clear();
+    this.souldollQueue.length = 0;
+    this.creatureListeners.clear();
     this.itemIconUrls.clear();
     this.charUrls.clear();
     this.playerSpriteSheetImg = null;

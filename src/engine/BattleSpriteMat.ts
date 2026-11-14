@@ -38,9 +38,9 @@ float bayer4x4(vec2 p) {
 
 void main() {
   vec4 texel = texture2D(map, vUv);
-  if (texel.a < 0.5) discard;
+  if (texel.a < 0.45) discard;
   if (uDissolve > 0.001) {
-    float threshold = bayer4x4(floor(vUv * 32.0));
+    float threshold = bayer4x4(floor(vUv * 48.0));
     if (threshold < uDissolve) discard;
   }
   gl_FragColor = vec4(texel.rgb, texel.a * uOpacity);

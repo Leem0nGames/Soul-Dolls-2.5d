@@ -1,18 +1,20 @@
 import { getSpecies } from '../data/species.ts';
 import { getCreatureDisplayName } from '../domain/Creature.ts';
 import { swapPartySlots } from '../domain/Party.ts';
-import type { BagSlot, CreatureInstance } from '../domain/types.ts';
+import type { BagSlot, CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import type { SummaryScreen } from './SummaryScreen.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 export type PartyMode =
-  | { kind: 'manage'; bag?: BagSlot[] }
+  | { kind: 'manage'; bag?: BagSlot[]; save?: SaveData }
   | { kind: 'switch'; activeIndex: number; allowCancel: boolean; onPick: (index: number) => void }
   | { kind: 'item_target'; onPick: (index: number) => void; onCancel: () => void };
 
 export class PartyScreen {
   readonly root: HTMLDivElement;
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -46,7 +48,7 @@ export class PartyScreen {
                 const isFainted = c.currentHp <= 0;
                 return `
                   <div class="rounded-xl border-2 ${isFainted ? 'border-blood-moon opacity-75' : 'border-cold-stone'} bg-crypt-ink p-2.5 flex items-center gap-2.5">
-                    <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" class="pixel-canvas w-14 h-14 object-contain shrink-0" alt="${spec.name}" />
+                    <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-14 h-14 object-contain shrink-0" alt="${spec.name}" />
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center justify-between gap-1">
                         <div class="flex items-center gap-1 min-w-0">
@@ -104,7 +106,11 @@ export class PartyScreen {
             mode.kind === 'manage' && mode.bag
               ? { bag: mode.bag, onChanged: () => render() }
               : undefined;
-          this.summary.open(party[i], () => {}, heldCfg);
+          const cardCfg =
+            mode.kind === 'manage' && mode.save
+              ? { save: mode.save, onChanged: () => render() }
+              : undefined;
+          this.summary.open(party[i], () => {}, heldCfg, cardCfg);
         });
       });
 
@@ -144,17 +150,23 @@ export class PartyScreen {
       });
     };
 
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
     render();
   }
 
   close(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.remove();
   }
 }

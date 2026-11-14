@@ -2,6 +2,7 @@ import { getCreatureDisplayName } from '../domain/Creature.ts';
 import type { SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 function formatPlayTime(sec: number): string {
   const s = Math.floor(sec);
@@ -12,6 +13,7 @@ function formatPlayTime(sec: number): string {
 
 export class EndingModal {
   readonly root: HTMLDivElement;
+  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -28,7 +30,7 @@ export class EndingModal {
       .map(
         (c) => `
           <div class="flex flex-col items-center rounded-lg border border-old-bronze/70 bg-crypt-ink p-2">
-            <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" class="pixel-canvas w-14 h-14 object-contain" alt="" />
+            <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-16 h-16 object-contain" alt="" />
             <div class="text-xs font-bold truncate max-w-[80px]">${getCreatureDisplayName(c)}</div>
             <div class="text-[11px] text-resonant-gold tabular-nums">${ES.party.lv}${c.level}</div>
           </div>
@@ -54,6 +56,8 @@ export class EndingModal {
       </div>
     `;
 
+    this.unbindImages?.();
+    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
     this.root.classList.remove('hidden');
     this.root.classList.add('flex');
 
@@ -68,11 +72,15 @@ export class EndingModal {
   }
 
   close(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.classList.add('hidden');
     this.root.classList.remove('flex');
   }
 
   dispose(): void {
+    this.unbindImages?.();
+    this.unbindImages = null;
     this.root.remove();
   }
 }

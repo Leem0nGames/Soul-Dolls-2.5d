@@ -17,6 +17,7 @@ import {
   pickTargetBodyPart,
   syncBodyPartsFull,
 } from './BodyParts.ts';
+import { rollCardDrop } from './Cards.ts';
 import { attemptCatch } from './Catch.ts';
 import { getCreatureDisplayName } from './Creature.ts';
 import { calculateDamage, createDefaultStages, stageMultiplier } from './Damage.ts';
@@ -1122,6 +1123,19 @@ export class BattleEngine {
         if (evoTarget !== null) {
           events.push({ type: 'evolution_ready', partyIndex: pIdx, targetSpeciesId: evoTarget });
         }
+      }
+
+      if (rollCardDrop(fainted.speciesId, this.rng, this.state.trainer?.isBoss)) {
+        const speciesName = getSpecies(fainted.speciesId).name;
+        events.push({
+          type: 'card_drop',
+          speciesId: fainted.speciesId,
+          creatureName: speciesName,
+        });
+        events.push({
+          type: 'text',
+          message: ES.battle.cardDropped(speciesName),
+        });
       }
 
       const nextEnemyIdx = getFirstHealthyIndex(this.state.enemy.party);
