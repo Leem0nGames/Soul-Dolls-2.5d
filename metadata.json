@@ -1,6 +1,6 @@
 {
-  "name": "Remix Monstrix",
-  "description": "A procedural, turn-based monster-collecting RPG built for mobile web browsers using Three.js and TypeScript.",
+  "name": "SoulDolls",
+  "description": "Tactical 2.5D turn-based puppet RPG with procedural pixel-art graphics and chiptune audio.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
