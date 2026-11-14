@@ -127,11 +127,11 @@ export class BattleScene implements Scene {
     this.lastInternalH = game.renderer.getInternalHeight();
     this.playerScale = this.battleCamera.computeNormalizedSpriteScale(
       PLAYER_STATION_POS,
-      0.42
+      0.49
     );
     this.enemyScale = this.battleCamera.computeNormalizedSpriteScale(
       ENEMY_STATION_POS,
-      0.36
+      0.43
     );
 
     const unitGeo = createBottomPivotPlaneGeometry(1, 1, 24, 32);
@@ -1252,11 +1252,11 @@ export class BattleScene implements Scene {
       this.lastInternalH = curInternalH;
       this.playerScale = this.battleCamera.computeNormalizedSpriteScale(
         PLAYER_STATION_POS,
-        0.42
+        0.49
       );
       this.enemyScale = this.battleCamera.computeNormalizedSpriteScale(
         ENEMY_STATION_POS,
-        0.36
+        0.43
       );
       if (this.trainerMesh && this.trainerMesh.visible) {
         this.trainerMesh.scale.setScalar(this.enemyScale * 0.94);

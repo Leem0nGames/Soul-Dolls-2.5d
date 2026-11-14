@@ -31,19 +31,28 @@ void main() {
   float collarBand = exp(-pow((charY - (uTorsoAnchor.y + 0.072)) / 0.065, 2.0)) * exp(-pow((sp.x - uTorsoAnchor.x) / 0.145, 2.0));
   breathLift += collarBand * uBreath * 0.0025 * ch;
 
-  // 2. Unified bilateral & symmetric thoracic/pectoral breathing envelope (zero per-lobe asymmetry)
+  // 2. Dual symmetric pectoral lobes for 3/4 profile: guarantees both breasts expand equally and naturally
   float belowCut = smoothstep(uTorsoAnchor.y - 0.135, uTorsoAnchor.y - 0.065, charY);
   float aboveCut = 1.0 - smoothstep(uTorsoAnchor.y + 0.055, uTorsoAnchor.y + 0.105, charY);
   float vertMask = belowCut * aboveCut;
 
-  vec2 torsoCenter = vec2(uTorsoAnchor.x, uTorsoAnchor.y);
-  vec2 dThorax = vec2(sp.x - torsoCenter.x, charY - torsoCenter.y) / vec2(0.098, 0.082);
   float frontWeight = mix(1.0, 0.24, uIsBack);
-  float thoraxMask = exp(-dot(dThorax, dThorax)) * vertMask * frontWeight;
+  vec2 lobe1 = vec2(uTorsoAnchor.x - 0.024, uTorsoAnchor.y - 0.002);
+  vec2 lobe2 = vec2(uTorsoAnchor.x + 0.024, uTorsoAnchor.y + 0.002);
 
-  float expandAmp = uBreath * 0.022 + uBustExpand * 0.045;
-  pos.x += (sp.x - torsoCenter.x) * thoraxMask * expandAmp + uBustOffset.x * thoraxMask * 0.28;
-  pos.y += breathLift + (uBustOffset.y + uBreath * 0.0022) * thoraxMask * 0.55 * ch;
+  vec2 d1 = (sp.xy - lobe1) / vec2(0.046, 0.040);
+  vec2 d2 = (sp.xy - lobe2) / vec2(0.046, 0.040);
+  float w1 = exp(-dot(d1, d1));
+  float w2 = exp(-dot(d2, d2));
+  float thoraxMask = clamp(w1 + w2, 0.0, 1.0) * vertMask * frontWeight;
+
+  float expandAmp = uBreath * 0.0055 + uBustExpand * 0.012;
+  vec2 dirFromCenter = sp.xy - uTorsoAnchor;
+  float distFromCenter = length(dirFromCenter);
+  vec2 radialDir = distFromCenter > 0.0001 ? dirFromCenter / distFromCenter : vec2(0.0, 1.0);
+
+  pos.xy += radialDir * thoraxMask * expandAmp + uBustOffset * thoraxMask * 0.28;
+  pos.y += breathLift;
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -92,21 +101,25 @@ void main() {
   float charY = clamp((vSpritePos.y - 0.0156) / ch, 0.0, 1.0);
   vec2 charPos = vec2(vSpritePos.x, charY);
 
-  // Single strictly symmetric thoracic & chest envelope centered on sternum (no independent lobe pinching)
-  float frontWeight = mix(1.0, 0.22, uIsBack);
-  float belowCut = smoothstep(uTorsoAnchor.y - 0.125, uTorsoAnchor.y - 0.060, charY);
-  float aboveCut = 1.0 - smoothstep(uTorsoAnchor.y + 0.050, uTorsoAnchor.y + 0.096, charY);
+  // 3/4 Profile symmetric thoracic & chest envelope centered on sternum with balanced depth weighting
+  float frontWeight = mix(1.0, 0.32, uIsBack);
+  float belowCut = smoothstep(uTorsoAnchor.y - 0.13, uTorsoAnchor.y - 0.055, charY);
+  float aboveCut = 1.0 - smoothstep(uTorsoAnchor.y + 0.052, uTorsoAnchor.y + 0.102, charY);
   float verticalSafe = belowCut * aboveCut;
 
-  vec2 dChest = (charPos - uTorsoAnchor) / vec2(0.105, 0.082);
+  vec2 dChest = (charPos - uTorsoAnchor) / vec2(0.115, 0.088);
   float wChest = exp(-dot(dChest, dChest)) * verticalSafe * frontWeight;
 
-  // Subtle, synchronized bilateral chest expansion + gentle follow-through without distorting straps/armor
-  vec2 expandVec = (charPos - uTorsoAnchor) * wChest * (uBreath * 0.009 + uBustExpand * 0.020);
-  vec2 springDisp = vec2(uBustOffset.x * 0.24, uBustOffset.y * 0.45 + uBreath * 0.0014) * wChest;
+  vec2 dirChest = charPos - uTorsoAnchor;
+  float distChest = length(dirChest);
+  vec2 normChest = distChest > 0.0001 ? dirChest / distChest : vec2(0.0, 1.0);
+
+  // Perfectly symmetrical thoracic expansion multiplier applied equally to both sides in 3/4 view
+  vec2 expandVec = normChest * wChest * (uBreath * 0.006 + uBustExpand * 0.014);
+  vec2 springDisp = vec2(uBustOffset.x * 0.25, uBustOffset.y * 0.48 + uBreath * 0.0015) * wChest;
 
   vec2 totalDisp = vec2(expandVec.x + springDisp.x, (expandVec.y + springDisp.y) * ch);
-  vec2 sampleUv = clamp(vUv - vec2(totalDisp.x * uFlipSign, totalDisp.y), vec2(0.001), vec2(0.999));
+  vec2 sampleUv = clamp(vUv - totalDisp, vec2(0.001), vec2(0.999));
 
   vec4 texel = texture2D(map, sampleUv);
   if (texel.a < 0.45) discard;

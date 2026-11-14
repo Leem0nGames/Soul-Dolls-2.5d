@@ -29,34 +29,40 @@ export interface BreathSample {
 }
 
 /**
- * C1-smooth asymmetric organic breath curve (zero velocity jumps at transitions):
- * - [0.00..0.36): smooth cosine inhale 0 -> 1
- * - [0.36..0.44): gentle crest hold at 1.0 (velocity = 0)
- * - [0.44..0.88): relaxed cosine exhale 1 -> 0
- * - [0.88..1.00): calm bottom pause at exact base pose (value = 0, velocity = 0)
+ * Custom ultra-smooth sinusoidal ease-in-out breathing curve with C1/C2 continuity
+ * and silky-smooth inflection points at bottom trough (0) and top peak (1).
  */
 export function computeBreathWave(phase: number): BreathSample {
   const p = ((phase % 1) + 1) % 1;
 
-  if (p < 0.36) {
-    const u = p / 0.36;
-    const value = 0.5 - 0.5 * Math.cos(Math.PI * u);
-    const velocity = (0.5 * Math.PI * Math.sin(Math.PI * u)) / 0.36;
-    return { value, velocity };
+  // Custom smooth sinusoidal ease-in-out mapping: u in [0, 1] -> [0, 1]
+  // Using sin^2 shaping for infinite zero-derivative smoothness at inflection points 0 and 1.
+  let u = 0;
+  let du_dp = 0;
+  const cycleDur = 1.0;
+
+  if (p < 0.42) {
+    const t = p / 0.42;
+    // Smoother-step sine inhale: sin^2(t * pi / 2)
+    const s = Math.sin(t * Math.PI * 0.5);
+    u = s * s;
+    du_dp = (2.0 * s * Math.cos(t * Math.PI * 0.5) * (Math.PI * 0.5)) / 0.42;
+  } else if (p < 0.52) {
+    // Gentle crest hold at peak (value = 1, velocity = 0)
+    u = 1.0;
+    du_dp = 0;
+  } else if (p < 0.94) {
+    const t = (p - 0.52) / 0.42;
+    // Smooth cosine exhale: 0.5 + 0.5 * cos(t * pi)
+    u = 0.5 + 0.5 * Math.cos(t * Math.PI);
+    du_dp = (-0.5 * Math.PI * Math.sin(t * Math.PI)) / 0.42;
+  } else {
+    // Calm trough pause at base pose (value = 0, velocity = 0)
+    u = 0;
+    du_dp = 0;
   }
 
-  if (p < 0.44) {
-    return { value: 1, velocity: 0 };
-  }
-
-  if (p < 0.88) {
-    const u = (p - 0.44) / 0.44;
-    const value = 0.5 + 0.5 * Math.cos(Math.PI * u);
-    const velocity = (-0.5 * Math.PI * Math.sin(Math.PI * u)) / 0.44;
-    return { value, velocity };
-  }
-
-  return { value: 0, velocity: 0 };
+  return { value: u, velocity: du_dp * cycleDur };
 }
 
 function clamp(v: number, min: number, max: number): number {

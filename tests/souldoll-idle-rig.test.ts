@@ -10,8 +10,8 @@ import { detectSoulDollTorsoAnchor } from '../src/gfx/SoulDollSheets.ts';
 describe('SoulDollIdleRig grounded breathing & bust physics', () => {
   it('generates an asymmetric organic breathing waveform bounded in [0, 1]', () => {
     const start = computeBreathWave(0);
-    const midInhale = computeBreathWave(0.18);
-    const peak = computeBreathWave(0.36);
+    const midInhale = computeBreathWave(0.24);
+    const peak = computeBreathWave(0.48);
     const midExhale = computeBreathWave(0.66);
     const rest = computeBreathWave(0.94);
 
@@ -184,7 +184,7 @@ describe('SoulDollIdleRig grounded breathing & bust physics', () => {
     const rigPeak30 = new SoulDollIdleRig({ view: 'front', cycleDuration, initialPhase: 0 });
     const rigPeak60 = new SoulDollIdleRig({ view: 'front', cycleDuration, initialPhase: 0 });
     const rigPeak120 = new SoulDollIdleRig({ view: 'front', cycleDuration, initialPhase: 0 });
-    const peakDur = cycleDuration * 0.40;
+    const peakDur = cycleDuration * 0.46;
     for (let t = 0; t < peakDur; t += 1 / 30) rigPeak30.update(1 / 30, true);
     for (let t = 0; t < peakDur; t += 1 / 60) rigPeak60.update(1 / 60, true);
     for (let t = 0; t < peakDur; t += 1 / 120) rigPeak120.update(1 / 120, true);
