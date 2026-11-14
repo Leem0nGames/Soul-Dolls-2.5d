@@ -4,6 +4,7 @@ import { ENCOUNTERS } from '../encounters.ts';
 import {
   addHill,
   addPerimeterMountains,
+  carveMapPass,
   carveRoad,
   createZoneCanvas,
   DEFAULT_LEGEND,
@@ -25,7 +26,8 @@ function buildRuta1() {
   carveRoad(z, 23, 42, 16, 32, 2, ',', 2);
   carveRoad(z, 16, 32, 16, 22, 2, ',', 3);
   carveRoad(z, 16, 22, 28, 16, 2, ',', 3);
-  carveRoad(z, 28, 16, 23, 0, 2, ',', 2);
+  carveRoad(z, 28, 16, 23, 7, 2, ',', 2);
+  carveRoad(z, 23, 7, 23, 0, 2, ',', 2);
 
   // Ramp transitions on gentle hill
   fillRect(z, 16, 26, 2, 2, '^', 2);
@@ -41,6 +43,30 @@ function buildRuta1() {
   fillRect(z, 31, 31, 6, 5, '~', 1);
   fillRect(z, 27, 45, 5, 4, '*', 2);
   fillRect(z, 28, 8, 5, 4, '*', 2);
+
+  // Smooth valley passes at south & north exits
+  carveMapPass(z, {
+    x: 23,
+    y: 55,
+    exitDir: 'south',
+    roadTile: ',',
+    height: 2,
+    depth: 8,
+    shoulderWidth: 3,
+    slopeWidth: 5,
+    shoulderTile: '.',
+  });
+  carveMapPass(z, {
+    x: 23,
+    y: 0,
+    exitDir: 'north',
+    roadTile: ',',
+    height: 2,
+    depth: 8,
+    shoulderWidth: 3,
+    slopeWidth: 5,
+    shoulderTile: '.',
+  });
 
   return finalizeZone(z);
 }
@@ -69,6 +95,11 @@ export const MAP_RUTA_1: MapDef = {
     { kind: 'bench', x: 29, z: 30 },
     { kind: 'fence', x: 20, z: 40 },
     { kind: 'fence', x: 21, z: 40 },
+    { kind: 'lamp_wood', x: 25, z: 50 },
+    { kind: 'fence', x: 21, z: 53 },
+    { kind: 'fence', x: 26, z: 53 },
+    { kind: 'lamp_wood', x: 21, z: 3 },
+    { kind: 'lamp_wood', x: 26, z: 3 },
   ],
   decoration: {
     seed: 202,

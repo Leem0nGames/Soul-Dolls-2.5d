@@ -4,6 +4,7 @@ import { ENCOUNTERS } from '../encounters.ts';
 import {
   addHill,
   addPerimeterMountains,
+  carveMapPass,
   carveRoad,
   createZoneCanvas,
   DEFAULT_LEGEND,
@@ -38,6 +39,30 @@ function buildRuta2() {
   fillRect(z, 10, 31, 8, 7, '"', 2);
   fillRect(z, 38, 21, 9, 6, '"', 3);
 
+  // Smooth terraced alpine passes at west & north cave exits
+  carveMapPass(z, {
+    x: 0,
+    y: 24,
+    exitDir: 'west',
+    roadTile: '_',
+    height: 2,
+    depth: 8,
+    shoulderWidth: 3,
+    slopeWidth: 5,
+    shoulderTile: ',',
+  });
+  carveMapPass(z, {
+    x: 36,
+    y: 0,
+    exitDir: 'north',
+    roadTile: '_',
+    height: 4,
+    depth: 8,
+    shoulderWidth: 2,
+    slopeWidth: 4,
+    shoulderTile: ',',
+  });
+
   return finalizeZone(z);
 }
 
@@ -57,13 +82,16 @@ export const MAP_RUTA_2: MapDef = {
   legend: DEFAULT_LEGEND,
   buildings: [],
   props: [
-    { kind: 'cave_entrance', x: 35, z: 1 },
     { kind: 'boulder', x: 16, z: 22 },
     { kind: 'boulder', x: 38, z: 14 },
     { kind: 'lamp_stone', x: 19, z: 28 },
     { kind: 'lamp_wood', x: 34, z: 28 },
     { kind: 'pine', x: 12, z: 14 },
     { kind: 'snow_pine', x: 43, z: 10 },
+    { kind: 'lamp_stone', x: 2, z: 22 },
+    { kind: 'lamp_stone', x: 2, z: 27 },
+    { kind: 'lamp_stone', x: 34, z: 4 },
+    { kind: 'lamp_stone', x: 39, z: 4 },
   ],
   decoration: {
     seed: 404,

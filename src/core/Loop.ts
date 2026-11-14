@@ -69,10 +69,9 @@ export class Loop {
     const minRenderGap = this.batterySaver ? 32 : 0;
     const elapsedRender = now - this.lastRenderTime;
     if (elapsedRender >= minRenderGap) {
-      const renderStart = performance.now();
-      this.onRender(this.accumulator / this.fixedDt, elapsedRender);
+      const effectiveFrameMs = this.batterySaver ? Math.max(0, elapsedRender - minRenderGap) : elapsedRender;
+      this.onRender(this.accumulator / this.fixedDt, effectiveFrameMs);
       this.lastRenderTime = now;
-      void renderStart;
     }
   };
 

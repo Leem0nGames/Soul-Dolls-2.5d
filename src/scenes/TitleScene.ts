@@ -2,8 +2,13 @@ import * as THREE from 'three';
 import type { Game } from '../core/Game.ts';
 import type { Scene } from '../core/SceneStack.ts';
 import { createBottomPivotPlaneGeometry } from '../engine/BillboardBatch.ts';
+import {
+  createBattleSpriteMaterial,
+  type BattleSpriteMaterialHandle,
+} from '../engine/BattleSpriteMat.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { createGradientSkyTexture } from '../engine/SkyBackdrop.ts';
+import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
 
@@ -11,6 +16,8 @@ interface StarterSlot {
   speciesId: number;
   mesh: THREE.Mesh;
   shadow: THREE.Mesh;
+  matHandle: BattleSpriteMaterialHandle;
+  rig: SoulDollIdleRig;
   baseX: number;
   baseZ: number;
   hopTimer: number;
@@ -124,6 +131,7 @@ export class TitleScene implements Scene {
   private wisps: WispState | null = null;
   private lastAspect = -1;
   private time = 0;
+  private unsubCreatureLoad: (() => void) | null = null;
   private reducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -145,6 +153,7 @@ export class TitleScene implements Scene {
       if (slot) {
         this.game.synth.unlock();
         slot.hopTimer = 0.45;
+        slot.rig.injectImpulse(0, 0.36, 0.12);
         this.game.synth.playCry(slot.speciesId);
       }
     }
@@ -200,7 +209,7 @@ export class TitleScene implements Scene {
     this.disposables.track(runeMat);
 
     // Starter SoulDolls + grounded contact shadows
-    const spriteGeo = createBottomPivotPlaneGeometry(1, 1);
+    const spriteGeo = createBottomPivotPlaneGeometry(1, 1, 24, 32);
     const shadowGeo = new THREE.PlaneGeometry(1.15, 0.56);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowTex = createShadowDiscTexture();
@@ -214,29 +223,48 @@ export class TitleScene implements Scene {
     this.disposables.track(shadowTex);
     this.disposables.track(shadowMat);
 
-    STARTER_ORDER.forEach((id) => {
-      const mat = new THREE.MeshBasicMaterial({
-        map: this.game.assets.getCreatureTexture(id, 'front'),
-        alphaTest: 0.45,
-        side: THREE.DoubleSide,
+    STARTER_ORDER.forEach((id, idx) => {
+      const matHandle = createBattleSpriteMaterial(
+        this.game.assets.getCreatureTexture(id, 'front')
+      );
+      const rig = new SoulDollIdleRig({
+        view: 'front',
+        flipX: false,
+        cycleDuration: 3.3 + idx * 0.24,
+        initialPhase: idx * 0.34,
       });
-      const mesh = new THREE.Mesh(spriteGeo, mat);
+      const anchor = this.game.assets.getCreatureRigAnchor?.(id, 'front');
+      if (anchor) rig.setAnchor(anchor);
+
+      const mesh = new THREE.Mesh(spriteGeo, matHandle.material);
       mesh.renderOrder = 3;
       const shadow = new THREE.Mesh(shadowGeo, shadowMat);
       shadow.position.y = 0.022;
       shadow.renderOrder = 2;
 
       this.scene.add(shadow, mesh);
-      this.disposables.track(mat);
+      this.disposables.track(matHandle.material);
       this.starters.push({
         speciesId: id,
         mesh,
         shadow,
+        matHandle,
+        rig,
         baseX: 0,
         baseZ: 0.9,
         hopTimer: 0,
       });
     });
+
+    if (this.game.assets.onCreatureLoaded) {
+      this.unsubCreatureLoad = this.game.assets.onCreatureLoaded((loadedId) => {
+        const slot = this.starters.find((s) => s.speciesId === loadedId);
+        const anchor = slot && this.game.assets.getCreatureRigAnchor?.(loadedId, 'front');
+        if (slot && anchor) {
+          slot.rig.setAnchor(anchor);
+        }
+      });
+    }
 
     // Sanctuary framing trees, lanterns & foreground foliage (arc framing without blocking starters)
     const propSpecs: Array<{
@@ -531,15 +559,22 @@ export class TitleScene implements Scene {
     const cam = this.game.cameraRig.camera;
     _camPos.copy(cam.position);
 
-    this.starters.forEach((slot, idx) => {
+    this.starters.forEach((slot) => {
       let y = 0;
       if (slot.hopTimer > 0) {
+        const prevHop = slot.hopTimer;
         slot.hopTimer = Math.max(0, slot.hopTimer - dt);
         const p = 1 - slot.hopTimer / 0.45;
         y = Math.sin(p * Math.PI) * 0.42;
-      } else if (!this.reducedMotion) {
-        y = Math.max(0, Math.sin(this.time * 2.8 + idx * 1.4)) * 0.08;
+        if (prevHop > 0 && slot.hopTimer === 0) {
+          // Ground landing recoil feeds naturally into secondary bust spring
+          slot.rig.injectImpulse(0, -0.78, 0.24);
+        }
       }
+      if (!this.reducedMotion) {
+        slot.rig.update(dt, true);
+      }
+      slot.rig.applyToMaterial(slot.matHandle);
       slot.mesh.position.set(slot.baseX, y, slot.baseZ);
       slot.mesh.lookAt(_camPos.x, slot.mesh.position.y, _camPos.z);
     });
@@ -574,6 +609,8 @@ export class TitleScene implements Scene {
   }
 
   onExit(): void {
+    this.unsubCreatureLoad?.();
+    this.unsubCreatureLoad = null;
     this.game.renderer.canvas.removeEventListener('pointerdown', this.handleStageTap);
     this.overlay.remove();
     this.disposables.disposeAll();

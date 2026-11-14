@@ -11,6 +11,7 @@ import {
   getSoulDollSheetId,
   getSoulDollSheetUrl,
   type NormalizedSoulDollPair,
+  type SoulDollTorsoAnchor,
 } from './SoulDollSheets.ts';
 import npcSheet07Url from '../../NPC07.jpg';
 import npcSheet08Url from '../../NPC08.jpg';
@@ -27,6 +28,7 @@ export interface AssetProvider {
   getCreatureSilhouetteTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
   getCreatureDataUrl(speciesId: number, view?: 'front' | 'back'): string;
   getCreatureSilhouetteDataUrl(speciesId: number): string;
+  getCreatureRigAnchor?(speciesId: number, view: 'front' | 'back'): SoulDollTorsoAnchor;
   onCreatureLoaded?(listener: (speciesId: number) => void): () => void;
   getItemIconDataUrl(itemId: string): string;
   getItemTexture(itemId: string): THREE.CanvasTexture;
@@ -885,6 +887,16 @@ export class ProceduralAssetProvider implements AssetProvider {
     return () => {
       this.creatureListeners.delete(listener);
     };
+  }
+
+  getCreatureRigAnchor(speciesId: number, view: 'front' | 'back'): SoulDollTorsoAnchor {
+    const sheetId = getSoulDollSheetId(speciesId);
+    this.enqueueSoulDollLoad(sheetId, true);
+    const pair = this.souldollPairs.get(sheetId);
+    if (pair) {
+      return view === 'front' ? pair.frontAnchor : pair.backAnchor;
+    }
+    return { torsoX: 0.5, bustY: 0.635, charHeight: 0.96 };
   }
 
   getCreatureTexture(

@@ -54,9 +54,9 @@ function getPropDimensions(kind: PropKind): [number, number] {
     case 'snow_pine':
       return [1.83, 2.8];
     case 'mushroom_tree':
-      return [2.3, 2.4];
+      return [1.88, 1.98];
     case 'mushroom_tree_arcane':
-      return [2.27, 2.4];
+      return [1.85, 1.98];
     case 'cave_entrance':
       return [2.4, 2.4];
     case 'well':
@@ -82,8 +82,13 @@ function getPropDimensions(kind: PropKind): [number, number] {
   }
 }
 
-export function createBottomPivotPlaneGeometry(w: number, h: number): THREE.PlaneGeometry {
-  const geo = new THREE.PlaneGeometry(w, h);
+export function createBottomPivotPlaneGeometry(
+  w: number,
+  h: number,
+  segX = 1,
+  segY = 1
+): THREE.PlaneGeometry {
+  const geo = new THREE.PlaneGeometry(w, h, segX, segY);
   geo.translate(0, h * 0.5, 0);
   return geo;
 }

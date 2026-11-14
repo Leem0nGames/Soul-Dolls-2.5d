@@ -3,6 +3,7 @@ import { hexToNumber, PALETTE } from '../../gfx/Palette.ts';
 import {
   addHill,
   addPerimeterMountains,
+  carveMapPass,
   carveRoad,
   createZoneCanvas,
   DEFAULT_LEGEND,
@@ -37,6 +38,30 @@ function buildPuebloBruma() {
   // Water canal & flowers
   fillRect(z, 12, 33, 6, 4, '~', 0);
   fillRect(z, 30, 33, 5, 4, '*', 1);
+
+  // Smooth passes at south & east exits
+  carveMapPass(z, {
+    x: 23,
+    y: 47,
+    exitDir: 'south',
+    roadTile: '=',
+    height: 1,
+    depth: 8,
+    shoulderWidth: 3,
+    slopeWidth: 5,
+    shoulderTile: '.',
+  });
+  carveMapPass(z, {
+    x: 47,
+    y: 23,
+    exitDir: 'east',
+    roadTile: '=',
+    height: 2,
+    depth: 9,
+    shoulderWidth: 3,
+    slopeWidth: 5,
+    shoulderTile: '.',
+  });
 
   return finalizeZone(z);
 }
@@ -77,6 +102,10 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
     { kind: 'flower_patch', x: 35, z: 21 },
     { kind: 'mushroom_tree', x: 11, z: 28 },
     { kind: 'mushroom_tree_arcane', x: 36, z: 28 },
+    { kind: 'lamp_post', x: 21, z: 45 },
+    { kind: 'lamp_post', x: 26, z: 45 },
+    { kind: 'lamp_wood', x: 45, z: 21 },
+    { kind: 'lamp_wood', x: 45, z: 26 },
   ],
   decoration: {
     seed: 303,

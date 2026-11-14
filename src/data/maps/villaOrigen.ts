@@ -3,6 +3,7 @@ import { hexToNumber, PALETTE } from '../../gfx/Palette.ts';
 import {
   addHill,
   addPerimeterMountains,
+  carveMapPass,
   carveRoad,
   createZoneCanvas,
   DEFAULT_LEGEND,
@@ -34,6 +35,18 @@ function buildVillaOrigen() {
   carveRoad(z, 23, 0, 23, 21, 2, '=', 2);
   // Subtle stairs approaching north gate
   fillRect(z, 23, 5, 2, 2, '^', 2);
+  // Wide grassy pass into Ruta 1 (avoids steep V-trench)
+  carveMapPass(z, {
+    x: 23,
+    y: 0,
+    exitDir: 'north',
+    roadTile: '=',
+    height: 2,
+    depth: 8,
+    shoulderWidth: 3,
+    slopeWidth: 5,
+    shoulderTile: '.',
+  });
 
   return finalizeZone(z);
 }
@@ -73,6 +86,12 @@ export const MAP_VILLA_ORIGEN: MapDef = {
     { kind: 'birch', x: 34, z: 31 },
     { kind: 'mushroom_tree', x: 13, z: 29 },
     { kind: 'mushroom_tree_arcane', x: 35, z: 18 },
+    { kind: 'lamp_wood', x: 21, z: 3 },
+    { kind: 'lamp_wood', x: 26, z: 3 },
+    { kind: 'fence', x: 20, z: 2 },
+    { kind: 'fence', x: 21, z: 2 },
+    { kind: 'fence', x: 26, z: 2 },
+    { kind: 'fence', x: 27, z: 2 },
   ],
   decoration: {
     seed: 101,

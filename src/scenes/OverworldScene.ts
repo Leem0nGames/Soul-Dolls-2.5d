@@ -53,6 +53,7 @@ import {
 } from '../engine/BillboardBatch.ts';
 import { buildBuildingsMesh } from '../engine/BuildingMesher.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
+import { buildMapGatesGroup } from '../engine/GateMesher.ts';
 import {
   buildCloudBillboards,
   createGradientSkyTexture,
@@ -60,6 +61,7 @@ import {
   type CloudDriftItem,
 } from '../engine/SkyBackdrop.ts';
 import {
+  buildTerrainBorderApron,
   buildTerrainChunks,
   updateTerrainWaterFrame,
   updateVisibleTerrainChunks,
@@ -132,6 +134,18 @@ export class OverworldScene implements Scene {
   private sceneTime = 0;
 
   private hudBadge: HTMLDivElement;
+  private warpCurtain: HTMLDivElement;
+  private zoneBanner: HTMLDivElement;
+  private zoneBannerTimer = 0;
+
+  private pendingWarp: {
+    targetMap: string;
+    targetX: number;
+    targetY: number;
+    dir: Direction;
+  } | null = null;
+  private warpPhase: 'idle' | 'out' | 'in' = 'idle';
+  private warpTimer = 0;
 
   private readonly sampleTerrain = (wx: number, wz: number): number =>
     sampleInterpolatedHeight(this.currentMap, wx, wz);
@@ -155,11 +169,22 @@ export class OverworldScene implements Scene {
       'pointer-events-none fixed top-2.5 left-3 z-20 rounded-lg border border-cold-stone bg-crypt-ink/85 px-3 py-1.5 text-xs font-bold text-porcelain shadow';
     this.hudBadge.style.top = 'calc(0.625rem + env(safe-area-inset-top, 0px))';
     this.hudBadge.style.left = 'calc(0.75rem + env(safe-area-inset-left, 0px))';
+
+    this.warpCurtain = document.createElement('div');
+    this.warpCurtain.className =
+      'pointer-events-none fixed inset-0 z-30 bg-[#0b080e] opacity-0';
+
+    this.zoneBanner = document.createElement('div');
+    this.zoneBanner.className =
+      'pointer-events-none fixed left-1/2 -translate-x-1/2 z-20 rounded-lg border border-resonant-gold/70 bg-crypt-ink/90 px-4 py-1.5 text-center shadow-lg opacity-0 transition-opacity duration-300';
+    this.zoneBanner.style.top = 'calc(3.1rem + env(safe-area-inset-top, 0px))';
   }
 
   onEnter(): void {
     this.game.uiLayer.appendChild(this.hudBadge);
-    this.game.uiLayers.register('overworldHud', this.hudBadge);
+    this.game.uiLayer.appendChild(this.zoneBanner);
+    this.game.uiLayer.appendChild(this.warpCurtain);
+    this.game.uiLayers.register('overworldHud', this.hudBadge, this.zoneBanner);
     this.game.uiLayers.applySceneVisibility({
       overworldHud: true,
       touchControls: true,
@@ -196,7 +221,8 @@ export class OverworldScene implements Scene {
     this.game.cameraRig.snapTo(
       this.playerMesh.position.x,
       this.playerMesh.position.y,
-      this.playerMesh.position.z
+      this.playerMesh.position.z,
+      this.sampleTerrain
     );
     this.game.bus.emit('audio:music', { track: this.currentMap.music });
     this.refreshNpcVisibility();
@@ -222,11 +248,17 @@ export class OverworldScene implements Scene {
       if (solid) this.blockedTiles.add(key);
     };
 
-    // Reserve warps (+ 1-tile apron), NPCs, signs, buildings (+ front apron)
+    // Reserve warps (+ 1-tile apron), plus keep tall canopy trees clear of warp approaches
+    const treeExcluded = new Set<string>();
     for (const w of map.warps) {
       for (let dz = -1; dz <= 1; dz++) {
         for (let dx = -1; dx <= 1; dx++) {
           occupied.add(`${w.x + dx},${w.y + dz}`);
+        }
+      }
+      for (let dz = -4; dz <= 4; dz++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          treeExcluded.add(`${w.x + dx},${w.y + dz}`);
         }
       }
     }
@@ -287,7 +319,8 @@ export class OverworldScene implements Scene {
           leg.tile === 'stairs' ||
           leg.tile === 'arena_floor' ||
           leg.tile === 'tall_grass' ||
-          leg.tile === 'dirt'
+          leg.tile === 'dirt' ||
+          (leg.tile === 'stone' && !leg.solid)
         ) {
           continue;
         }
@@ -306,7 +339,30 @@ export class OverworldScene implements Scene {
         const roll = rng.next();
         let chosen: PropKind | null = null;
 
-        if (dec.treeKinds.length > 0 && roll < dec.treeDensity) {
+        const isRoadNeighbor = (() => {
+          for (let rz = -1; rz <= 1; rz++) {
+            for (let rx = -1; rx <= 1; rx++) {
+              const nch = map.grid[z + rz]?.[x + rx];
+              if (!nch) continue;
+              const nleg = map.legend[nch];
+              if (!nleg) continue;
+              if (
+                nleg.tile === 'cobble' ||
+                nleg.tile === 'dirt' ||
+                nleg.tile === 'stairs' ||
+                nleg.tile === 'bridge' ||
+                (nleg.tile === 'stone' && !nleg.solid)
+              ) {
+                return true;
+              }
+            }
+          }
+          return false;
+        })();
+
+        const allowTree = !treeExcluded.has(key) && !isRoadNeighbor;
+
+        if (dec.treeKinds.length > 0 && roll < dec.treeDensity && allowTree) {
           if (map.snowLine !== undefined && hC >= map.snowLine && dec.treeKinds.includes('snow_pine')) {
             chosen = 'snow_pine';
           } else {
@@ -346,7 +402,95 @@ export class OverworldScene implements Scene {
       }
     }
 
+    this.collectBorderApronProps(map, placements);
     return placements;
+  }
+
+  private collectBorderApronProps(
+    map: MapDef,
+    placements: PropInstancePlacement[]
+  ): void {
+    const height = map.grid.length;
+    const width = map.grid[0]?.length ?? 0;
+    if (width === 0 || height === 0) return;
+
+    const rng = createRng(map.decoration.seed ^ 0x424f5244);
+    const margin = 14;
+    const outdoorTrees: PropKind[] =
+      map.biome === 'mountain' || map.biome === 'arena'
+        ? ['pine', 'snow_pine', 'oak']
+        : ['pine', 'oak', 'birch'];
+
+    for (let z = -margin; z < height + margin; z++) {
+      for (let x = -margin; x < width + margin; x++) {
+        if (x >= 0 && x < width && z >= 0 && z < height) continue;
+
+        const outX = x < 0 ? -x : x >= width ? x - (width - 1) : 0;
+        const outZ = z < 0 ? -z : z >= height ? z - (height - 1) : 0;
+        const outDist = Math.max(outX, outZ);
+
+        // Keep immediate threshold right behind each warp gate clear for sightline & curved path
+        let nearGateMouth = false;
+        for (const w of map.warps) {
+          const distToWarp = Math.hypot(x - w.x, z - w.y);
+          if (distToWarp <= 3.4) {
+            nearGateMouth = true;
+            break;
+          }
+        }
+        if (nearGateMouth) continue;
+
+        const cx = Math.max(0, Math.min(width - 1, x));
+        const cz = Math.max(0, Math.min(height - 1, z));
+        const hLevel = getTileHeightLevel(map, cx, cz);
+        let worldY = hLevel * 0.5;
+        if (outDist >= 5) {
+          const t = Math.min(1, (outDist - 5) / 14);
+          const undulate = (Math.sin(x * 0.16 + z * 0.13) * 0.5 + 0.5) * 0.65;
+          worldY += (0.55 + undulate) * t;
+        }
+
+        const roll = rng.next();
+        if (map.music === 'cave') {
+          if (roll < 0.16) {
+            placements.push({
+              kind: roll < 0.04 ? 'crystal' : 'boulder',
+              x,
+              y: worldY,
+              z,
+              scale: 0.95 + rng.next() * 0.35,
+            });
+          }
+          continue;
+        }
+
+        // Dense forest silhouette framing hills & behind gate bends
+        const density = outDist >= 4 ? 0.28 : 0.20;
+        if (roll < density) {
+          let kind: PropKind;
+          if (map.snowLine !== undefined && hLevel >= map.snowLine) {
+            kind = 'snow_pine';
+          } else {
+            kind = rng.pick(outdoorTrees);
+          }
+          placements.push({
+            kind,
+            x,
+            y: worldY,
+            z,
+            scale: 0.92 + rng.next() * 0.38,
+          });
+        } else if (roll < density + 0.04) {
+          placements.push({
+            kind: 'boulder',
+            x,
+            y: worldY,
+            z,
+            scale: 0.9 + rng.next() * 0.3,
+          });
+        }
+      }
+    }
   }
 
   private loadMap(
@@ -384,10 +528,22 @@ export class OverworldScene implements Scene {
     this.game.saveData.playerY = y;
     this.game.saveData.playerDir = dir;
 
-    const skyTex = createGradientSkyTexture(map.skyTopColor, map.skyBottomColor);
+    const cTop = new THREE.Color(map.skyTopColor);
+    const cBot = new THREE.Color(map.skyBottomColor);
+    const cFog = new THREE.Color(map.fogColor);
+    const horizonColor =
+      map.music === 'cave'
+        ? map.fogColor
+        : cBot.lerp(cTop, 0.26).lerp(cFog, 0.34).getHex();
+
+    const skyTex = createGradientSkyTexture(
+      map.skyTopColor,
+      map.skyBottomColor,
+      horizonColor
+    );
     this.mapDisposables.track(skyTex);
     this.scene.background = skyTex;
-    this.scene.fog = new THREE.Fog(map.fogColor, 18, 44);
+    this.scene.fog = new THREE.Fog(horizonColor, 20, 48);
 
     const atlasMat = new THREE.MeshBasicMaterial({
       map: this.game.assets.getTileAtlasTexture(),
@@ -400,14 +556,19 @@ export class OverworldScene implements Scene {
     this.mapDisposables.track(atlasMat);
     this.mapDisposables.track(grassMat);
 
-    // 1. Heightfield terrain chunks
+    // 1. Heightfield terrain chunks + seamless outer border apron
     this.chunks = buildTerrainChunks(map, atlasMat, grassMat);
     for (const chunk of this.chunks) {
       this.mapDisposables.track(chunk.mesh.geometry);
       this.scene.add(chunk.mesh);
     }
+    const borderApron = buildTerrainBorderApron(map, atlasMat, grassMat);
+    if (borderApron) {
+      this.mapDisposables.track(borderApron.geometry);
+      this.scene.add(borderApron);
+    }
 
-    // 2. Low-poly 3D buildings
+    // 2. Low-poly 3D buildings & 3D map-to-map route gates / cave portals
     const buildingsGroup = buildBuildingsMesh(map, atlasMat, (kind) =>
       this.game.assets.getRoofTexture(kind)
     );
@@ -420,6 +581,22 @@ export class OverworldScene implements Scene {
         }
       }
       this.scene.add(buildingsGroup);
+    }
+
+    const gatesGroup = buildMapGatesGroup(map, atlasMat, (kind) =>
+      this.game.assets.getRoofTexture(kind)
+    );
+    if (gatesGroup) {
+      gatesGroup.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh) {
+          if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
+          if (mesh.material && mesh.material !== atlasMat && !Array.isArray(mesh.material)) {
+            this.mapDisposables.track(mesh.material);
+          }
+        }
+      });
+      this.scene.add(gatesGroup);
     }
 
     // 3. Hand-placed + seeded decoration props
@@ -519,7 +696,7 @@ export class OverworldScene implements Scene {
     this.syncBillboardYaw(0);
 
     const startY = sampleInterpolatedHeight(map, x, y);
-    this.game.cameraRig.snapTo(x, startY, y);
+    this.game.cameraRig.snapTo(x, startY, y, this.sampleTerrain);
     updateVisibleTerrainChunks(this.chunks, x, y);
     this.game.bus.emit('audio:music', { track: map.music });
     this.updateBadge();
@@ -641,6 +818,39 @@ export class OverworldScene implements Scene {
 
     this.game.dialog.update(dt, this.game.input);
 
+    if (this.zoneBannerTimer > 0) {
+      this.zoneBannerTimer -= dt;
+      if (this.zoneBannerTimer <= 0) {
+        this.zoneBanner.style.opacity = '0';
+      }
+    }
+
+    if (this.warpPhase !== 'idle') {
+      this.warpTimer += dt;
+      const fadeDuration = 0.18;
+      if (this.warpPhase === 'out') {
+        const alpha = Math.min(1, this.warpTimer / fadeDuration);
+        this.warpCurtain.style.opacity = alpha.toFixed(3);
+        if (this.warpTimer >= fadeDuration && this.pendingWarp) {
+          const w = this.pendingWarp;
+          this.pendingWarp = null;
+          this.loadMap(w.targetMap, w.targetX, w.targetY, w.dir, true);
+          this.showZoneBanner(w.targetMap);
+          this.warpPhase = 'in';
+          this.warpTimer = 0;
+        }
+      } else {
+        const alpha = Math.max(0, 1 - this.warpTimer / fadeDuration);
+        this.warpCurtain.style.opacity = alpha.toFixed(3);
+        if (this.warpTimer >= fadeDuration) {
+          this.warpPhase = 'idle';
+          this.warpCurtain.style.opacity = '0';
+        }
+      }
+      this.syncBillboardYaw(dt);
+      return;
+    }
+
     if (this.isBlockingUiOpen()) {
       this.syncBillboardYaw(dt);
       return;
@@ -746,13 +956,14 @@ export class OverworldScene implements Scene {
     );
     if (warp) {
       this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-      this.loadMap(
-        warp.targetMap,
-        warp.targetX,
-        warp.targetY,
-        warp.dir ?? this.dir,
-        true
-      );
+      this.pendingWarp = {
+        targetMap: warp.targetMap,
+        targetX: warp.targetX,
+        targetY: warp.targetY,
+        dir: warp.dir ?? this.dir,
+      };
+      this.warpPhase = 'out';
+      this.warpTimer = 0;
       return;
     }
 
@@ -1217,6 +1428,13 @@ export class OverworldScene implements Scene {
     );
   }
 
+  private showZoneBanner(mapId: string): void {
+    const label = ES.maps[mapId] ?? mapId;
+    this.zoneBanner.innerHTML = `<div class="text-[11px] font-bold tracking-widest uppercase text-resonant-gold">${label}</div>`;
+    this.zoneBanner.style.opacity = '1';
+    this.zoneBannerTimer = 2.2;
+  }
+
   render(): void {
     this.game.renderer.render(this.scene, this.game.cameraRig.camera);
   }
@@ -1224,6 +1442,8 @@ export class OverworldScene implements Scene {
   onExit(): void {
     this.game.uiLayers.unregister('overworldHud');
     this.hudBadge.remove();
+    this.zoneBanner.remove();
+    this.warpCurtain.remove();
     this.mapDisposables.disposeAll();
     this.persistentDisposables.disposeAll();
   }

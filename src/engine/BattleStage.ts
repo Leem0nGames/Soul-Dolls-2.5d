@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { createRng } from '../core/Rng.ts';
 import type { FxQualityTier } from '../domain/FxPool.ts';
-import type { BattleBiome, MapDef } from '../domain/types.ts';
+import { HEIGHT_UNIT } from '../domain/TerrainRules.ts';
+import type { BattleBiome, MapDef, PropKind } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import type { TileAtlasKey } from '../gfx/ProceduralTiles.ts';
 import { getTileUv } from './AtlasBuilder.ts';
+import { createBottomPivotPlaneGeometry } from './BillboardBatch.ts';
 import { DisposableRegistry } from './Disposables.ts';
 import {
   buildCloudBillboards,
@@ -32,6 +34,9 @@ interface BiomeTheme {
   hasSunRays: boolean;
   hasGlowLights: boolean;
   glowColor: string;
+  trees: PropKind[];
+  shrubs: PropKind[];
+  accents: PropKind[];
 }
 
 function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
@@ -50,6 +55,9 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
       hasSunRays: false,
       hasGlowLights: true,
       glowColor: PALETTE.resonantGold,
+      trees: ['pillar', 'mushroom_tree_arcane'],
+      shrubs: ['bush_arcane', 'tall_grass_flower'],
+      accents: ['lamp_double', 'pillar'],
     };
   }
 
@@ -57,8 +65,8 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
     case 'forest':
       return {
         skyTop: hexToNumber(PALETTE.oceanicTeal),
-        skyBottom: hexToNumber(PALETTE.frostedGlass),
-        fog: hexToNumber(PALETTE.iceCyan),
+        skyBottom: 0x9bd3c8,
+        fog: 0x7cb8ad,
         baseTile: '.',
         hillTile: '*',
         platformTop: 'grass',
@@ -69,12 +77,15 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         hasSunRays: true,
         hasGlowLights: false,
         glowColor: PALETTE.paleGold,
+        trees: ['pine', 'oak', 'mushroom_tree', 'mushroom_tree_arcane'],
+        shrubs: ['bush', 'bush_arcane', 'tall_grass_clump', 'tall_grass_flower'],
+        accents: ['lamp_wood', 'sign'],
       };
     case 'mountain':
       return {
         skyTop: hexToNumber(PALETTE.stoneShadow),
-        skyBottom: hexToNumber(PALETTE.paleGold),
-        fog: hexToNumber(PALETTE.porcelain),
+        skyBottom: 0xc2b99b,
+        fog: 0x9aa4ab,
         baseTile: ',',
         hillTile: '#',
         platformTop: 'stone',
@@ -85,6 +96,9 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         hasSunRays: false,
         hasGlowLights: false,
         glowColor: PALETTE.paleGold,
+        trees: ['snow_pine', 'pine'],
+        shrubs: ['bush', 'tall_grass_clump'],
+        accents: ['pillar', 'lamp_stone'],
       };
     case 'cave':
       return {
@@ -101,11 +115,14 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         hasSunRays: false,
         hasGlowLights: true,
         glowColor: PALETTE.soulViolet,
+        trees: ['cave_entrance', 'pillar', 'mushroom_tree_arcane'],
+        shrubs: ['bush_arcane'],
+        accents: ['lamp_stone', 'pillar'],
       };
     case 'arena':
       return {
         skyTop: hexToNumber(PALETTE.deepAmethyst),
-        skyBottom: hexToNumber(PALETTE.resonantGold),
+        skyBottom: 0xb9914a,
         fog: hexToNumber(PALETTE.oldBronze),
         baseTile: 'A',
         hillTile: '#',
@@ -117,95 +134,149 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         hasSunRays: false,
         hasGlowLights: true,
         glowColor: PALETTE.resonantGold,
+        trees: ['pillar', 'oak'],
+        shrubs: ['bush_arcane', 'tall_grass_flower'],
+        accents: ['lamp_double', 'pillar'],
       };
     case 'meadow':
     default:
       return {
         skyTop: hexToNumber(PALETTE.oceanicTeal),
-        skyBottom: hexToNumber(PALETTE.frostedGlass),
-        fog: hexToNumber(PALETTE.iceCyan),
+        skyBottom: 0xa4d9d0,
+        fog: 0x86c4bd,
         baseTile: '.',
         hillTile: '*',
         platformTop: 'grass',
         platformRim: 'dirt',
-        farColor: PALETTE.stoneHighlight,
+        farColor: PALETTE.stoneShadow,
         midColor: PALETTE.forestGreen,
         hasClouds: true,
         hasSunRays: true,
         hasGlowLights: false,
         glowColor: PALETTE.paleGold,
+        trees: ['oak', 'birch', 'pine'],
+        shrubs: ['bush', 'tall_grass_flower', 'tall_grass_clump'],
+        accents: ['lamp_wood', 'well', 'sign'],
       };
   }
 }
 
-function buildStageMapDef(biome: BattleBiome, theme: BiomeTheme): MapDef {
+function getStagePropDimensions(kind: PropKind): [number, number] {
+  switch (kind) {
+    case 'oak':
+      return [2.5, 2.3];
+    case 'birch':
+      return [2.55, 2.35];
+    case 'pine':
+      return [1.7, 3.05];
+    case 'snow_pine':
+      return [1.9, 2.95];
+    case 'mushroom_tree':
+    case 'mushroom_tree_arcane':
+      return [1.9, 2.05];
+    case 'cave_entrance':
+      return [2.6, 2.5];
+    case 'well':
+    case 'pillar':
+      return [1.25, 1.75];
+    case 'lamp_post':
+      return [0.38, 1.9];
+    case 'lamp_wood':
+      return [0.62, 1.9];
+    case 'lamp_double':
+      return [0.72, 1.95];
+    case 'lamp_stone':
+      return [0.38, 1.85];
+    case 'bush':
+    case 'bush_arcane':
+      return [1.18, 1.06];
+    case 'tall_grass_clump':
+      return [1.25, 1.05];
+    case 'tall_grass_flower':
+      return [1.25, 1.1];
+    case 'sign':
+      return [0.92, 1.05];
+    default:
+      return [1.0, 1.0];
+  }
+}
+
+function computeStageCellHeight(wx: number, wz: number, rngVal: number): number {
+  const dPlayer = Math.hypot(wx - PLAYER_STATION_POS.x, wz - PLAYER_STATION_POS.z);
+  const dEnemy = Math.hypot(wx - ENEMY_STATION_POS.x, wz - ENEMY_STATION_POS.z);
+  const edge = Math.max(Math.abs(wx), Math.abs(wz)) / 12;
+
+  if (dPlayer < 2.6) return 0;
+  if (dEnemy < 2.6) return 1;
+  if (edge > 0.72) return Math.min(6, Math.round((edge - 0.65) * 14 + rngVal * 1.4));
+  if (wz < -4.5) return 1 + Math.round(rngVal * 1.2);
+  return 0;
+}
+
+function buildStageMapDef(
+  biome: BattleBiome,
+  theme: BiomeTheme
+): { map: MapDef; heightGrid: number[][] } {
   const size = 24;
   const grid: string[] = [];
   const heights: string[] = [];
+  const heightGrid: number[][] = [];
   const rng = createRng(biome.length * 911 + 42);
 
   for (let z = 0; z < size; z++) {
     let gRow = '';
     let hRow = '';
+    const hNums: number[] = [];
     for (let x = 0; x < size; x++) {
       const wx = x - 11.5;
       const wz = z - 11.5;
-      const dPlayer = Math.hypot(wx - PLAYER_STATION_POS.x, wz - PLAYER_STATION_POS.z);
-      const dEnemy = Math.hypot(wx - ENEMY_STATION_POS.x, wz - ENEMY_STATION_POS.z);
-      const edge = Math.max(Math.abs(wx), Math.abs(wz)) / 12;
-
-      let h = 0;
-      let ch = theme.baseTile;
-      if (dPlayer < 2.6) {
-        h = 0;
-      } else if (dEnemy < 2.6) {
-        h = 1;
-      } else if (edge > 0.72) {
-        h = Math.min(6, Math.round((edge - 0.65) * 14 + rng.next() * 1.4));
-        if (h >= 3) ch = theme.hillTile;
-      } else if (wz < -4.5) {
-        h = 1 + Math.round(rng.next() * 1.2);
-      }
+      const h = computeStageCellHeight(wx, wz, rng.next());
+      const ch = h >= 3 ? theme.hillTile : theme.baseTile;
       gRow += ch;
       hRow += String(h);
+      hNums.push(h);
     }
     grid.push(gRow);
     heights.push(hRow);
+    heightGrid.push(hNums);
   }
 
   return {
-    id: `battle_${biome}`,
-    nameKey: `battle_${biome}`,
-    biome,
-    music: biome === 'cave' ? 'cave' : 'route',
-    skyTopColor: theme.skyTop,
-    skyBottomColor: theme.skyBottom,
-    fogColor: theme.fog,
-    snowLine: biome === 'mountain' ? 4 : undefined,
-    grid,
-    heights,
-    legend: {
-      '.': { tile: 'grass', solid: false },
-      ',': { tile: 'dirt', solid: false },
-      '*': { tile: 'flowers', solid: false },
-      'c': { tile: 'cave_floor', solid: false },
-      'A': { tile: 'arena_floor', solid: false },
-      '#': { tile: 'stone', solid: true },
+    heightGrid,
+    map: {
+      id: `battle_${biome}`,
+      nameKey: `battle_${biome}`,
+      biome,
+      music: biome === 'cave' ? 'cave' : 'route',
+      skyTopColor: theme.skyTop,
+      skyBottomColor: theme.skyBottom,
+      fogColor: theme.fog,
+      snowLine: biome === 'mountain' ? 4 : undefined,
+      grid,
+      heights,
+      legend: {
+        '.': { tile: 'grass', solid: false },
+        ',': { tile: 'dirt', solid: false },
+        '*': { tile: 'flowers', solid: false },
+        c: { tile: 'cave_floor', solid: false },
+        A: { tile: 'arena_floor', solid: false },
+        '#': { tile: 'stone', solid: true },
+      },
+      buildings: [],
+      props: [],
+      decoration: {
+        seed: 1,
+        treeDensity: 0,
+        bushDensity: 0,
+        flowerDensity: 0,
+        rockDensity: 0,
+        mushroomDensity: 0,
+        treeKinds: [],
+      },
+      warps: [],
+      npcs: [],
+      signs: [],
     },
-    buildings: [],
-    props: [],
-    decoration: {
-      seed: 1,
-      treeDensity: 0,
-      bushDensity: 0,
-      flowerDensity: 0,
-      rockDensity: 0,
-      mushroomDensity: 0,
-      treeKinds: [],
-    },
-    warps: [],
-    npcs: [],
-    signs: [],
   };
 }
 
@@ -236,7 +307,6 @@ function createParallaxStripTexture(
       ctx.fillRect(x, h - colH, 6, colH);
     }
   } else if (layer === 'far') {
-    // Mountain skyline
     for (let x = 0; x < w; x++) {
       const ridge =
         10 +
@@ -247,7 +317,6 @@ function createParallaxStripTexture(
       ctx.fillRect(x, h - colH, 1, colH);
     }
   } else {
-    // Mid tree/rock silhouette
     for (let x = 0; x < w; x += 3) {
       const treeH = 9 + Math.round(Math.abs(Math.sin(x * 0.33 + 0.7)) * 11);
       ctx.fillRect(x, h - treeH, 3, treeH);
@@ -306,14 +375,24 @@ function createGlowTexture(colorHex: string): THREE.CanvasTexture {
 
 function createSunRayTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 32;
+  canvas.width = 48;
   canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createLinearGradient(0, 0, 0, 64);
-  grad.addColorStop(0, 'rgba(252, 237, 184, 0.35)');
-  grad.addColorStop(1, 'rgba(252, 237, 184, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(4, 0, 24, 64);
+  const img = ctx.createImageData(48, 64);
+  for (let y = 0; y < 64; y++) {
+    const vFade = Math.max(0, 1 - y / 64);
+    for (let x = 0; x < 48; x++) {
+      const nx = (x - 23.5) / 23.5;
+      const hFade = Math.max(0, 1 - nx * nx);
+      const a = Math.round(vFade * hFade * hFade * 26); // subtle soft atmospheric shaft (~0.10 max alpha)
+      const i = (y * 48 + x) * 4;
+      img.data[i] = 252;
+      img.data[i + 1] = 238;
+      img.data[i + 2] = 196;
+      img.data[i + 3] = a;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -367,7 +446,7 @@ function buildPlatformGeometry(
   const centerIdx = 0;
   positions.push(cx, topY, cz);
   uvs.push((topRect.u0 + topRect.u1) * 0.5, (topRect.v0 + topRect.v1) * 0.5);
-  colors.push(1.05, 1.05, 1.05);
+  colors.push(0.95, 0.95, 0.95);
 
   for (let i = 0; i <= segs; i++) {
     const a = (i / segs) * Math.PI * 2;
@@ -378,7 +457,7 @@ function buildPlatformGeometry(
       topRect.u0 + (cos * 0.5 + 0.5) * (topRect.u1 - topRect.u0),
       topRect.v0 + (sin * 0.5 + 0.5) * (topRect.v1 - topRect.v0)
     );
-    colors.push(0.95, 0.95, 0.95);
+    colors.push(0.88, 0.88, 0.88);
   }
   for (let i = 1; i <= segs; i++) {
     indices.push(centerIdx, i + 1, i);
@@ -418,12 +497,18 @@ function buildPlatformGeometry(
   return geo;
 }
 
+interface StagePropMesh {
+  mesh: THREE.Mesh;
+  tierWeight: number;
+}
+
 export class BattleStage {
   private disposables = new DisposableRegistry();
   private clouds: CloudDriftItem[] = [];
   private midLayerMesh: THREE.Mesh | null = null;
   private sunRays: THREE.Mesh[] = [];
   private glowSprites: THREE.Mesh[] = [];
+  private perimeterProps: StagePropMesh[] = [];
   private bossAura: THREE.Mesh | null = null;
   private playerShadow: THREE.Mesh;
   private enemyShadow: THREE.Mesh;
@@ -438,11 +523,11 @@ export class BattleStage {
   ) {
     const theme = getBiomeTheme(biome, isBoss);
 
-    // Sky gradient + fog
+    // Sky gradient + balanced atmospheric fog (keeps SoulDolls crisp & contrasty)
     const skyTex = createGradientSkyTexture(theme.skyTop, theme.skyBottom);
     this.disposables.track(skyTex);
     scene.background = skyTex;
-    scene.fog = new THREE.Fog(theme.fog, 13, 30);
+    scene.fog = new THREE.Fog(theme.fog, 16, 36);
 
     // 24x24 heightfield terrain patch
     const atlasMat = new THREE.MeshBasicMaterial({
@@ -456,7 +541,7 @@ export class BattleStage {
     this.disposables.track(atlasMat);
     this.disposables.track(grassMat);
 
-    const stageMap = buildStageMapDef(biome, theme);
+    const { map: stageMap, heightGrid } = buildStageMapDef(biome, theme);
     const chunks = buildTerrainChunks(stageMap, atlasMat, grassMat);
     for (const c of chunks) {
       c.mesh.matrixAutoUpdate = true;
@@ -466,12 +551,12 @@ export class BattleStage {
       this.disposables.track(c.mesh.geometry);
     }
 
-    // Two circular raised platforms
+    // Two circular raised platforms (widened slightly to accommodate larger SoulDolls)
     const pGeo = buildPlatformGeometry(
       PLAYER_STATION_POS.x,
       PLAYER_STATION_POS.y,
       PLAYER_STATION_POS.z,
-      1.65,
+      1.85,
       0.42,
       theme.platformTop,
       theme.platformRim
@@ -480,7 +565,7 @@ export class BattleStage {
       ENEMY_STATION_POS.x,
       ENEMY_STATION_POS.y,
       ENEMY_STATION_POS.z,
-      1.55,
+      1.78,
       0.72,
       theme.platformTop,
       theme.platformRim
@@ -491,30 +576,33 @@ export class BattleStage {
     this.disposables.track(pGeo);
     this.disposables.track(eGeo);
 
+    // Lush surrounding biome vegetation & props framing the arena
+    this.buildBiomePerimeterProps(scene, assets, biome, theme, heightGrid);
+
     // 2 Parallax silhouette billboard layers
     const farTex = createParallaxStripTexture(biome, 'far', theme.farColor);
-    const farGeo = new THREE.PlaneGeometry(34, 8.5);
+    const farGeo = new THREE.PlaneGeometry(36, 8.5);
     const farMat = new THREE.MeshBasicMaterial({
       map: farTex,
       alphaTest: 0.5,
       side: THREE.DoubleSide,
     });
     const farMesh = new THREE.Mesh(farGeo, farMat);
-    farMesh.position.set(0, 3.3, -13.8);
+    farMesh.position.set(0, 3.1, -14.5);
     scene.add(farMesh);
     this.disposables.track(farTex);
     this.disposables.track(farGeo);
     this.disposables.track(farMat);
 
     const midTex = createParallaxStripTexture(biome, 'mid', theme.midColor);
-    const midGeo = new THREE.PlaneGeometry(26, 5.2);
+    const midGeo = new THREE.PlaneGeometry(28, 5.2);
     const midMat = new THREE.MeshBasicMaterial({
       map: midTex,
       alphaTest: 0.5,
       side: THREE.DoubleSide,
     });
     this.midLayerMesh = new THREE.Mesh(midGeo, midMat);
-    this.midLayerMesh.position.set(0.5, 1.9, -9.8);
+    this.midLayerMesh.position.set(0.5, 1.8, -10.8);
     scene.add(this.midLayerMesh);
     this.disposables.track(midTex);
     this.disposables.track(midGeo);
@@ -522,17 +610,17 @@ export class BattleStage {
 
     // Moving clouds (outdoor biomes)
     if (theme.hasClouds) {
-      this.clouds = buildCloudBillboards(scene, this.disposables, 0, -9, 15, 6, 331, 7.6);
+      this.clouds = buildCloudBillboards(scene, this.disposables, 0, -9, 15, 5, 331, 7.8);
     }
 
-    // Additive sun-ray quads (meadow/forest)
+    // Subtle atmospheric sun-ray shafts (gentle soft alpha so they never wash out SoulDolls)
     if (theme.hasSunRays) {
       const rayTex = createSunRayTexture();
-      const rayGeo = new THREE.PlaneGeometry(2.4, 8.5);
+      const rayGeo = new THREE.PlaneGeometry(2.6, 8.2);
       const rayMat = new THREE.MeshBasicMaterial({
         map: rayTex,
-        blending: THREE.AdditiveBlending,
         transparent: true,
+        opacity: 0.55,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -540,10 +628,11 @@ export class BattleStage {
       this.disposables.track(rayGeo);
       this.disposables.track(rayMat);
 
-      for (const rx of [-3.8, 0.2, 4.1]) {
+      for (const rx of [-4.6, 5.4]) {
         const ray = new THREE.Mesh(rayGeo, rayMat);
-        ray.position.set(rx, 3.6, -4.5);
+        ray.position.set(rx, 4.4, -7.2);
         ray.rotation.z = -0.26;
+        ray.userData.baseX = rx;
         scene.add(ray);
         this.sunRays.push(ray);
       }
@@ -552,11 +641,12 @@ export class BattleStage {
     // Glow sprites (cave crystals / arena torches)
     if (theme.hasGlowLights) {
       const glowTex = createGlowTexture(theme.glowColor);
-      const glowGeo = new THREE.PlaneGeometry(1.7, 1.7);
+      const glowGeo = new THREE.PlaneGeometry(1.3, 1.3);
       const glowMat = new THREE.MeshBasicMaterial({
         map: glowTex,
         blending: THREE.AdditiveBlending,
         transparent: true,
+        opacity: 0.72,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -580,7 +670,7 @@ export class BattleStage {
     // Boss pulsing aura on enemy platform
     if (isBoss) {
       const auraTex = createBossAuraTexture();
-      const auraGeo = new THREE.PlaneGeometry(2.8, 2.8);
+      const auraGeo = new THREE.PlaneGeometry(3.1, 3.1);
       auraGeo.rotateX(-Math.PI / 2);
       const auraMat = new THREE.MeshBasicMaterial({
         map: auraTex,
@@ -602,7 +692,7 @@ export class BattleStage {
 
     // Soft procedural blob shadows under both creatures
     const shadowTex = createBlobShadowTexture();
-    const shadowGeo = new THREE.PlaneGeometry(1.45, 0.95);
+    const shadowGeo = new THREE.PlaneGeometry(1.75, 1.12);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
       map: shadowTex,
@@ -628,6 +718,145 @@ export class BattleStage {
     scene.add(this.playerShadow, this.enemyShadow);
   }
 
+  private buildBiomePerimeterProps(
+    scene: THREE.Scene,
+    assets: AssetProvider,
+    biome: BattleBiome,
+    theme: BiomeTheme,
+    heightGrid: number[][]
+  ): void {
+    const rng = createRng(biome.length * 1337 + 77);
+    const matCache = new Map<PropKind, THREE.MeshBasicMaterial>();
+    const geoCache = new Map<PropKind, THREE.PlaneGeometry>();
+
+    const getPropMat = (kind: PropKind): THREE.MeshBasicMaterial => {
+      let mat = matCache.get(kind);
+      if (!mat) {
+        mat = new THREE.MeshBasicMaterial({
+          map: assets.getPropTexture(kind),
+          alphaTest: 0.45,
+          side: THREE.DoubleSide,
+        });
+        matCache.set(kind, mat);
+        this.disposables.track(mat);
+      }
+      return mat;
+    };
+
+    const getPropGeo = (kind: PropKind): THREE.PlaneGeometry => {
+      let geo = geoCache.get(kind);
+      if (!geo) {
+        const [w, h] = getStagePropDimensions(kind);
+        geo = createBottomPivotPlaneGeometry(w, h);
+        geoCache.set(kind, geo);
+        this.disposables.track(geo);
+      }
+      return geo;
+    };
+
+    const sampleY = (wx: number, wz: number): number => {
+      const gx = Math.max(0, Math.min(23, Math.round(wx + 11.5)));
+      const gz = Math.max(0, Math.min(23, Math.round(wz + 11.5)));
+      return (heightGrid[gz]?.[gx] ?? 0) * HEIGHT_UNIT - 0.06;
+    };
+
+    const canPlace = (wx: number, wz: number): boolean => {
+      const dPlayer = Math.hypot(wx - PLAYER_STATION_POS.x, wz - PLAYER_STATION_POS.z);
+      const dEnemy = Math.hypot(wx - ENEMY_STATION_POS.x, wz - ENEMY_STATION_POS.z);
+      if (dPlayer < 2.65 || dEnemy < 2.65) return false;
+      // Keep camera sightline corridor clear (camera at -4.1, 5.85 -> battle center)
+      if (wx > -5.4 && wx < -0.5 && wz > 1.2 && wz < 7.2) return false;
+      // Keep direct center battle line clear
+      if (Math.abs(wx) < 2.4 && Math.abs(wz) < 2.2) return false;
+      return true;
+    };
+
+    const spawnProp = (
+      kind: PropKind,
+      wx: number,
+      wz: number,
+      scale: number,
+      tierWeight: number
+    ) => {
+      if (!canPlace(wx, wz)) return;
+      const mesh = new THREE.Mesh(getPropGeo(kind), getPropMat(kind));
+      mesh.position.set(wx, sampleY(wx, wz), wz);
+      mesh.scale.setScalar(scale);
+      mesh.renderOrder = 1;
+      scene.add(mesh);
+      this.perimeterProps.push({ mesh, tierWeight });
+    };
+
+    // Outer canopy ring: trees / cave arches / arena pillars framing the horizon & flanks
+    const treeRing: Array<[number, number]> = [
+      [-6.8, -5.8],
+      [-4.2, -7.2],
+      [-1.4, -7.8],
+      [1.6, -7.9],
+      [4.5, -7.3],
+      [7.1, -6.0],
+      [8.2, -3.2],
+      [7.6, -0.2],
+      [6.4, 2.8],
+      [-7.2, -2.6],
+      [-7.0, 0.8],
+      [-5.6, -8.8],
+      [-0.4, -9.2],
+      [5.4, -8.9],
+      [-8.4, -4.4],
+      [8.6, -5.2],
+    ];
+    for (let i = 0; i < treeRing.length; i++) {
+      const [bx, bz] = treeRing[i];
+      const wx = bx + (rng.next() - 0.5) * 0.65;
+      const wz = bz + (rng.next() - 0.5) * 0.65;
+      const kind = theme.trees[i % theme.trees.length];
+      const scale = 0.88 + rng.next() * 0.34;
+      spawnProp(kind, wx, wz, scale, i < 10 ? 0 : 2);
+    }
+
+    // Mid-ring shrubs, tall grass clumps, and flower patches framing platforms
+    const shrubCoords: Array<[number, number]> = [
+      [-4.6, -3.4],
+      [-2.8, -4.6],
+      [-0.5, -5.2],
+      [2.8, -5.4],
+      [5.2, -4.0],
+      [5.5, -1.2],
+      [4.6, 1.5],
+      [1.8, 3.2],
+      [-4.8, 0.2],
+      [-4.5, 2.8],
+      [-1.2, 4.2],
+      [3.8, -6.4],
+      [-3.6, -6.2],
+      [0.4, -6.8],
+      [6.2, -2.4],
+      [-6.0, -1.2],
+    ];
+    for (let i = 0; i < shrubCoords.length; i++) {
+      const [bx, bz] = shrubCoords[i];
+      const wx = bx + (rng.next() - 0.5) * 0.55;
+      const wz = bz + (rng.next() - 0.5) * 0.55;
+      const kind = theme.shrubs[i % theme.shrubs.length];
+      const scale = 0.85 + rng.next() * 0.32;
+      spawnProp(kind, wx, wz, scale, i % 2 === 0 ? 1 : 2);
+    }
+
+    // Storytelling biome accents (lanterns, pillars, wells, signs) flanking platforms
+    const accentCoords: Array<[number, number]> = [
+      [-4.1, -1.6],
+      [4.7, -3.1],
+      [0.9, -4.4],
+      [3.6, 1.6],
+    ];
+    for (let i = 0; i < accentCoords.length; i++) {
+      const [wx, wz] = accentCoords[i];
+      const kind = theme.accents[i % theme.accents.length];
+      spawnProp(kind, wx, wz, 0.95, i < 2 ? 0 : 1);
+    }
+  }
+
   setQualityTier(tier: FxQualityTier): void {
     if (this.qualityTier === tier) return;
     this.qualityTier = tier;
@@ -640,6 +869,10 @@ export class BattleStage {
     }
     for (let i = 0; i < this.sunRays.length; i++) {
       this.sunRays[i].visible = tier !== 'low';
+    }
+    const maxWeight = tier === 'high' ? 2 : tier === 'medium' ? 1 : 0;
+    for (let i = 0; i < this.perimeterProps.length; i++) {
+      this.perimeterProps[i].mesh.visible = this.perimeterProps[i].tierWeight <= maxWeight;
     }
   }
 
@@ -658,7 +891,8 @@ export class BattleStage {
 
     for (let i = 0; i < this.sunRays.length; i++) {
       const ray = this.sunRays[i];
-      ray.position.x += Math.sin(this.time * 0.4 + i) * 0.002;
+      const baseX = (ray.userData.baseX as number | undefined) ?? ray.position.x;
+      ray.position.x = baseX + Math.sin(this.time * 0.35 + i * 1.6) * 0.18;
     }
 
     for (let i = 0; i < this.glowSprites.length; i++) {
@@ -666,6 +900,13 @@ export class BattleStage {
       const pulse = 0.88 + Math.sin(this.time * 4.5 + i * 1.7) * 0.14;
       g.scale.setScalar(pulse);
       g.lookAt(cameraPos);
+    }
+
+    for (let i = 0; i < this.perimeterProps.length; i++) {
+      const p = this.perimeterProps[i].mesh;
+      if (p.visible) {
+        p.lookAt(cameraPos.x, p.position.y, cameraPos.z);
+      }
     }
 
     if (this.bossAura) {

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { FxQualityTier } from '../domain/FxPool.ts';
 import type { CreatureType, MoveCategory } from '../domain/types.ts';
-import { PALETTE } from '../gfx/Palette.ts';
 import { DisposableRegistry } from './Disposables.ts';
 
 const _dir = new THREE.Vector3();
@@ -11,6 +10,7 @@ const _side = new THREE.Vector3();
 const _perp = new THREE.Vector3();
 const _tmpStart = new THREE.Vector3();
 const _tmpEnd = new THREE.Vector3();
+const _gatePos = new THREE.Vector3();
 
 const GLSL_NOISE_LIB = /* glsl */ `
   float vfxHash(vec2 p) {
@@ -40,7 +40,8 @@ const GLSL_NOISE_LIB = /* glsl */ `
 
 interface ActiveVfxItem {
   object: THREE.Object3D;
-  age: number;
+  elapsed: number;
+  delay: number;
   life: number;
   materials: THREE.ShaderMaterial[];
   ownedGeometries: THREE.BufferGeometry[];
@@ -62,23 +63,38 @@ interface TypeColorPair {
 function getTypeColors(type: CreatureType): TypeColorPair {
   switch (type) {
     case 'brasa':
-      return { core: 0xfff3c4, outer: 0xff5a2a, accent: 0xc2234b };
+      return { core: 0xfff6d2, outer: 0xff5a24, accent: 0xc2234b };
     case 'marea':
-      return { core: 0xe6ffff, outer: 0x38d9f5, accent: 0x1a78c2 };
+      return { core: 0xebffff, outer: 0x35e0ff, accent: 0x1a78c2 };
     case 'flora':
-      return { core: 0xeaffc7, outer: 0x43d97b, accent: 0x7a8b3f };
+      return { core: 0xf2ffd2, outer: 0x43e07d, accent: 0x8ad842 };
     case 'chispa':
-      return { core: 0xffffff, outer: 0xffd700, accent: 0x6ce8ff };
+      return { core: 0xffffff, outer: 0xffd919, accent: 0x6ce8ff };
     case 'roca':
-      return { core: 0xfff0c8, outer: 0xe8a84a, accent: 0x8a6a3b };
+      return { core: 0xfff3d0, outer: 0xf0a63a, accent: 0x9c5a25 };
     case 'brisa':
-      return { core: 0xf4ffff, outer: 0x85eadd, accent: 0x5fe3d2 };
+      return { core: 0xf6ffff, outer: 0x7ef2e4, accent: 0x5fe3d2 };
     case 'umbra':
-      return { core: 0xf0d6ff, outer: 0x9b6bff, accent: 0xc2234b };
+      return { core: 0xf5dcff, outer: 0xa06bff, accent: 0xe23e66 };
     case 'comun':
     default:
-      return { core: 0xfff9f0, outer: 0xf4d073, accent: 0x5fe3d2 };
+      return { core: 0xfffaf0, outer: 0xf4d073, accent: 0x5fe3d2 };
   }
+}
+
+function buildHelixTubeGeometry(): THREE.TubeGeometry {
+  const pts: THREE.Vector3[] = [];
+  const turns = 2.5;
+  const steps = 36;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const angle = t * Math.PI * 2 * turns;
+    const env = Math.sin(t * Math.PI);
+    const r = 0.22 + 0.14 * env;
+    pts.push(new THREE.Vector3(Math.cos(angle) * r, t - 0.5, Math.sin(angle) * r));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  return new THREE.TubeGeometry(curve, 36, 0.042, 6, false);
 }
 
 export class AbilityVfxSystem {
@@ -88,15 +104,17 @@ export class AbilityVfxSystem {
   private qualityTier: FxQualityTier = 'high';
   private clockTime = 0;
 
-  // Shared unit geometries (disposed once when AbilityVfxSystem disposes)
+  // Shared unit geometries (disposed once on teardown)
   private readonly unitPlaneGeo: THREE.PlaneGeometry;
   private readonly unitBeamGeo: THREE.CylinderGeometry;
+  private readonly unitHelixGeo: THREE.TubeGeometry;
   private readonly unitOrbGeo: THREE.SphereGeometry;
   private readonly unitConeGeo: THREE.ConeGeometry;
   private readonly unitVortexGeo: THREE.CylinderGeometry;
   private readonly unitSlashGeo: THREE.RingGeometry;
-  private readonly unitRingGeo: THREE.RingGeometry;
+  private readonly unitAccretionGeo: THREE.RingGeometry;
   private readonly unitTorusGeo: THREE.TorusGeometry;
+  private readonly unitShardGeo: THREE.OctahedronGeometry;
 
   constructor(scene: THREE.Scene) {
     this.group.renderOrder = 12;
@@ -106,38 +124,55 @@ export class AbilityVfxSystem {
     this.unitPlaneGeo.rotateX(-Math.PI / 2);
 
     this.unitBeamGeo = new THREE.CylinderGeometry(0.18, 0.1, 1, 14, 10, true);
+    this.unitHelixGeo = buildHelixTubeGeometry();
     this.unitOrbGeo = new THREE.SphereGeometry(0.5, 16, 12);
     this.unitConeGeo = new THREE.ConeGeometry(0.32, 1.0, 5, 1);
-    this.unitConeGeo.translate(0, 0.5, 0); // bottom-center pivot for ground-erupting spires
+    this.unitConeGeo.translate(0, 0.5, 0);
     this.unitVortexGeo = new THREE.CylinderGeometry(0.95, 0.22, 1.0, 18, 4, true);
     this.unitVortexGeo.translate(0, 0.5, 0);
 
-    this.unitSlashGeo = new THREE.RingGeometry(0.48, 1.0, 26, 1, -Math.PI * 0.62, Math.PI * 1.24);
-    this.unitRingGeo = new THREE.RingGeometry(0.68, 1.0, 28, 1);
-    this.unitRingGeo.rotateX(-Math.PI / 2);
+    this.unitSlashGeo = new THREE.RingGeometry(0.46, 1.0, 28, 1, -Math.PI * 0.62, Math.PI * 1.24);
+    this.unitAccretionGeo = new THREE.RingGeometry(0.28, 1.35, 36, 1);
+    this.unitAccretionGeo.rotateX(-Math.PI / 2);
+
     this.unitTorusGeo = new THREE.TorusGeometry(0.8, 0.08, 8, 28);
     this.unitTorusGeo.rotateX(Math.PI / 2);
+    this.unitShardGeo = new THREE.OctahedronGeometry(0.13, 0);
 
     this.disposables.track(this.unitPlaneGeo);
     this.disposables.track(this.unitBeamGeo);
+    this.disposables.track(this.unitHelixGeo);
     this.disposables.track(this.unitOrbGeo);
     this.disposables.track(this.unitConeGeo);
     this.disposables.track(this.unitVortexGeo);
     this.disposables.track(this.unitSlashGeo);
-    this.disposables.track(this.unitRingGeo);
+    this.disposables.track(this.unitAccretionGeo);
     this.disposables.track(this.unitTorusGeo);
+    this.disposables.track(this.unitShardGeo);
   }
 
   setQualityTier(tier: FxQualityTier): void {
     this.qualityTier = tier;
   }
 
+  getActiveCount(): number {
+    return this.items.length;
+  }
+
   private addItem(item: ActiveVfxItem): void {
+    if (item.delay > 0) {
+      item.object.visible = false;
+    }
     this.group.add(item.object);
     this.items.push(item);
   }
 
-  private createBeamMaterial(coreHex: number, outerHex: number, speed = 7.5, freq = 5.0): THREE.ShaderMaterial {
+  private createBeamMaterial(
+    coreHex: number,
+    outerHex: number,
+    speed = 8.0,
+    freq = 5.0
+  ): THREE.ShaderMaterial {
     return new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
@@ -149,7 +184,6 @@ export class AbilityVfxSystem {
       },
       vertexShader: /* glsl */ `
         uniform float uTime;
-        uniform float uProgress;
         varying vec2 vUv;
         varying vec3 vViewNormal;
         varying vec3 vViewDir;
@@ -158,7 +192,7 @@ export class AbilityVfxSystem {
           vUv = uv;
           vec3 pos = position;
           float env = sin(uv.y * 3.14159265);
-          float pulse = sin(uv.y * 14.0 - uTime * 22.0) * 0.055 * env;
+          float pulse = sin(uv.y * 16.0 - uTime * 24.0) * 0.06 * env;
           pos += normal * pulse;
           vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
           vViewNormal = normalize(normalMatrix * normal);
@@ -179,16 +213,83 @@ export class AbilityVfxSystem {
         ${GLSL_NOISE_LIB}
 
         void main() {
-          float headReveal = 1.0 - smoothstep(uProgress * 2.1 - 0.35, uProgress * 2.1, vUv.y);
+          float headReveal = 1.0 - smoothstep(uProgress * 2.2 - 0.35, uProgress * 2.2, vUv.y);
           float dissolveCut = smoothstep(0.55, 1.0, uProgress);
-          float n = vfxFbm(vec2(vUv.x * 4.5 + uTime * 0.8, vUv.y * uFreq - uTime * uSpeed));
-          float ends = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
+          float n = vfxFbm(vec2(vUv.x * 4.5 + uTime * 0.9, vUv.y * uFreq - uTime * uSpeed));
+          float ends = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.84, vUv.y);
           float facing = abs(dot(normalize(vViewNormal), normalize(vViewDir)));
-          float coreMask = smoothstep(0.45, 0.92, facing + n * 0.22);
-          float streak = smoothstep(0.18 + dissolveCut * 0.72, 0.95, n + facing * 0.45);
+          float coreMask = smoothstep(0.42, 0.9, facing + n * 0.24);
+          float streak = smoothstep(0.16 + dissolveCut * 0.72, 0.94, n + facing * 0.48);
           float alpha = headReveal * ends * streak * (1.0 - dissolveCut * 0.85);
-          vec3 col = mix(uOuterColor, uCoreColor, coreMask);
-          gl_FragColor = vec4(col * (1.25 + coreMask * 0.9), clamp(alpha * 1.15, 0.0, 1.0));
+          vec3 col = mix(uOuterColor * 1.25, uCoreColor * 2.15, coreMask);
+          gl_FragColor = vec4(col, clamp(alpha * 1.2, 0.0, 1.0));
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+  }
+
+  private createScorchCraterMaterial(): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uProgress: { value: 0 },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uProgress;
+        varying vec2 vUv;
+        ${GLSL_NOISE_LIB}
+
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          float n = vfxFbm(p * 4.2);
+          float fadeIn = smoothstep(0.0, 0.12, uProgress);
+          float fadeOut = 1.0 - smoothstep(0.58, 1.0, uProgress);
+          float crater = (1.0 - smoothstep(0.18, 0.78 + n * 0.18, r)) * 0.72;
+          gl_FragColor = vec4(0.04, 0.025, 0.06, crater * fadeIn * fadeOut);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      side: THREE.DoubleSide,
+    });
+  }
+
+  private createLightPoolMaterial(colorHex: number): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uProgress: { value: 0 },
+        uColor: { value: new THREE.Color(colorHex) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uProgress;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        void main() {
+          float r = length(vUv * 2.0 - 1.0);
+          float falloff = pow(max(0.0, 1.0 - r), 2.2);
+          float env = smoothstep(0.0, 0.14, uProgress) * (1.0 - smoothstep(0.35, 1.0, uProgress));
+          gl_FragColor = vec4(uColor * 1.45, falloff * env * 0.65);
         }
       `,
       transparent: true,
@@ -232,7 +333,7 @@ export class AbilityVfxSystem {
           vec2 p = vUv * 2.0 - 1.0;
           float r = length(p);
           float a = atan(p.y, p.x);
-          float fadeIn = smoothstep(0.0, 0.16, uProgress);
+          float fadeIn = smoothstep(0.0, 0.15, uProgress);
           float fadeOut = 1.0 - smoothstep(0.55, 1.0, uProgress);
           float lifeMask = fadeIn * fadeOut;
           float outerMask = 1.0 - smoothstep(0.86, 1.0, r);
@@ -241,38 +342,77 @@ export class AbilityVfxSystem {
           float coreMix = 0.0;
 
           if (uMode == 0) {
-            // Arcane geometric casting rune circle
-            float ring1 = smoothstep(0.05, 0.0, abs(r - 0.84));
-            float ring2 = smoothstep(0.045, 0.0, abs(r - 0.56));
+            float ring1 = smoothstep(0.055, 0.0, abs(r - 0.84));
+            float ring2 = smoothstep(0.048, 0.0, abs(r - 0.56));
             float ring3 = smoothstep(0.035, 0.0, abs(r - 0.28));
-            float segs = step(0.25, sin(a * 8.0 + uTime * 3.4));
-            float tri1 = smoothstep(0.08, 0.0, abs(r - (0.58 + 0.18 * cos(a * 3.0 - uTime * 2.2))));
-            float tri2 = smoothstep(0.08, 0.0, abs(r - (0.58 + 0.18 * cos(a * 3.0 + uTime * 2.2 + 3.14159))));
-            float glow = (1.0 - smoothstep(0.0, 0.85, r)) * 0.28;
-            intensity = ring1 * (0.65 + 0.35 * segs) + ring2 + ring3 + (tri1 + tri2) * 0.75 + glow;
-            coreMix = clamp(ring1 + tri1 * 0.5, 0.0, 1.0);
+            float segs = step(0.22, sin(a * 8.0 + uTime * 3.8));
+            float tri1 = smoothstep(0.08, 0.0, abs(r - (0.58 + 0.18 * cos(a * 3.0 - uTime * 2.4))));
+            float tri2 = smoothstep(0.08, 0.0, abs(r - (0.58 + 0.18 * cos(a * 3.0 + uTime * 2.4 + 3.14159))));
+            float glow = (1.0 - smoothstep(0.0, 0.85, r)) * 0.32;
+            intensity = ring1 * (0.65 + 0.45 * segs) + ring2 + ring3 + (tri1 + tri2) * 0.8 + glow;
+            coreMix = clamp(ring1 + tri1 * 0.55, 0.0, 1.0);
           } else if (uMode == 1) {
-            // Expanding plasma shockwave ring
-            float expand = mix(0.18, 0.9, pow(uProgress, 0.55));
+            float expand = mix(0.16, 0.92, pow(uProgress, 0.52));
             float n = vfxFbm(vec2(a * 2.5 + uTime * 0.5, r * 7.0 - uTime * 6.0));
             float ring = smoothstep(0.14, 0.0, abs(r - expand + (n - 0.5) * 0.08));
-            float innerWave = smoothstep(0.09, 0.0, abs(r - expand * 0.62)) * 0.65;
-            intensity = (ring * 1.4 + innerWave + (1.0 - smoothstep(0.0, expand, r)) * 0.22);
+            float innerWave = smoothstep(0.09, 0.0, abs(r - expand * 0.62)) * 0.72;
+            intensity = (ring * 1.55 + innerWave + (1.0 - smoothstep(0.0, expand, r)) * 0.22);
             coreMix = clamp(ring, 0.0, 1.0);
           } else {
-            // Ground fissure cracks radiating from impact center
             float n = vfxFbm(p * 4.5 + vec2(0.0, uTime * 0.35));
             float crackRay = pow(max(0.0, 1.0 - abs(sin(a * 5.0 + n * 3.8))), 6.0);
             float crackRay2 = pow(max(0.0, 1.0 - abs(cos(a * 3.0 - n * 3.1))), 8.0);
-            float radialSpread = 1.0 - smoothstep(uProgress * 1.15 - 0.2, uProgress * 1.15 + 0.08, r);
+            float radialSpread = 1.0 - smoothstep(uProgress * 1.18 - 0.2, uProgress * 1.18 + 0.08, r);
             float centerFlash = (1.0 - smoothstep(0.0, 0.38, r)) * (1.0 - uProgress * 0.6);
-            intensity = ((crackRay + crackRay2 * 0.8) * radialSpread * 1.55 + centerFlash * 0.9);
-            coreMix = clamp(crackRay * 0.7 + centerFlash, 0.0, 1.0);
+            intensity = ((crackRay + crackRay2 * 0.85) * radialSpread * 1.7 + centerFlash * 1.05);
+            coreMix = clamp(crackRay * 0.75 + centerFlash, 0.0, 1.0);
           }
 
-          vec3 col = mix(uOuterColor, uCoreColor, coreMix);
+          vec3 col = mix(uOuterColor * 1.25, uCoreColor * 2.0, coreMix);
           float alpha = clamp(intensity * outerMask * lifeMask, 0.0, 1.0);
-          gl_FragColor = vec4(col * 1.3, alpha);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+  }
+
+  private createAccretionDiskMaterial(coreHex: number, outerHex: number): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uProgress: { value: 0 },
+        uCoreColor: { value: new THREE.Color(coreHex) },
+        uOuterColor: { value: new THREE.Color(outerHex) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vLocalPos;
+        void main() {
+          vLocalPos = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uProgress;
+        uniform vec3 uCoreColor;
+        uniform vec3 uOuterColor;
+        varying vec3 vLocalPos;
+        ${GLSL_NOISE_LIB}
+
+        void main() {
+          float r = length(vLocalPos.xz);
+          float a = atan(vLocalPos.z, vLocalPos.x);
+          float spiral = sin(a * 4.0 + log(max(0.15, r)) * 9.0 - uTime * 11.0);
+          float n = vfxFbm(vec2(a * 2.0 - uTime * 2.5, r * 4.0));
+          float band = smoothstep(0.28, 0.55, r) * (1.0 - smoothstep(0.95, 1.35, r));
+          float fade = smoothstep(0.0, 0.14, uProgress) * (1.0 - smoothstep(0.62, 1.0, uProgress));
+          float hot = clamp((spiral * 0.5 + 0.5) * 0.7 + n * 0.45, 0.0, 1.0);
+          vec3 col = mix(uOuterColor * 1.2, uCoreColor * 2.1, hot);
+          gl_FragColor = vec4(col, clamp(band * (0.55 + hot * 0.7) * fade, 0.0, 1.0));
         }
       `,
       transparent: true,
@@ -332,16 +472,15 @@ export class AbilityVfxSystem {
           float fadeOut = 1.0 - smoothstep(0.68, 1.0, uProgress);
 
           if (uInvertCore > 0.5) {
-            // Singularity void core: dark abyssal center + blazing event horizon rim
-            vec3 voidCol = vec3(0.03, 0.02, 0.06);
-            vec3 rimCol = mix(uOuterColor, uCoreColor, smoothstep(0.4, 0.95, rim + n * 0.25));
-            vec3 col = mix(voidCol, rimCol * 1.6, smoothstep(0.25, 0.9, rim + n * 0.15));
-            float alpha = clamp((0.75 + rim * 0.5) * fadeOut, 0.0, 1.0);
+            vec3 voidCol = vec3(0.02, 0.015, 0.05);
+            vec3 rimCol = mix(uOuterColor * 1.35, uCoreColor * 2.2, smoothstep(0.4, 0.95, rim + n * 0.25));
+            vec3 col = mix(voidCol, rimCol, smoothstep(0.25, 0.9, rim + n * 0.15));
+            float alpha = clamp((0.82 + rim * 0.45) * fadeOut, 0.0, 1.0);
             gl_FragColor = vec4(col, alpha);
           } else {
-            vec3 col = mix(uOuterColor, uCoreColor, clamp(ndotv * 0.75 + n * 0.4, 0.0, 1.0));
+            vec3 col = mix(uOuterColor * 1.25, uCoreColor * 2.1, clamp(ndotv * 0.75 + n * 0.4, 0.0, 1.0));
             float alpha = clamp((0.55 + rim * 0.75 + n * 0.25) * fadeOut, 0.0, 1.0);
-            gl_FragColor = vec4(col * (1.15 + rim * 0.6), alpha);
+            gl_FragColor = vec4(col, alpha);
           }
         }
       `,
@@ -376,17 +515,17 @@ export class AbilityVfxSystem {
 
         void main() {
           float r = length(vLocalPos);
-          float a = atan(vLocalPos.y, vLocalPos.x); // -0.62*PI .. +0.62*PI
+          float a = atan(vLocalPos.y, vLocalPos.x);
           float normA = clamp((a + 1.95) / 3.9, 0.0, 1.0);
-          float band = smoothstep(0.48, 0.82, r) * (1.0 - smoothstep(0.84, 1.0, r));
+          float band = smoothstep(0.46, 0.82, r) * (1.0 - smoothstep(0.84, 1.0, r));
           float sweep = smoothstep(uProgress * 1.25 - 0.55, uProgress * 1.25, normA) *
                         (1.0 - smoothstep(uProgress * 1.25, uProgress * 1.25 + 0.14, normA));
           float n = vfxFbm(vec2(normA * 6.0 - uTime * 3.0, r * 5.0));
-          float fade = 1.0 - smoothstep(0.65, 1.0, uProgress);
-          float core = smoothstep(0.7, 0.94, r + n * 0.12);
-          vec3 col = mix(uOuterColor, uCoreColor, core);
+          float fade = 1.0 - smoothstep(0.62, 1.0, uProgress);
+          float core = smoothstep(0.68, 0.94, r + n * 0.12);
+          vec3 col = mix(uOuterColor * 1.3, uCoreColor * 2.3, core);
           float alpha = clamp((band * (0.45 + sweep * 0.95) + n * 0.2 * band) * fade, 0.0, 1.0);
-          gl_FragColor = vec4(col * 1.5, alpha);
+          gl_FragColor = vec4(col, alpha);
         }
       `,
       transparent: true,
@@ -428,13 +567,13 @@ export class AbilityVfxSystem {
 
         void main() {
           float ndotv = abs(dot(normalize(vViewNormal), normalize(vViewDir)));
-          float rim = pow(1.0 - ndotv, 1.7);
-          float veins = vfxFbm(vec2(vUv.x * 5.0, vUv.y * 7.0 - uTime * 2.5));
-          float tipGlow = smoothstep(0.35, 1.0, vUv.y);
-          float dissolve = smoothstep(0.58, 1.0, uProgress);
+          float rim = pow(1.0 - ndotv, 1.65);
+          float veins = vfxFbm(vec2(vUv.x * 5.0, vUv.y * 7.0 - uTime * 2.8));
+          float tipGlow = smoothstep(0.32, 1.0, vUv.y);
+          float dissolve = smoothstep(0.56, 1.0, uProgress);
           float alpha = clamp((0.55 + rim * 0.65) * (1.0 - dissolve), 0.0, 1.0);
-          vec3 col = mix(uOuterColor, uCoreColor, clamp(rim * 0.75 + tipGlow * 0.4 + veins * 0.25, 0.0, 1.0));
-          gl_FragColor = vec4(col * 1.3, alpha);
+          vec3 col = mix(uOuterColor * 1.2, uCoreColor * 2.15, clamp(rim * 0.75 + tipGlow * 0.45 + veins * 0.25, 0.0, 1.0));
+          gl_FragColor = vec4(col, alpha);
         }
       `,
       transparent: true,
@@ -468,12 +607,12 @@ export class AbilityVfxSystem {
         ${GLSL_NOISE_LIB}
 
         void main() {
-          float spiral = vfxFbm(vec2(vUv.x * 4.0 + vUv.y * 3.0 - uTime * 4.5, vUv.y * 5.0 - uTime * 3.2));
-          float ribbons = smoothstep(0.36, 0.82, spiral);
+          float spiral = vfxFbm(vec2(vUv.x * 4.0 + vUv.y * 3.0 - uTime * 4.8, vUv.y * 5.0 - uTime * 3.4));
+          float ribbons = smoothstep(0.34, 0.82, spiral);
           float ends = smoothstep(0.0, 0.14, vUv.y) * smoothstep(1.0, 0.72, vUv.y);
           float fadeOut = 1.0 - smoothstep(0.6, 1.0, uProgress);
-          vec3 col = mix(uOuterColor, uCoreColor, smoothstep(0.55, 0.9, spiral));
-          gl_FragColor = vec4(col * 1.4, clamp(ribbons * ends * fadeOut * 1.2, 0.0, 1.0));
+          vec3 col = mix(uOuterColor * 1.25, uCoreColor * 2.0, smoothstep(0.55, 0.9, spiral));
+          gl_FragColor = vec4(col, clamp(ribbons * ends * fadeOut * 1.2, 0.0, 1.0));
         }
       `,
       transparent: true,
@@ -517,7 +656,6 @@ export class AbilityVfxSystem {
         ptsOut?.push(p);
       }
 
-      // Build two perpendicular crossed ribbons so lightning reads crisply from every angle
       for (let pass = 0; pass < 2; pass++) {
         const baseVert = positions.length / 3;
         for (let i = 0; i <= segs; i++) {
@@ -562,12 +700,15 @@ export class AbilityVfxSystem {
     appendBoltStrip(from, to, segments, jitter, halfWidth, mainPts);
 
     for (let b = 0; b < branchCount; b++) {
-      const idx = Math.max(1, Math.min(mainPts.length - 2, Math.floor((0.25 + b * 0.25) * mainPts.length)));
+      const idx = Math.max(
+        1,
+        Math.min(mainPts.length - 2, Math.floor(((b + 1) / (branchCount + 1)) * mainPts.length))
+      );
       const anchor = mainPts[idx];
       _tmpEnd.set(
-        anchor.x + (Math.random() - 0.5) * 1.4,
-        anchor.y - 0.35 + (Math.random() - 0.5) * 0.9,
-        anchor.z + (Math.random() - 0.5) * 1.4
+        anchor.x + (Math.random() - 0.5) * 1.5,
+        anchor.y - 0.3 + (Math.random() - 0.5) * 0.9,
+        anchor.z + (Math.random() - 0.5) * 1.5
       );
       appendBoltStrip(anchor, _tmpEnd, 6, jitter * 0.55, halfWidth * 0.55);
     }
@@ -604,14 +745,14 @@ export class AbilityVfxSystem {
 
         void main() {
           float distFromCenter = abs(vUv.y - 0.5) * 2.0;
-          float core = 1.0 - smoothstep(0.05, 0.38, distFromCenter);
-          float halo = 1.0 - smoothstep(0.1, 1.0, distFromCenter);
-          float reveal = 1.0 - smoothstep(uProgress * 2.6 - 0.25, uProgress * 2.6, vUv.x);
-          float flicker = 0.72 + 0.28 * sin(uTime * 68.0 + vUv.x * 24.0);
-          float fade = 1.0 - smoothstep(0.48, 1.0, uProgress);
-          vec3 col = mix(uOuterColor, uCoreColor, core);
-          float alpha = clamp((halo * 0.9 + core * 0.8) * reveal * flicker * fade, 0.0, 1.0);
-          gl_FragColor = vec4(col * (1.4 + core * 1.1), alpha);
+          float core = 1.0 - smoothstep(0.05, 0.36, distFromCenter);
+          float halo = 1.0 - smoothstep(0.08, 1.0, distFromCenter);
+          float reveal = 1.0 - smoothstep(uProgress * 2.8 - 0.25, uProgress * 2.8, vUv.x);
+          float flicker = 0.72 + 0.28 * sin(uTime * 72.0 + vUv.x * 26.0);
+          float fade = 1.0 - smoothstep(0.45, 1.0, uProgress);
+          vec3 col = mix(uOuterColor * 1.4, uCoreColor * 2.4, core);
+          float alpha = clamp((halo * 0.9 + core * 0.9) * reveal * flicker * fade, 0.0, 1.0);
+          gl_FragColor = vec4(col, alpha);
         }
       `,
       transparent: true,
@@ -629,16 +770,18 @@ export class AbilityVfxSystem {
     life: number,
     colors: TypeColorPair,
     mode: 'rune' | 'shockwave' | 'fissure',
-    spinSpeed = 1.2
+    spinSpeed = 1.2,
+    delay = 0
   ): void {
     const mat = this.createGroundDecalMaterial(colors.core, colors.outer, mode);
     const mesh = new THREE.Mesh(this.unitPlaneGeo, mat);
-    mesh.position.set(x, groundY + 0.045, z);
+    mesh.position.set(x, groundY + (mode === 'fissure' ? 0.048 : 0.042), z);
     mesh.scale.setScalar(0.15);
 
     this.addItem({
       object: mesh,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [],
@@ -653,36 +796,145 @@ export class AbilityVfxSystem {
     });
   }
 
+  private spawnScorchCrater(
+    x: number,
+    groundY: number,
+    z: number,
+    maxScale: number,
+    life: number,
+    delay = 0
+  ): void {
+    const mat = this.createScorchCraterMaterial();
+    const mesh = new THREE.Mesh(this.unitPlaneGeo, mat);
+    mesh.position.set(x, groundY + 0.032, z);
+    mesh.scale.setScalar(maxScale * 0.5);
+
+    this.addItem({
+      object: mesh,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      onUpdate: (t) => {
+        mesh.scale.setScalar(maxScale * (0.55 + 0.45 * Math.min(1, t * 4)));
+      },
+    });
+  }
+
+  private spawnLightPool(
+    x: number,
+    groundY: number,
+    z: number,
+    scale: number,
+    life: number,
+    colorHex: number,
+    delay = 0
+  ): void {
+    const mat = this.createLightPoolMaterial(colorHex);
+    const mesh = new THREE.Mesh(this.unitPlaneGeo, mat);
+    mesh.position.set(x, groundY + 0.038, z);
+    mesh.scale.setScalar(scale);
+
+    this.addItem({
+      object: mesh,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      onUpdate: (t) => {
+        mesh.scale.setScalar(scale * (0.8 + 0.35 * Math.sin(t * Math.PI)));
+      },
+    });
+  }
+
   private spawnLinearBeam(
     from: THREE.Vector3,
     to: THREE.Vector3,
     radius: number,
     life: number,
     colors: TypeColorPair,
-    speed = 8.0
+    speed = 8.5,
+    delay = 0,
+    withHelix = true
   ): void {
     _dir.subVectors(to, from);
     const dist = Math.max(0.2, _dir.length());
     _dir.normalize();
     _mid.addVectors(from, to).multiplyScalar(0.5);
 
-    const mat = this.createBeamMaterial(colors.core, colors.outer, speed, 5.5);
-    const mesh = new THREE.Mesh(this.unitBeamGeo, mat);
-    mesh.position.copy(_mid);
-    mesh.quaternion.setFromUnitVectors(_up, _dir);
-    mesh.scale.set(radius, dist, radius);
+    const group = new THREE.Group();
+    group.position.copy(_mid);
+    group.quaternion.setFromUnitVectors(_up, _dir);
+
+    const beamMat = this.createBeamMaterial(colors.core, colors.outer, speed, 5.5);
+    const beamMesh = new THREE.Mesh(this.unitBeamGeo, beamMat);
+    beamMesh.scale.set(radius, dist, radius);
+    group.add(beamMesh);
+
+    const mats: THREE.ShaderMaterial[] = [beamMat];
+    let helixMesh: THREE.Mesh | null = null;
+    if (withHelix && this.qualityTier !== 'low') {
+      const helixMat = this.createBeamMaterial(colors.core, colors.accent, speed * 1.25, 4.0);
+      helixMesh = new THREE.Mesh(this.unitHelixGeo, helixMat);
+      helixMesh.scale.set(radius * 1.15, dist, radius * 1.15);
+      group.add(helixMesh);
+      mats.push(helixMat);
+    }
 
     this.addItem({
-      object: mesh,
-      age: 0,
+      object: group,
+      elapsed: 0,
+      delay,
       life,
-      materials: [mat],
+      materials: mats,
       ownedGeometries: [],
-      onUpdate: (t) => {
-        const widthPulse = 1.0 - t * 0.35 + Math.sin(t * Math.PI * 5) * 0.08;
-        mesh.scale.set(radius * widthPulse, dist, radius * widthPulse);
+      onUpdate: (t, dt) => {
+        const widthPulse = 1.0 - t * 0.32 + Math.sin(t * Math.PI * 5) * 0.08;
+        beamMesh.scale.set(radius * widthPulse, dist, radius * widthPulse);
+        if (helixMesh) {
+          helixMesh.rotation.y += dt * 14;
+          helixMesh.scale.set(radius * 1.15 * widthPulse, dist, radius * 1.15 * widthPulse);
+        }
       },
     });
+  }
+
+  private spawnGateRings(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    count: number,
+    radius: number,
+    life: number,
+    colors: TypeColorPair,
+    baseDelay = 0.04
+  ): void {
+    if (this.qualityTier === 'low') return;
+    _dir.subVectors(to, from).normalize();
+    for (let i = 0; i < count; i++) {
+      const frac = (i + 1) / (count + 1);
+      _gatePos.lerpVectors(from, to, frac);
+      const mat = this.createBeamMaterial(colors.core, colors.outer, 6.0, 3.0);
+      const mesh = new THREE.Mesh(this.unitTorusGeo, mat);
+      mesh.position.copy(_gatePos);
+      mesh.quaternion.setFromUnitVectors(_up, _dir);
+      mesh.scale.setScalar(radius * 0.35);
+
+      this.addItem({
+        object: mesh,
+        elapsed: 0,
+        delay: baseDelay + i * 0.045,
+        life,
+        materials: [mat],
+        ownedGeometries: [],
+        onUpdate: (t, dt) => {
+          const s = radius * (0.45 + 0.75 * Math.pow(t, 0.45));
+          mesh.scale.setScalar(s);
+          mesh.rotateY(dt * 8);
+        },
+      });
+    }
   }
 
   private spawnProjectileOrb(
@@ -692,9 +944,10 @@ export class AbilityVfxSystem {
     life: number,
     colors: TypeColorPair,
     arcHeight = 0.35,
-    invertCore = false
+    invertCore = false,
+    delay = 0
   ): void {
-    const mat = this.createOrbMaterial(colors.core, colors.outer, 0.09, invertCore);
+    const mat = this.createOrbMaterial(colors.core, colors.outer, 0.095, invertCore);
     const mesh = new THREE.Mesh(this.unitOrbGeo, mat);
     mesh.position.copy(from);
     mesh.scale.setScalar(radius);
@@ -703,16 +956,17 @@ export class AbilityVfxSystem {
     const target = to.clone();
     this.addItem({
       object: mesh,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [],
       onUpdate: (t, dt) => {
-        const travelT = Math.min(1, t / 0.78);
+        const travelT = Math.min(1, t / 0.76);
         mesh.position.lerpVectors(f, target, travelT);
         mesh.position.y += Math.sin(travelT * Math.PI) * arcHeight;
-        mesh.rotation.y += dt * 7;
-        const burstScale = t > 0.78 ? radius * (1 + ((t - 0.78) / 0.22) * 1.4) : radius;
+        mesh.rotation.y += dt * 8;
+        const burstScale = t > 0.76 ? radius * (1 + ((t - 0.76) / 0.24) * 1.55) : radius;
         mesh.scale.setScalar(burstScale);
       },
     });
@@ -723,23 +977,25 @@ export class AbilityVfxSystem {
     maxRadius: number,
     life: number,
     colors: TypeColorPair,
-    invertCore = false
+    invertCore = false,
+    delay = 0
   ): void {
-    const mat = this.createOrbMaterial(colors.core, colors.outer, 0.06, invertCore);
+    const mat = this.createOrbMaterial(colors.core, colors.outer, 0.065, invertCore);
     const mesh = new THREE.Mesh(this.unitOrbGeo, mat);
     mesh.position.copy(pos);
     mesh.scale.setScalar(0.15);
 
     this.addItem({
       object: mesh,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [],
       onUpdate: (t, dt) => {
         const s = maxRadius * (0.2 + 0.8 * Math.pow(t, 0.42));
         mesh.scale.setScalar(s);
-        mesh.rotation.y += dt * 4;
+        mesh.rotation.y += dt * 5;
       },
     });
   }
@@ -750,7 +1006,8 @@ export class AbilityVfxSystem {
     tiltX: number,
     tiltZ: number,
     life: number,
-    colors: TypeColorPair
+    colors: TypeColorPair,
+    delay = 0
   ): void {
     const mat = this.createSlashMaterial(colors.core, colors.outer);
     const mesh = new THREE.Mesh(this.unitSlashGeo, mat);
@@ -760,13 +1017,14 @@ export class AbilityVfxSystem {
 
     this.addItem({
       object: mesh,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [],
       onUpdate: (t, dt) => {
-        mesh.scale.setScalar(scale * (0.72 + 0.45 * Math.pow(t, 0.45)));
-        mesh.rotation.z += dt * 9.5;
+        mesh.scale.setScalar(scale * (0.72 + 0.48 * Math.pow(t, 0.45)));
+        mesh.rotation.z += dt * 10.5;
       },
     });
   }
@@ -779,7 +1037,8 @@ export class AbilityVfxSystem {
     maxHeight: number,
     radiusSpread: number,
     life: number,
-    colors: TypeColorPair
+    colors: TypeColorPair,
+    delay = 0
   ): void {
     const actualCount =
       this.qualityTier === 'high'
@@ -795,10 +1054,11 @@ export class AbilityVfxSystem {
 
     for (let i = 0; i < actualCount; i++) {
       const a = (i / actualCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
-      const dist = i === 0 && actualCount >= 3 ? 0.15 : radiusSpread * (0.55 + Math.random() * 0.45);
+      const dist =
+        i === 0 && actualCount >= 3 ? 0.14 : radiusSpread * (0.52 + Math.random() * 0.48);
       const spire = new THREE.Mesh(this.unitConeGeo, mat);
       spire.position.set(Math.cos(a) * dist, -0.04, Math.sin(a) * dist);
-      spire.rotation.set((Math.random() - 0.5) * 0.42, a, (Math.random() - 0.5) * 0.42);
+      spire.rotation.set((Math.random() - 0.5) * 0.44, a, (Math.random() - 0.5) * 0.44);
       const targetH = maxHeight * (0.72 + Math.random() * 0.45);
       const baseW = 0.65 + Math.random() * 0.45;
       spire.scale.set(baseW, 0.05, baseW);
@@ -808,15 +1068,78 @@ export class AbilityVfxSystem {
 
     this.addItem({
       object: cluster,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [],
       onUpdate: (t) => {
-        const rise = Math.min(1, Math.pow(t * 3.8, 0.55));
-        const shrink = t > 0.65 ? 1 - ((t - 0.65) / 0.35) * 0.35 : 1;
+        const rise = Math.min(1, Math.pow(t * 4.0, 0.52));
+        const shrink = t > 0.65 ? 1 - ((t - 0.65) / 0.35) * 0.38 : 1;
         for (const s of spires) {
           s.mesh.scale.set(s.baseW * shrink, s.targetH * rise, s.baseW * shrink);
+        }
+      },
+    });
+  }
+
+  private spawnDebrisShards(
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    count: number,
+    life: number,
+    colors: TypeColorPair,
+    delay = 0
+  ): void {
+    const actualCount =
+      this.qualityTier === 'high' ? count : this.qualityTier === 'medium' ? Math.ceil(count * 0.6) : 2;
+    const group = new THREE.Group();
+    const mat = this.createSpireMaterial(colors.core, colors.outer);
+    const shards: Array<{
+      mesh: THREE.Mesh;
+      vx: number;
+      vy: number;
+      vz: number;
+      spinX: number;
+      spinY: number;
+    }> = [];
+
+    for (let i = 0; i < actualCount; i++) {
+      const a = (i / actualCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const spd = 1.6 + Math.random() * 2.2;
+      const mesh = new THREE.Mesh(this.unitShardGeo, mat);
+      mesh.position.set(centerX, groundY + 0.35, centerZ);
+      mesh.scale.setScalar(0.75 + Math.random() * 0.7);
+      group.add(mesh);
+      shards.push({
+        mesh,
+        vx: Math.cos(a) * spd,
+        vy: 2.8 + Math.random() * 2.5,
+        vz: Math.sin(a) * spd,
+        spinX: (Math.random() - 0.5) * 14,
+        spinY: (Math.random() - 0.5) * 14,
+      });
+    }
+
+    this.addItem({
+      object: group,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      onUpdate: (t, dt) => {
+        for (const s of shards) {
+          s.vy -= 9.5 * dt;
+          s.mesh.position.x += s.vx * dt;
+          s.mesh.position.y = Math.max(groundY + 0.06, s.mesh.position.y + s.vy * dt);
+          s.mesh.position.z += s.vz * dt;
+          s.mesh.rotation.x += s.spinX * dt;
+          s.mesh.rotation.y += s.spinY * dt;
+          if (t > 0.65) {
+            s.mesh.scale.setScalar(Math.max(0.05, 1 - (t - 0.65) / 0.35));
+          }
         }
       },
     });
@@ -829,7 +1152,8 @@ export class AbilityVfxSystem {
     radius: number,
     height: number,
     life: number,
-    colors: TypeColorPair
+    colors: TypeColorPair,
+    delay = 0
   ): void {
     const mat = this.createVortexMaterial(colors.core, colors.outer);
     const mesh = new THREE.Mesh(this.unitVortexGeo, mat);
@@ -838,14 +1162,15 @@ export class AbilityVfxSystem {
 
     this.addItem({
       object: mesh,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [],
       onUpdate: (t, dt) => {
-        const grow = Math.min(1, Math.pow(t * 2.6, 0.55));
+        const grow = Math.min(1, Math.pow(t * 2.8, 0.52));
         mesh.scale.set(radius * grow, height * grow, radius * grow);
-        mesh.rotation.y += dt * 8.5;
+        mesh.rotation.y += dt * 9.5;
       },
     });
   }
@@ -855,16 +1180,18 @@ export class AbilityVfxSystem {
     to: THREE.Vector3,
     life: number,
     colors: TypeColorPair,
-    branches = 3
+    branches = 3,
+    delay = 0
   ): void {
     const actualBranches = this.qualityTier === 'low' ? 1 : branches;
-    const geo = this.buildLightningGeometry(from, to, 12, 0.58, 0.085, actualBranches);
+    const geo = this.buildLightningGeometry(from, to, 14, 0.62, 0.09, actualBranches);
     const mat = this.createLightningMaterial(colors.core, colors.outer);
     const mesh = new THREE.Mesh(geo, mat);
 
     this.addItem({
       object: mesh,
-      age: 0,
+      elapsed: 0,
+      delay,
       life,
       materials: [mat],
       ownedGeometries: [geo],
@@ -872,28 +1199,37 @@ export class AbilityVfxSystem {
     });
   }
 
-  private spawnAccretionTorus(
+  private spawnAccretionDisk(
     pos: THREE.Vector3,
     maxScale: number,
     life: number,
-    colors: TypeColorPair
+    colors: TypeColorPair,
+    delay = 0
   ): void {
-    const mat = this.createBeamMaterial(colors.core, colors.outer, 6.0, 4.0);
-    const mesh = new THREE.Mesh(this.unitTorusGeo, mat);
-    mesh.position.copy(pos);
-    mesh.rotation.set(0.32, 0, -0.22);
-    mesh.scale.setScalar(0.3);
+    const group = new THREE.Group();
+    group.position.copy(pos);
+    group.rotation.set(0.32, 0, -0.22);
+
+    const diskMat = this.createAccretionDiskMaterial(colors.core, colors.outer);
+    const diskMesh = new THREE.Mesh(this.unitAccretionGeo, diskMat);
+    group.add(diskMesh);
+
+    const haloMat = this.createBeamMaterial(colors.core, colors.accent, 6.5, 4.0);
+    const haloMesh = new THREE.Mesh(this.unitTorusGeo, haloMat);
+    group.add(haloMesh);
 
     this.addItem({
-      object: mesh,
-      age: 0,
+      object: group,
+      elapsed: 0,
+      delay,
       life,
-      materials: [mat],
+      materials: [diskMat, haloMat],
       ownedGeometries: [],
       onUpdate: (t, dt) => {
-        const s = maxScale * (0.4 + 0.6 * Math.sin(Math.min(1, t * 1.4) * Math.PI * 0.5));
-        mesh.scale.setScalar(s);
-        mesh.rotation.y += dt * 10;
+        const s = maxScale * (0.35 + 0.65 * Math.sin(Math.min(1, t * 1.45) * Math.PI * 0.5));
+        group.scale.setScalar(s);
+        diskMesh.rotation.y += dt * 8;
+        haloMesh.rotation.y -= dt * 11;
       },
     });
   }
@@ -907,117 +1243,153 @@ export class AbilityVfxSystem {
   ): void {
     const colors = getTypeColors(type);
     const power = opts?.power ?? (category === 'status' ? 0 : 60);
-    const intensity = power >= 90 ? 1.3 : power >= 70 ? 1.12 : 0.95;
+    const isHeavy = power >= 80;
+    const intensity = power >= 90 ? 1.32 : power >= 70 ? 1.14 : 0.95;
     const fromGroundY = opts?.fromGroundY ?? Math.max(0, from.y - 0.55);
     const toGroundY = opts?.toGroundY ?? Math.max(0, to.y - 0.55);
 
     if (category === 'status') {
-      // Arcane casting rune circle under caster + ascending soul aura vortex
-      this.spawnGroundDecal(from.x, fromGroundY, from.z, 2.35, 0.72, colors, 'rune', 1.8);
-      this.spawnVortexCone(from.x, fromGroundY, from.z, 0.85, 1.85, 0.62, colors);
-      this.spawnGroundDecal(to.x, toGroundY, to.z, 1.85, 0.6, colors, 'shockwave', -1.2);
+      this.spawnGroundDecal(from.x, fromGroundY, from.z, 2.45, 0.74, colors, 'rune', 1.9, 0);
+      this.spawnLightPool(from.x, fromGroundY, from.z, 2.2, 0.62, colors.outer, 0.04);
+      this.spawnVortexCone(from.x, fromGroundY, from.z, 0.88, 1.95, 0.64, colors, 0.04);
+      this.spawnGroundDecal(to.x, toGroundY, to.z, 1.9, 0.58, colors, 'shockwave', -1.2, 0.14);
       return;
     }
 
-    // Caster ground rune sigil for special attacks
+    // Phase 1: Casting sigil + muzzle light pulse for special attacks
     if (category === 'special') {
-      this.spawnGroundDecal(from.x, fromGroundY, from.z, 1.8 * intensity, 0.52, colors, 'rune', 2.4);
+      this.spawnGroundDecal(from.x, fromGroundY, from.z, 1.9 * intensity, 0.54, colors, 'rune', 2.5, 0);
+      this.spawnLightPool(from.x, fromGroundY, from.z, 1.8 * intensity, 0.42, colors.outer, 0);
     }
+
+    // Phase 2 & 3: Choreographed travel + delayed detonation
+    const impactDelay = category === 'special' ? 0.16 : 0.04;
 
     switch (type) {
       case 'brasa':
         if (category === 'special') {
-          this.spawnProjectileOrb(from, to, 0.42 * intensity, 0.5, colors, 0.45);
-          this.spawnLinearBeam(from, to, 1.1 * intensity, 0.46, colors, 9.0);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.8 * intensity, 0.72, colors, 'fissure', 0.4);
-          this.spawnImpactSphere(to, 1.25 * intensity, 0.42, colors);
+          if (isHeavy) {
+            // Overhead Meteor Comet slamming down onto target
+            _tmpStart.set(to.x - 1.2, to.y + 4.4, to.z + 0.8);
+            this.spawnProjectileOrb(_tmpStart, to, 0.55 * intensity, 0.36, colors, 0.25, false, 0.04);
+            this.spawnLinearBeam(_tmpStart, to, 1.25 * intensity, 0.42, colors, 10.5, 0.06, true);
+          } else {
+            this.spawnProjectileOrb(from, to, 0.42 * intensity, 0.44, colors, 0.48, false, 0.03);
+            this.spawnLinearBeam(from, to, 1.08 * intensity, 0.44, colors, 9.2, 0.04, true);
+          }
+          this.spawnScorchCrater(to.x, toGroundY, to.z, 2.75 * intensity, 0.88, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.9 * intensity, 0.74, colors, 'fissure', 0.3, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 3.0 * intensity, 0.58, colors.outer, impactDelay);
+          this.spawnImpactSphere(to, 1.3 * intensity, 0.44, colors, false, impactDelay);
+          this.spawnDebrisShards(to.x, toGroundY, to.z, 8, 0.62, colors, impactDelay);
         } else {
-          this.spawnSlashArc(to, 1.25 * intensity, 0.65, -0.45, 0.36, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.3 * intensity, 0.56, colors, 'fissure', 0.6);
-          this.spawnImpactSphere(to, 1.0 * intensity, 0.34, colors);
+          this.spawnSlashArc(to, 1.28 * intensity, 0.65, -0.45, 0.36, colors, 0);
+          this.spawnScorchCrater(to.x, toGroundY, to.z, 2.1 * intensity, 0.68, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.35 * intensity, 0.56, colors, 'fissure', 0.6, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.3 * intensity, 0.45, colors.outer, impactDelay);
+          this.spawnDebrisShards(to.x, toGroundY, to.z, 5, 0.48, colors, impactDelay);
         }
         break;
 
       case 'marea':
         if (category === 'special') {
-          this.spawnLinearBeam(from, to, 1.35 * intensity, 0.54, colors, 9.5);
-          this.spawnEruptingSpires(to.x, toGroundY, to.z, 5, 1.45 * intensity, 0.65, 0.72, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.6 * intensity, 0.64, colors, 'shockwave', 1.2);
+          this.spawnLinearBeam(from, to, 1.32 * intensity, 0.52, colors, 9.8, 0.03, true);
+          this.spawnGateRings(from, to, 3, 0.72 * intensity, 0.38, colors, 0.03);
+          this.spawnEruptingSpires(to.x, toGroundY, to.z, 7, 1.55 * intensity, 0.72, 0.76, colors, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.7 * intensity, 0.66, colors, 'shockwave', 1.2, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.8 * intensity, 0.56, colors.outer, impactDelay);
+          this.spawnDebrisShards(to.x, toGroundY, to.z, 7, 0.55, colors, impactDelay + 0.06);
         } else {
-          this.spawnSlashArc(to, 1.25 * intensity, -0.5, 0.55, 0.36, colors);
-          this.spawnVortexCone(to.x, toGroundY, to.z, 0.95 * intensity, 1.65 * intensity, 0.52, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.3 * intensity, 0.52, colors, 'shockwave', 1.4);
+          this.spawnSlashArc(to, 1.28 * intensity, -0.5, 0.55, 0.36, colors, 0);
+          this.spawnVortexCone(to.x, toGroundY, to.z, 0.98 * intensity, 1.7 * intensity, 0.54, colors, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.35 * intensity, 0.54, colors, 'shockwave', 1.4, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.3 * intensity, 0.44, colors.outer, impactDelay);
         }
         break;
 
       case 'flora':
         if (category === 'special') {
-          this.spawnLinearBeam(from, to, 1.1 * intensity, 0.52, colors, 7.5);
-          this.spawnVortexCone(to.x, toGroundY, to.z, 1.05 * intensity, 1.9 * intensity, 0.68, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.5 * intensity, 0.68, colors, 'rune', -1.8);
+          this.spawnLinearBeam(from, to, 1.12 * intensity, 0.5, colors, 7.8, 0.03, true);
+          this.spawnVortexCone(to.x, toGroundY, to.z, 1.08 * intensity, 1.98 * intensity, 0.7, colors, impactDelay);
+          this.spawnEruptingSpires(to.x, toGroundY, to.z, 5, 1.15 * intensity, 0.65, 0.64, colors, impactDelay + 0.04);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.55 * intensity, 0.7, colors, 'rune', -1.8, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.5 * intensity, 0.55, colors.outer, impactDelay);
         } else {
-          this.spawnSlashArc(to, 1.2 * intensity, 0.55, 0.35, 0.34, colors);
-          this.spawnEruptingSpires(to.x, toGroundY, to.z, 4, 1.25 * intensity, 0.55, 0.58, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.1 * intensity, 0.52, colors, 'shockwave', 1.0);
+          this.spawnSlashArc(to, 1.22 * intensity, 0.55, 0.35, 0.34, colors, 0);
+          this.spawnEruptingSpires(to.x, toGroundY, to.z, 4, 1.28 * intensity, 0.55, 0.58, colors, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.15 * intensity, 0.52, colors, 'shockwave', 1.0, impactDelay);
         }
         break;
 
       case 'chispa':
         if (category === 'special') {
-          this.spawnLightningBolt(from, to, 0.42, colors, 3);
-          _tmpStart.set(to.x, to.y + 3.4, to.z);
-          this.spawnLightningBolt(_tmpStart, to, 0.48, colors, 2);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.7 * intensity, 0.58, colors, 'shockwave', 2.8);
-          this.spawnImpactSphere(to, 1.1 * intensity, 0.32, colors);
+          this.spawnLightningBolt(from, to, 0.4, colors, 4, 0.02);
+          _tmpStart.set(to.x, to.y + 4.4, to.z);
+          this.spawnLightningBolt(_tmpStart, to, 0.44, colors, 3, impactDelay * 0.7);
+          this.spawnScorchCrater(to.x, toGroundY, to.z, 2.4 * intensity, 0.75, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.8 * intensity, 0.6, colors, 'shockwave', 2.8, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 3.1 * intensity, 0.48, colors.outer, impactDelay);
+          this.spawnImpactSphere(to, 1.15 * intensity, 0.32, colors, false, impactDelay);
+          this.spawnDebrisShards(to.x, toGroundY, to.z, 6, 0.44, colors, impactDelay);
         } else {
-          this.spawnLightningBolt(from, to, 0.34, colors, 2);
-          this.spawnSlashArc(to, 1.2 * intensity, 0.35, -0.7, 0.32, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.2 * intensity, 0.48, colors, 'shockwave', 2.4);
+          this.spawnLightningBolt(from, to, 0.34, colors, 2, 0);
+          this.spawnSlashArc(to, 1.22 * intensity, 0.35, -0.7, 0.32, colors, 0.03);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.25 * intensity, 0.48, colors, 'shockwave', 2.4, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.3 * intensity, 0.38, colors.outer, impactDelay);
         }
         break;
 
       case 'roca':
-        this.spawnGroundDecal(to.x, toGroundY, to.z, 2.9 * intensity, 0.78, colors, 'fissure', 0.2);
-        this.spawnEruptingSpires(to.x, toGroundY, to.z, 5, 1.55 * intensity, 0.72, 0.72, colors);
         if (category === 'special') {
-          this.spawnProjectileOrb(from, to, 0.45 * intensity, 0.46, colors, 0.7);
-        } else {
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.4 * intensity, 0.5, colors, 'shockwave', 0.5);
+          this.spawnProjectileOrb(from, to, 0.48 * intensity, 0.42, colors, 0.78, false, 0.02);
         }
+        this.spawnScorchCrater(to.x, toGroundY, to.z, 2.8 * intensity, 0.92, impactDelay);
+        this.spawnGroundDecal(to.x, toGroundY, to.z, 2.95 * intensity, 0.78, colors, 'fissure', 0.2, impactDelay);
+        this.spawnEruptingSpires(to.x, toGroundY, to.z, 6, 1.65 * intensity, 0.75, 0.76, colors, impactDelay);
+        this.spawnLightPool(to.x, toGroundY, to.z, 2.6 * intensity, 0.5, colors.outer, impactDelay);
+        this.spawnDebrisShards(to.x, toGroundY, to.z, 8, 0.65, colors, impactDelay + 0.03);
         break;
 
       case 'brisa':
-        this.spawnSlashArc(to, 1.3 * intensity, 0.65, -0.5, 0.36, colors);
-        this.spawnSlashArc(to, 1.3 * intensity, -0.65, 0.5, 0.4, colors);
-        this.spawnVortexCone(to.x, toGroundY, to.z, 1.15 * intensity, 2.1 * intensity, 0.62, colors);
+        this.spawnSlashArc(to, 1.32 * intensity, 0.68, -0.52, 0.34, colors, 0);
+        this.spawnSlashArc(to, 1.32 * intensity, -0.68, 0.52, 0.36, colors, 0.06);
+        this.spawnSlashArc(to, 1.22 * intensity, 0.1, 0.0, 0.34, colors, 0.12);
+        this.spawnVortexCone(to.x, toGroundY, to.z, 1.18 * intensity, 2.15 * intensity, 0.64, colors, 0.05);
         if (category === 'special') {
-          this.spawnLinearBeam(from, to, 1.0 * intensity, 0.44, colors, 10.5);
+          this.spawnLinearBeam(from, to, 1.02 * intensity, 0.44, colors, 11.0, 0.02, true);
         }
+        this.spawnLightPool(to.x, toGroundY, to.z, 2.4 * intensity, 0.48, colors.outer, 0.08);
         break;
 
       case 'umbra':
         if (category === 'special') {
-          this.spawnLinearBeam(from, to, 1.15 * intensity, 0.52, colors, 8.0);
-          this.spawnImpactSphere(to, 1.15 * intensity, 0.65, colors, true);
-          this.spawnAccretionTorus(to, 1.35 * intensity, 0.62, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.7 * intensity, 0.7, colors, 'rune', -2.6);
+          this.spawnLinearBeam(from, to, 1.15 * intensity, 0.5, colors, 8.2, 0.03, true);
+          this.spawnScorchCrater(to.x, toGroundY, to.z, 2.85 * intensity, 0.9, impactDelay);
+          this.spawnImpactSphere(to, 1.18 * intensity, 0.68, colors, true, impactDelay);
+          this.spawnAccretionDisk(to, 1.45 * intensity, 0.68, colors, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.75 * intensity, 0.72, colors, 'rune', -2.6, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.8 * intensity, 0.58, colors.outer, impactDelay);
         } else {
-          this.spawnSlashArc(to, 1.35 * intensity, 0.48, -0.55, 0.38, colors);
-          this.spawnAccretionTorus(to, 1.05 * intensity, 0.44, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.3 * intensity, 0.54, colors, 'fissure', -1.8);
+          this.spawnSlashArc(to, 1.38 * intensity, 0.48, -0.55, 0.38, colors, 0);
+          this.spawnAccretionDisk(to, 1.1 * intensity, 0.48, colors, impactDelay);
+          this.spawnScorchCrater(to.x, toGroundY, to.z, 2.2 * intensity, 0.65, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.35 * intensity, 0.56, colors, 'fissure', -1.8, impactDelay);
         }
         break;
 
       case 'comun':
       default:
         if (category === 'special') {
-          this.spawnLinearBeam(from, to, 1.25 * intensity, 0.5, colors, 9.0);
-          this.spawnImpactSphere(to, 1.15 * intensity, 0.42, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.5 * intensity, 0.58, colors, 'shockwave', 1.6);
+          this.spawnLinearBeam(from, to, 1.28 * intensity, 0.48, colors, 9.5, 0.02, true);
+          this.spawnGateRings(from, to, 3, 0.75 * intensity, 0.36, colors, 0.02);
+          this.spawnImpactSphere(to, 1.2 * intensity, 0.44, colors, false, impactDelay);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.55 * intensity, 0.58, colors, 'shockwave', 1.6, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.6 * intensity, 0.48, colors.outer, impactDelay);
         } else {
-          this.spawnSlashArc(to, 1.15 * intensity, 0.55, -0.4, 0.32, colors);
-          this.spawnSlashArc(to, 1.15 * intensity, -0.55, 0.4, 0.34, colors);
-          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.0 * intensity, 0.45, colors, 'shockwave', 1.2);
+          this.spawnSlashArc(to, 1.18 * intensity, 0.58, -0.42, 0.3, colors, 0);
+          this.spawnSlashArc(to, 1.18 * intensity, -0.58, 0.42, 0.32, colors, 0.05);
+          this.spawnGroundDecal(to.x, toGroundY, to.z, 2.1 * intensity, 0.46, colors, 'shockwave', 1.2, impactDelay);
+          this.spawnLightPool(to.x, toGroundY, to.z, 2.0 * intensity, 0.36, colors.outer, impactDelay);
         }
         break;
     }
@@ -1025,12 +1397,14 @@ export class AbilityVfxSystem {
 
   playCaptureBurst(pos: THREE.Vector3, groundY: number, caught: boolean): void {
     const colors: TypeColorPair = caught
-      ? { core: 0xfff9f0, outer: 0xf4d073, accent: 0x5fe3d2 }
-      : { core: 0xfff9f0, outer: 0x9b6bff, accent: 0xc2234b };
-    this.spawnGroundDecal(pos.x, groundY, pos.z, 2.4, 0.72, colors, caught ? 'rune' : 'shockwave', 2.2);
+      ? { core: 0xfffaf0, outer: 0xf4d073, accent: 0x5fe3d2 }
+      : { core: 0xfffaf0, outer: 0x9b6bff, accent: 0xc2234b };
+    this.spawnGroundDecal(pos.x, groundY, pos.z, 2.45, 0.74, colors, caught ? 'rune' : 'shockwave', 2.2, 0);
+    this.spawnLightPool(pos.x, groundY, pos.z, 2.5, 0.6, colors.outer, 0);
     if (caught) {
-      this.spawnVortexCone(pos.x, groundY, pos.z, 0.9, 2.0, 0.65, colors);
-      this.spawnImpactSphere(pos, 1.15, 0.48, colors);
+      this.spawnVortexCone(pos.x, groundY, pos.z, 0.95, 2.1, 0.66, colors, 0);
+      this.spawnImpactSphere(pos, 1.2, 0.5, colors, false, 0.04);
+      this.spawnDebrisShards(pos.x, groundY, pos.z, 6, 0.55, colors, 0.06);
     }
   }
 
@@ -1038,9 +1412,9 @@ export class AbilityVfxSystem {
     const colors: TypeColorPair = isPositive
       ? { core: 0xd9fbf7, outer: 0x5fe3d2, accent: 0xf4d073 }
       : { core: 0xf0d6ff, outer: 0x9b6bff, accent: 0xc2234b };
-    void PALETTE;
-    this.spawnGroundDecal(pos.x, groundY, pos.z, 2.0, 0.62, colors, 'rune', isPositive ? 1.8 : -1.8);
-    this.spawnVortexCone(pos.x, groundY, pos.z, 0.72, 1.65, 0.54, colors);
+    this.spawnGroundDecal(pos.x, groundY, pos.z, 2.1, 0.64, colors, 'rune', isPositive ? 1.8 : -1.8, 0);
+    this.spawnLightPool(pos.x, groundY, pos.z, 2.0, 0.5, colors.outer, 0);
+    this.spawnVortexCone(pos.x, groundY, pos.z, 0.76, 1.72, 0.56, colors, 0.02);
   }
 
   update(dt: number): void {
@@ -1049,8 +1423,16 @@ export class AbilityVfxSystem {
 
     for (let i = this.items.length - 1; i >= 0; i--) {
       const item = this.items[i];
-      item.age += dt;
-      if (item.age >= item.life) {
+      item.elapsed += dt;
+      if (item.elapsed < item.delay) {
+        continue;
+      }
+      if (!item.object.visible) {
+        item.object.visible = true;
+      }
+
+      const activeAge = item.elapsed - item.delay;
+      if (activeAge >= item.life) {
         this.group.remove(item.object);
         for (const m of item.materials) m.dispose();
         for (const g of item.ownedGeometries) g.dispose();
@@ -1058,7 +1440,7 @@ export class AbilityVfxSystem {
         continue;
       }
 
-      const t = item.age / item.life;
+      const t = activeAge / item.life;
       for (const m of item.materials) {
         if (m.uniforms.uTime) m.uniforms.uTime.value = this.clockTime;
         if (m.uniforms.uProgress) m.uniforms.uProgress.value = t;

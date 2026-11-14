@@ -80,11 +80,11 @@ export class BattleTransition {
     this.fxRoot.classList.remove('hidden');
     this.transitionRoot.classList.remove('hidden');
 
-    // Double warm-white flash + diagonal stripe wipe (~0.8s)
-    this.flashScreen('rgba(255, 249, 240, 0.92)', 110);
+    // Double soft flash + diagonal stripe wipe (~0.8s)
+    this.flashScreen('rgba(255, 249, 240, 0.52)', 95);
     this.seqTimers.push(
       window.setTimeout(() => {
-        this.flashScreen('rgba(255, 249, 240, 0.92)', 110);
+        this.flashScreen('rgba(255, 249, 240, 0.52)', 95);
       }, 170)
     );
 

@@ -34,16 +34,20 @@ describe('AbilityVfxSystem Procedural GLSL 3D Effects', () => {
 
     vfx.playHealOrBuff(from, 0.28, true);
     vfx.playCaptureBurst(to, 0.62, true);
+    expect(vfx.getActiveCount()).toBeGreaterThan(20);
 
-    // Advance past longest effect lifetime
-    for (let i = 0; i < 40; i++) {
+    // Advance past longest delayed detonation + lifetime
+    for (let i = 0; i < 60; i++) {
       vfx.update(0.05);
     }
+    expect(vfx.getActiveCount()).toBe(0);
 
     // Quality tier scaling should also work cleanly
     vfx.setQualityTier('low');
     vfx.playMove('chispa', from, to, 'special', { power: 90, fromGroundY: 0.28, toGroundY: 0.62 });
     vfx.update(0.1);
+    expect(vfx.getActiveCount()).toBeGreaterThan(0);
     expect(() => vfx.dispose()).not.toThrow();
+    expect(vfx.getActiveCount()).toBe(0);
   });
 });

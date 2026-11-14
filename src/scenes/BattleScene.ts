@@ -24,6 +24,7 @@ import type {
   TrainerDef,
 } from '../domain/types.ts';
 import { BattleCamera } from '../engine/BattleCamera.ts';
+import { BattlePostFx } from '../engine/BattlePostFx.ts';
 import {
   createBattleSpriteMaterial,
   type BattleSpriteMaterialHandle,
@@ -36,6 +37,7 @@ import {
 import { createBottomPivotPlaneGeometry } from '../engine/BillboardBatch.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { FxSystem } from '../engine/FxSystem.ts';
+import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { TweenRunner } from '../engine/Tween.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
@@ -58,18 +60,18 @@ export class BattleScene implements Scene {
   private stage: BattleStage;
   private battleCamera: BattleCamera;
   private fx: FxSystem;
+  private postFx: BattlePostFx;
 
   private playerMesh: THREE.Mesh;
   private enemyMesh: THREE.Mesh;
-  private playerSilMesh: THREE.Mesh;
-  private enemySilMesh: THREE.Mesh;
   private trainerMesh: THREE.Mesh | null = null;
   private capsuleMesh: THREE.Mesh;
 
   private playerMatHandle: BattleSpriteMaterialHandle;
   private enemyMatHandle: BattleSpriteMaterialHandle;
-  private playerSilMat: THREE.MeshBasicMaterial;
-  private enemySilMat: THREE.MeshBasicMaterial;
+  private playerRig: SoulDollIdleRig;
+  private enemyRig: SoulDollIdleRig;
+  private unsubCreatureLoad: (() => void) | null = null;
 
   private playerScale = 2.0;
   private enemyScale = 1.6;
@@ -77,7 +79,6 @@ export class BattleScene implements Scene {
   private lastInternalH = 0;
   private playerAnimating = false;
   private enemyAnimating = false;
-  private idleTime = 0;
   private lowHpAlarmTimer = 0;
   private exited = false;
   private introDone = false;
@@ -120,19 +121,20 @@ export class BattleScene implements Scene {
     this.battleCamera = new BattleCamera(game.cameraRig.camera);
     this.fx = new FxSystem(this.scene);
     this.fx.setFlashCallback((css, ms) => this.game.battleTransition.flashScreen(css, ms));
+    this.postFx = new BattlePostFx(game.renderer.webgl, this.scene, game.cameraRig.camera);
 
     this.lastAspect = game.renderer.getAspect();
     this.lastInternalH = game.renderer.getInternalHeight();
     this.playerScale = this.battleCamera.computeNormalizedSpriteScale(
       PLAYER_STATION_POS,
-      0.34
+      0.42
     );
     this.enemyScale = this.battleCamera.computeNormalizedSpriteScale(
       ENEMY_STATION_POS,
-      0.27
+      0.36
     );
 
-    const unitGeo = createBottomPivotPlaneGeometry(1, 1);
+    const unitGeo = createBottomPivotPlaneGeometry(1, 1, 24, 32);
     // Flip horizontally so raw 3/4 profile sheets (front ↘, back ↖) face each other along the battle diagonal
     const uvAttr = unitGeo.getAttribute('uv') as THREE.BufferAttribute;
     for (let i = 0; i < uvAttr.count; i++) {
@@ -153,6 +155,25 @@ export class BattleScene implements Scene {
     this.disposables.track(this.playerMatHandle.material);
     this.disposables.track(this.enemyMatHandle.material);
 
+    this.playerRig = new SoulDollIdleRig({
+      view: 'back',
+      flipX: true,
+      cycleDuration: 3.35,
+      initialPhase: 0.14,
+    });
+    this.enemyRig = new SoulDollIdleRig({
+      view: 'front',
+      flipX: true,
+      cycleDuration: 3.65,
+      initialPhase: 0.58,
+    });
+    this.syncRigAnchors();
+    if (game.assets.onCreatureLoaded) {
+      this.unsubCreatureLoad = game.assets.onCreatureLoaded(() => {
+        if (!this.exited) this.syncRigAnchors();
+      });
+    }
+
     this.playerMesh = new THREE.Mesh(unitGeo, this.playerMatHandle.material);
     this.playerMesh.position.copy(PLAYER_STATION_POS);
     this.playerMesh.scale.setScalar(this.playerScale);
@@ -164,36 +185,6 @@ export class BattleScene implements Scene {
     this.enemyMesh.scale.setScalar(this.enemyScale);
     this.enemyMesh.visible = false;
     this.enemyMesh.renderOrder = 2;
-
-    // White source-in silhouette overlays for hit flash & capsule send-out
-    this.playerSilMat = new THREE.MeshBasicMaterial({
-      map: game.assets.getCreatureSilhouetteTexture(activePlayer.speciesId, 'back'),
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    this.enemySilMat = new THREE.MeshBasicMaterial({
-      map: game.assets.getCreatureSilhouetteTexture(activeEnemy.speciesId, 'front'),
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    this.disposables.track(this.playerSilMat);
-    this.disposables.track(this.enemySilMat);
-
-    this.playerSilMesh = new THREE.Mesh(unitGeo, this.playerSilMat);
-    this.playerSilMesh.position.set(0, 0, 0.015);
-    this.playerSilMesh.renderOrder = 3;
-    this.playerSilMesh.visible = false;
-    this.playerMesh.add(this.playerSilMesh);
-
-    this.enemySilMesh = new THREE.Mesh(unitGeo, this.enemySilMat);
-    this.enemySilMesh.position.set(0, 0, 0.015);
-    this.enemySilMesh.renderOrder = 3;
-    this.enemySilMesh.visible = false;
-    this.enemyMesh.add(this.enemySilMesh);
 
     if (params.trainer) {
       const charGeo = createBottomPivotPlaneGeometry(0.67, 1.0);
@@ -287,8 +278,9 @@ export class BattleScene implements Scene {
     this.enemyAnimating = true;
     this.enemyMesh.visible = true;
     this.stage.setShadowScale('enemy', 1, true);
-    this.enemySilMat.opacity = 0.85;
-    this.enemySilMesh.visible = true;
+    this.enemyMatHandle.setFlash(0.42);
+    this.syncRigAnchors();
+    this.enemyRig.resetSprings();
     this.game.synth.playCry(enemy.speciesId);
 
     this.tweens.start(
@@ -301,14 +293,14 @@ export class BattleScene implements Scene {
           1
         );
         this.enemyMesh.position.y = ENEMY_STATION_POS.y + Math.sin(t * Math.PI) * 0.45;
-        this.enemySilMat.opacity = Math.max(0, 0.85 * (1 - t * 1.3));
+        this.enemyMatHandle.setFlash(Math.max(0, 0.42 * (1 - t * 1.8)));
       },
       () => {
         this.enemyAnimating = false;
         this.enemyMesh.position.copy(ENEMY_STATION_POS);
         this.enemyMesh.scale.setScalar(this.enemyScale);
-        this.enemySilMat.opacity = 0;
-        this.enemySilMesh.visible = false;
+        this.enemyMatHandle.setFlash(0);
+        this.enemyRig.injectImpulse(0, -0.58, 0.2);
       }
     );
 
@@ -368,26 +360,32 @@ export class BattleScene implements Scene {
     }
   }
 
+  private syncRigAnchors(): void {
+    const getAnchor = this.game.assets.getCreatureRigAnchor?.bind(this.game.assets);
+    if (!getAnchor) return;
+    const activePlayer = this.engine.getActive('player');
+    const activeEnemy = this.engine.getActive('enemy');
+    this.playerRig.setAnchor(getAnchor(activePlayer.speciesId, 'back'));
+    this.enemyRig.setAnchor(getAnchor(activeEnemy.speciesId, 'front'));
+  }
+
   private sendOutCreature(side: 'player' | 'enemy', onDone: () => void): void {
     const isPlayer = side === 'player';
     const station = isPlayer ? PLAYER_STATION_POS : ENEMY_STATION_POS;
     const baseScale = isPlayer ? this.playerScale : this.enemyScale;
     const mesh = isPlayer ? this.playerMesh : this.enemyMesh;
-    const silMesh = isPlayer ? this.playerSilMesh : this.enemySilMesh;
-    const silMat = isPlayer ? this.playerSilMat : this.enemySilMat;
     const matHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
+    const rig = isPlayer ? this.playerRig : this.enemyRig;
     const creature = this.engine.getActive(side);
 
     matHandle.setDissolve(0);
     matHandle.setOpacity(1);
+    matHandle.setFlash(0);
     matHandle.setTexture(
       this.game.assets.getCreatureTexture(creature.speciesId, isPlayer ? 'back' : 'front')
     );
-    silMat.map = this.game.assets.getCreatureSilhouetteTexture(
-      creature.speciesId,
-      isPlayer ? 'back' : 'front'
-    );
-    silMat.needsUpdate = true;
+    this.syncRigAnchors();
+    rig.resetSprings();
 
     const startX = isPlayer ? station.x - 2.6 : station.x + 2.6;
     const startY = station.y + 1.35;
@@ -430,8 +428,7 @@ export class BattleScene implements Scene {
         mesh.position.copy(station);
         mesh.visible = true;
         this.stage.setShadowScale(side, 1, true);
-        silMesh.visible = true;
-        silMat.opacity = 1.0;
+        matHandle.setFlash(0.55);
         this.game.synth.playCry(creature.speciesId);
 
         this.tweens.start(
@@ -439,14 +436,14 @@ export class BattleScene implements Scene {
           (t) => {
             const ease = 1 - Math.pow(1 - t, 3);
             mesh.scale.setScalar(baseScale * (0.18 + 0.82 * ease));
-            silMat.opacity = Math.max(0, 1 - t * 1.25);
+            matHandle.setFlash(Math.max(0, 0.55 * (1 - t * 1.8)));
           },
           () => {
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.scale.setScalar(baseScale);
-            silMat.opacity = 0;
-            silMesh.visible = false;
+            matHandle.setFlash(0);
+            rig.injectImpulse(0, -0.62, 0.22);
             onDone();
           }
         );
@@ -596,23 +593,29 @@ export class BattleScene implements Scene {
           0.45,
           true
         );
+        if (move.category === 'special' || move.power >= 70) {
+          this.postFx.pulseArenaDim(move.power >= 90 ? 0.42 : 0.3, 0.56);
+        }
 
         _fromPos.set(home.x, home.y + baseScale * 0.5, home.z);
         _toPos.set(target.x, target.y + targetScale * 0.5, target.z);
 
         if (isPlayer) this.playerAnimating = true;
         else this.enemyAnimating = true;
+        const actorRig = isPlayer ? this.playerRig : this.enemyRig;
 
         const finishMoveAnim = () => {
           if (isPlayer) this.playerAnimating = false;
           else this.enemyAnimating = false;
           mesh.position.copy(home);
           mesh.scale.setScalar(baseScale);
+          actorRig.injectImpulse(isPlayer ? -0.24 : 0.24, -0.45, 0.14);
           done();
         };
 
         if (move.category === 'physical') {
           let fxFired = false;
+          actorRig.injectImpulse(isPlayer ? 0.32 : -0.32, 0.4, 0.14);
           const dx = (target.x - home.x) * 0.24;
           const dz = (target.z - home.z) * 0.24;
           this.tweens.start(
@@ -623,12 +626,13 @@ export class BattleScene implements Scene {
               mesh.position.z = home.z + dz * p;
               mesh.position.y = home.y + p * 0.18;
               mesh.scale.set(
-                baseScale * (1 + 0.1 * p),
-                baseScale * (1 - 0.07 * p),
+                baseScale * (1 + 0.08 * p),
+                baseScale * (1 - 0.05 * p),
                 1
               );
               if (t >= 0.45 && !fxFired) {
                 fxFired = true;
+                actorRig.injectImpulse(isPlayer ? -0.36 : 0.36, -0.52, 0.18);
                 this.fx.playTypeMove(move.type, _fromPos, _toPos, 'physical', {
                   power: move.power,
                   fromGroundY: home.y,
@@ -651,6 +655,7 @@ export class BattleScene implements Scene {
           );
         } else if (move.category === 'special') {
           let fxFired = false;
+          actorRig.injectImpulse(0, 0.38, 0.14);
           const bx = (home.x - target.x) * 0.08;
           const bz = (home.z - target.z) * 0.08;
           this.fx.ring(_fromPos, {
@@ -672,6 +677,7 @@ export class BattleScene implements Scene {
               mesh.position.y = home.y + hop * 0.22;
               if (t >= 0.36 && !fxFired) {
                 fxFired = true;
+                actorRig.injectImpulse(0, -0.5, 0.18);
                 this.fx.playTypeMove(move.type, _fromPos, _toPos, 'special', {
                   power: move.power,
                   fromGroundY: home.y,
@@ -682,6 +688,7 @@ export class BattleScene implements Scene {
             finishMoveAnim
           );
         } else {
+          actorRig.injectImpulse(0, 0.28, 0.18);
           this.fx.playTypeMove(move.type, _fromPos, _toPos, 'status', {
             power: move.power,
             fromGroundY: home.y,
@@ -690,7 +697,7 @@ export class BattleScene implements Scene {
           this.tweens.start(
             0.36,
             (t) => {
-              const s = 1 + Math.sin(t * Math.PI * 2) * 0.08;
+              const s = 1 + Math.sin(t * Math.PI * 2) * 0.06;
               mesh.scale.set(baseScale * s, baseScale * (2 - s), 1);
             },
             finishMoveAnim
@@ -706,8 +713,8 @@ export class BattleScene implements Scene {
         }
         const isPlayer = ev.target === 'player';
         const mesh = isPlayer ? this.playerMesh : this.enemyMesh;
-        const silMesh = isPlayer ? this.playerSilMesh : this.enemySilMesh;
-        const silMat = isPlayer ? this.playerSilMat : this.enemySilMat;
+        const matHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
+        const targetRig = isPlayer ? this.playerRig : this.enemyRig;
         const home = isPlayer ? PLAYER_STATION_POS : ENEMY_STATION_POS;
         const targetCreature = this.engine.getActive(ev.target);
 
@@ -738,6 +745,16 @@ export class BattleScene implements Scene {
           this.battleCamera.triggerShake(0.08, 10);
         }
 
+        const targetScale = isPlayer ? this.playerScale : this.enemyScale;
+        _projVec.set(home.x, home.y + targetScale * 0.5, home.z);
+        _projVec.project(this.game.cameraRig.camera);
+        this.postFx.triggerShockwave(
+          (_projVec.x + 1) * 0.5,
+          (_projVec.y + 1) * 0.5,
+          strongHit ? 0.026 : 0.012,
+          strongHit ? 0.34 : 0.22
+        );
+
         if (ev.crit) {
           this.battleCamera.playImmediate('crit_punch', 0.36, true);
         }
@@ -756,21 +773,24 @@ export class BattleScene implements Scene {
 
         if (isPlayer) this.playerAnimating = true;
         else this.enemyAnimating = true;
-        silMesh.visible = true;
-        silMat.opacity = 0.92;
+        matHandle.setFlash(0.92);
+        targetRig.injectImpulse(
+          isPlayer ? -0.45 : 0.45,
+          strongHit ? -0.78 : -0.48,
+          strongHit ? 0.26 : 0.15
+        );
 
         this.tweens.start(
           0.34,
           (t) => {
             mesh.position.x = home.x + Math.sin(t * Math.PI * 7) * 0.14 * (1 - t);
-            silMat.opacity = Math.max(0, 0.92 * Math.max(0, 1 - t * 2.2));
+            matHandle.setFlash(Math.max(0, 0.92 * Math.max(0, 1 - t * 2.2)));
           },
           () => {
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.position.copy(home);
-            silMat.opacity = 0;
-            silMesh.visible = false;
+            matHandle.setFlash(0);
             done();
           }
         );
@@ -892,27 +912,24 @@ export class BattleScene implements Scene {
       case 'switch_out': {
         const isPlayer = ev.side === 'player';
         const mesh = isPlayer ? this.playerMesh : this.enemyMesh;
-        const silMesh = isPlayer ? this.playerSilMesh : this.enemySilMesh;
-        const silMat = isPlayer ? this.playerSilMat : this.enemySilMat;
+        const matHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
         const baseScale = isPlayer ? this.playerScale : this.enemyScale;
 
         if (isPlayer) this.playerAnimating = true;
         else this.enemyAnimating = true;
-        silMesh.visible = true;
-        silMat.opacity = 0;
+        matHandle.setFlash(0);
 
         this.tweens.start(
           0.25,
           (t) => {
-            silMat.opacity = Math.min(1, t * 2);
+            matHandle.setFlash(Math.min(1, t * 2));
             mesh.scale.setScalar(baseScale * Math.max(0.08, 1 - t));
           },
           () => {
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.visible = false;
-            silMesh.visible = false;
-            silMat.opacity = 0;
+            matHandle.setFlash(0);
             this.stage.setShadowScale(ev.side, 1, false);
             done();
           }
@@ -1223,6 +1240,7 @@ export class BattleScene implements Scene {
     const tier = this.game.renderer.getQualityTier();
     this.stage.setQualityTier(tier);
     this.fx.setQualityTier(tier);
+    this.postFx.setQualityTier(tier);
 
     const curAspect = this.game.renderer.getAspect();
     const curInternalH = this.game.renderer.getInternalHeight();
@@ -1234,11 +1252,11 @@ export class BattleScene implements Scene {
       this.lastInternalH = curInternalH;
       this.playerScale = this.battleCamera.computeNormalizedSpriteScale(
         PLAYER_STATION_POS,
-        0.34
+        0.42
       );
       this.enemyScale = this.battleCamera.computeNormalizedSpriteScale(
         ENEMY_STATION_POS,
-        0.27
+        0.36
       );
       if (this.trainerMesh && this.trainerMesh.visible) {
         this.trainerMesh.scale.setScalar(this.enemyScale * 0.94);
@@ -1251,39 +1269,37 @@ export class BattleScene implements Scene {
 
     const hitStopped = this.battleCamera.isHitStopped();
     const scaledDt = hitStopped ? 0 : dt * this.battleCamera.getTimeScale();
+    this.postFx.update(dt);
 
     if (scaledDt > 0) {
-      this.idleTime += scaledDt;
       this.tweens.update(scaledDt);
       this.fx.emitAmbient(this.biome, scaledDt);
       this.fx.update(scaledDt, _camPos);
       this.stage.update(scaledDt, _camPos);
+      if (this.playerMesh.visible) {
+        this.playerRig.update(scaledDt);
+      }
+      if (this.enemyMesh.visible) {
+        this.enemyRig.update(scaledDt);
+      }
     }
 
-    // Idle squash-and-stretch bob + Y-locked billboard lookAt
+    // Grounded idle breathing & secondary bust physics (feet strictly anchored at station Y)
     if (this.playerMesh.visible) {
       if (!this.playerAnimating) {
-        const bob = Math.sin(this.idleTime * 4.2);
-        this.playerMesh.position.y = PLAYER_STATION_POS.y + Math.max(0, bob) * 0.03;
-        this.playerMesh.scale.set(
-          this.playerScale * (1 - bob * 0.025),
-          this.playerScale * (1 + bob * 0.035),
-          1
-        );
+        this.playerMesh.position.y = PLAYER_STATION_POS.y;
+        this.playerMesh.scale.setScalar(this.playerScale);
       }
+      this.playerRig.applyToMaterial(this.playerMatHandle);
       this.playerMesh.lookAt(_camPos.x, this.playerMesh.position.y, _camPos.z);
     }
 
     if (this.enemyMesh.visible) {
       if (!this.enemyAnimating) {
-        const bob = Math.sin(this.idleTime * 4.5 + 1.3);
-        this.enemyMesh.position.y = ENEMY_STATION_POS.y + Math.max(0, bob) * 0.03;
-        this.enemyMesh.scale.set(
-          this.enemyScale * (1 - bob * 0.025),
-          this.enemyScale * (1 + bob * 0.035),
-          1
-        );
+        this.enemyMesh.position.y = ENEMY_STATION_POS.y;
+        this.enemyMesh.scale.setScalar(this.enemyScale);
       }
+      this.enemyRig.applyToMaterial(this.enemyMatHandle);
       this.enemyMesh.lookAt(_camPos.x, this.enemyMesh.position.y, _camPos.z);
     }
 
@@ -1323,16 +1339,20 @@ export class BattleScene implements Scene {
   }
 
   render(): void {
-    this.game.renderer.render(this.scene, this.game.cameraRig.camera);
+    if (this.game.renderer.isContextLost()) return;
+    this.postFx.render();
   }
 
   onExit(): void {
     this.exited = true;
+    this.unsubCreatureLoad?.();
+    this.unsubCreatureLoad = null;
     this.game.renderer.canvas.removeEventListener('pointerdown', this.handleStageTap);
     this.tweens.clear();
     this.game.battleTransition.hide();
     this.game.battleHud.hide();
     this.fx.dispose();
+    this.postFx.dispose();
     this.stage.dispose();
     this.disposables.disposeAll();
   }

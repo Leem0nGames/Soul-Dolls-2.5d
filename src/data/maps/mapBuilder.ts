@@ -134,6 +134,99 @@ export function carveRoad(
   }
 }
 
+export interface MapPassOptions {
+  x: number;
+  y: number;
+  exitDir: 'north' | 'south' | 'west' | 'east';
+  roadWidth?: number;
+  roadTile?: string;
+  height?: number;
+  depth?: number;
+  shoulderWidth?: number;
+  slopeWidth?: number;
+  shoulderTile?: string;
+}
+
+const PRESERVED_PASS_TILES = new Set(['~', 'B', '^', '"', '*', '=', ',', '_', 'A']);
+
+/**
+ * Carves a natural, flat-shouldered valley pass leading to a border warp and
+ * gently terraces surrounding perimeter mountains down to road level so
+ * map transitions never form abrupt V-shaped cliff trenches.
+ */
+export function carveMapPass(z: ZoneCanvas, opts: MapPassOptions): void {
+  const roadWidth = opts.roadWidth ?? 2;
+  const roadTile = opts.roadTile ?? '=';
+  const baseH = Math.max(0, Math.min(9, Math.round(opts.height ?? 2)));
+  const depth = opts.depth ?? 8;
+  const shoulderWidth = opts.shoulderWidth ?? 3;
+  const slopeWidth = opts.slopeWidth ?? 5;
+  const shoulderTile = opts.shoulderTile ?? '.';
+
+  const isVertical = opts.exitDir === 'north' || opts.exitDir === 'south';
+  const crossStart = isVertical ? opts.x : opts.y;
+  const crossEnd = crossStart + roadWidth - 1;
+  const totalCrossSpan = shoulderWidth + slopeWidth;
+  const totalAlongSpan = depth + slopeWidth;
+
+  for (let along = 0; along < totalAlongSpan; along++) {
+    const pyBase =
+      opts.exitDir === 'north'
+        ? along
+        : opts.exitDir === 'south'
+          ? z.height - 1 - along
+          : -1;
+    const pxBase =
+      opts.exitDir === 'west'
+        ? along
+        : opts.exitDir === 'east'
+          ? z.width - 1 - along
+          : -1;
+
+    const innerOvershoot = Math.max(0, along - (depth - 1));
+
+    for (
+      let cross = crossStart - totalCrossSpan;
+      cross <= crossEnd + totalCrossSpan;
+      cross++
+    ) {
+      const px = isVertical ? cross : pxBase;
+      const py = isVertical ? pyBase : cross;
+      if (px < 0 || px >= z.width || py < 0 || py >= z.height) continue;
+
+      let sideDist = 0;
+      if (cross < crossStart) sideDist = crossStart - cross;
+      else if (cross > crossEnd) sideDist = cross - crossEnd;
+
+      const shoulderOvershoot = Math.max(0, sideDist - shoulderWidth);
+      const effectiveStep = Math.max(shoulderOvershoot, innerOvershoot);
+      const curTile = z.tiles[py][px];
+
+      if (effectiveStep === 0) {
+        if (sideDist === 0) {
+          if (curTile !== 'B' && curTile !== '^') {
+            z.tiles[py][px] = roadTile;
+          }
+        } else if (!PRESERVED_PASS_TILES.has(curTile)) {
+          z.tiles[py][px] = shoulderTile;
+        }
+        z.heights[py][px] = baseH;
+      } else if (effectiveStep <= slopeWidth) {
+        const maxH = Math.min(9, baseH + effectiveStep);
+        if (z.heights[py][px] > maxH) {
+          z.heights[py][px] = maxH;
+        }
+        if (
+          curTile === '#' &&
+          effectiveStep <= Math.max(2, Math.floor(slopeWidth * 0.6))
+        ) {
+          z.tiles[py][px] = shoulderTile;
+        }
+      }
+    }
+  }
+}
+
 export function finalizeZone(z: ZoneCanvas): { grid: string[]; heights: string[] } {
   return {
     grid: z.tiles.map((row) => row.join('')),

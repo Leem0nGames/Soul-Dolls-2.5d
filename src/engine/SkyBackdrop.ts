@@ -9,7 +9,8 @@ function toCssHex(color: number): string {
 
 export function createGradientSkyTexture(
   topColor: number,
-  bottomColor: number
+  bottomColor: number,
+  horizonColor = bottomColor
 ): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 2;
@@ -17,8 +18,9 @@ export function createGradientSkyTexture(
   const ctx = canvas.getContext('2d')!;
   const grad = ctx.createLinearGradient(0, 0, 0, 64);
   grad.addColorStop(0, toCssHex(topColor));
-  grad.addColorStop(0.68, toCssHex(bottomColor));
-  grad.addColorStop(1, toCssHex(bottomColor));
+  grad.addColorStop(0.36, toCssHex(bottomColor));
+  grad.addColorStop(0.56, toCssHex(horizonColor));
+  grad.addColorStop(1, toCssHex(horizonColor));
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 2, 64);
 

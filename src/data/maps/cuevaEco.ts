@@ -4,6 +4,7 @@ import { ENCOUNTERS } from '../encounters.ts';
 import {
   addHill,
   addPerimeterMountains,
+  carveMapPass,
   carveRoad,
   createZoneCanvas,
   DEFAULT_LEGEND,
@@ -34,6 +35,30 @@ function buildCuevaEco() {
   fillRect(z, 18, 17, 5, 8, '%', 3);
   fillRect(z, 25, 17, 6, 8, '%', 3);
 
+  // Terraced cavern mouths at south & north exits
+  carveMapPass(z, {
+    x: 23,
+    y: 47,
+    exitDir: 'south',
+    roadTile: '_',
+    height: 2,
+    depth: 7,
+    shoulderWidth: 2,
+    slopeWidth: 4,
+    shoulderTile: 'c',
+  });
+  carveMapPass(z, {
+    x: 23,
+    y: 0,
+    exitDir: 'north',
+    roadTile: '_',
+    height: 4,
+    depth: 7,
+    shoulderWidth: 2,
+    slopeWidth: 4,
+    shoulderTile: 'c',
+  });
+
   return finalizeZone(z);
 }
 
@@ -58,7 +83,6 @@ export const MAP_CUEVA_ECO: MapDef = {
     { kind: 'crystal', x: 28, z: 20 },
     { kind: 'crystal', x: 21, z: 8 },
     { kind: 'crystal', x: 26, z: 8 },
-    { kind: 'cave_entrance', x: 22, z: 1 },
   ],
   decoration: {
     seed: 505,

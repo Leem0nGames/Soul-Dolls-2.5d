@@ -16,7 +16,7 @@ export class CameraRig {
   private baseFov = 58;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(58, aspect, 0.3, 48);
+    this.camera = new THREE.PerspectiveCamera(58, aspect, 0.3, 56);
     this.snapTo(0, 0, 0);
   }
 
@@ -74,12 +74,17 @@ export class CameraRig {
     this.targetYaw = 0;
   }
 
-  snapTo(x: number, y: number, z: number): void {
+  snapTo(
+    x: number,
+    y: number,
+    z: number,
+    sampleTerrainY?: (wx: number, wz: number) => number
+  ): void {
     this.focusX = x;
     this.focusY = y;
     this.focusZ = z;
     this.currentYaw = this.targetYaw;
-    this.applyCameraTransform(x, y, z);
+    this.applyCameraTransform(x, y, z, sampleTerrainY);
   }
 
   follow(

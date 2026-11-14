@@ -108,7 +108,7 @@ export class BattleCamera {
     const aspect = this.camera.aspect;
     const adjustedRatio =
       aspect < 1
-        ? Math.min(targetViewportRatio, targetViewportRatio * aspect * 1.38)
+        ? targetViewportRatio * Math.max(0.84, Math.min(1, aspect * 1.52))
         : targetViewportRatio;
     return adjustedRatio * vpHeightWorld;
   }

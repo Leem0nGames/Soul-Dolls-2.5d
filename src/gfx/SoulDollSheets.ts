@@ -21,9 +21,17 @@ export interface SpriteBounds {
   h: number;
 }
 
+export interface SoulDollTorsoAnchor {
+  torsoX: number;
+  bustY: number;
+  charHeight: number;
+}
+
 export interface NormalizedSoulDollPair {
   front: HTMLCanvasElement;
   back: HTMLCanvasElement;
+  frontAnchor: SoulDollTorsoAnchor;
+  backAnchor: SoulDollTorsoAnchor;
 }
 
 export function getSoulDollSheetId(speciesId: number): number {
@@ -73,17 +81,128 @@ export function findRegionAlphaBounds(
   };
 }
 
+export function detectSoulDollTorsoAnchor(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  drawH: number
+): SoulDollTorsoAnchor {
+  const charHeight = Math.max(0.35, Math.min(0.99, drawH / Math.max(1, height)));
+  const yBottom = Math.min(height - 1, height - PAD_BOTTOM - 1);
+
+  // 1. Locate head core centerline (charY 0.76..0.88): free of swinging weapons, censers, skirts, and wings
+  let headSum = 0;
+  let headRows = 0;
+  for (let cy = 0.76; cy <= 0.88; cy += 0.025) {
+    const y = Math.max(0, Math.min(height - 1, Math.round(yBottom - cy * drawH)));
+    const rowOffset = y * width;
+    let curStart = -1;
+    let bestStart = -1;
+    let bestEnd = -1;
+    for (let x = 0; x <= width; x++) {
+      const op = x < width && rgba[(rowOffset + x) * 4 + 3] > 128;
+      if (op) {
+        if (curStart < 0) curStart = x;
+      } else if (curStart >= 0) {
+        const s = curStart / width;
+        const e = (x - 1) / width;
+        if (bestStart < 0 || e - s > bestEnd - bestStart) {
+          bestStart = s;
+          bestEnd = e;
+        }
+        curStart = -1;
+      }
+    }
+    if (bestStart >= 0) {
+      headSum += (bestStart + bestEnd) * 0.5;
+      headRows += 1;
+    }
+  }
+  const headX = headRows > 0 ? headSum / headRows : 0.5;
+
+  // 2. Locate neck/chin notch within +-18% of headX (64%..76% charY) for true spine X and bustY
+  const nxMin = Math.max(0, Math.floor((headX - 0.18) * width));
+  const nxMax = Math.min(width - 1, Math.ceil((headX + 0.18) * width));
+  const corridorW = Math.max(1, nxMax - nxMin + 1);
+  let minSpan = 999;
+  let neckCy = 0.725;
+  let neckMid = headX;
+  for (let cy = 0.64; cy <= 0.76; cy += 0.015) {
+    const y = Math.max(0, Math.min(height - 1, Math.round(yBottom - cy * drawH)));
+    const rowOffset = y * width;
+    let cnt = 0;
+    let xSum = 0;
+    for (let x = nxMin; x <= nxMax; x++) {
+      if (rgba[(rowOffset + x) * 4 + 3] > 128) {
+        cnt += 1;
+        xSum += (x + 0.5) / width;
+      }
+    }
+    const span = cnt / corridorW;
+    if (span > 0.18 && span < minSpan) {
+      minSpan = span;
+      neckCy = cy;
+      neckMid = xSum / cnt;
+    }
+  }
+  const spineX = neckMid;
+
+  // 3. Find contiguous torso run at chest height (59%..67% charY) tightly bounded around spineX
+  let sumMid = 0;
+  let coreRows = 0;
+  for (let cy = 0.59; cy <= 0.67; cy += 0.02) {
+    const y = Math.max(0, Math.min(height - 1, Math.round(yBottom - cy * drawH)));
+    const rowOffset = y * width;
+    let curStart = -1;
+    let bestStart = -1;
+    let bestEnd = -1;
+    for (let x = 0; x <= width; x++) {
+      const op = x < width && rgba[(rowOffset + x) * 4 + 3] > 128;
+      if (op) {
+        if (curStart < 0) curStart = x;
+      } else if (curStart >= 0) {
+        const rawS = curStart / width;
+        const rawE = (x - 1) / width;
+        const overlapsSpine = rawE >= spineX - 0.08 && rawS <= spineX + 0.12;
+        const s = Math.max(rawS, spineX - 0.15);
+        const e = Math.min(rawE, spineX + 0.15);
+        if (overlapsSpine && e > s && (bestStart < 0 || e - s > bestEnd - bestStart)) {
+          bestStart = s;
+          bestEnd = e;
+        }
+        curStart = -1;
+      }
+    }
+    if (bestStart >= 0) {
+      sumMid += (bestStart + bestEnd) * 0.5;
+      coreRows += 1;
+    }
+  }
+  const coreMid = coreRows > 0 ? sumMid / coreRows : spineX;
+  const torsoX = Math.max(0.39, Math.min(0.61, Math.max(spineX - 0.035, Math.min(coreMid + 0.012, spineX + 0.04))));
+
+  // Bust sits just below the neck/collarbone notch
+  const bustY = Math.max(0.595, Math.min(0.66, neckCy - 0.085));
+
+  return { torsoX, bustY, charHeight };
+}
+
 function renderNormalizedHalf(
   source: HTMLCanvasElement,
   bounds: SpriteBounds,
   scale: number,
   targetSize: number
-): HTMLCanvasElement {
+): { canvas: HTMLCanvasElement; anchor: SoulDollTorsoAnchor } {
   const out = document.createElement('canvas');
   out.width = targetSize;
   out.height = targetSize;
   const ctx = out.getContext('2d');
-  if (!ctx) return out;
+  if (!ctx) {
+    return {
+      canvas: out,
+      anchor: { torsoX: 0.5, bustY: 0.635, charHeight: 0.96 },
+    };
+  }
 
   const drawW = Math.max(1, Math.round(bounds.w * scale));
   const drawH = Math.max(1, Math.round(bounds.h * scale));
@@ -117,7 +236,8 @@ function renderNormalizedHalf(
     }
   }
   ctx.putImageData(imgData, 0, 0);
-  return out;
+  const anchor = detectSoulDollTorsoAnchor(px, targetSize, targetSize, drawH);
+  return { canvas: out, anchor };
 }
 
 export function extractAndNormalizeSoulDollPair(
@@ -162,8 +282,13 @@ export function extractAndNormalizeSoulDollPair(
   const maxH = Math.max(1, frontBounds.h, backBounds.h);
   const unifiedScale = Math.min(availW / maxW, availH / maxH);
 
+  const frontHalf = renderNormalizedHalf(scratch, frontBounds, unifiedScale, targetSize);
+  const backHalf = renderNormalizedHalf(scratch, backBounds, unifiedScale, targetSize);
+
   return {
-    front: renderNormalizedHalf(scratch, frontBounds, unifiedScale, targetSize),
-    back: renderNormalizedHalf(scratch, backBounds, unifiedScale, targetSize),
+    front: frontHalf.canvas,
+    back: backHalf.canvas,
+    frontAnchor: frontHalf.anchor,
+    backAnchor: backHalf.anchor,
   };
 }

@@ -3,6 +3,7 @@ import { hexToNumber, PALETTE } from '../../gfx/Palette.ts';
 import {
   addHill,
   addPerimeterMountains,
+  carveMapPass,
   carveRoad,
   createZoneCanvas,
   DEFAULT_LEGEND,
@@ -22,6 +23,18 @@ function buildArenaCumbre() {
   carveRoad(z, 23, 34, 23, 47, 2, '=', 3);
   fillRect(z, 23, 33, 2, 3, '^', 4);
   carveRoad(z, 23, 18, 23, 34, 2, '=', 5);
+
+  carveMapPass(z, {
+    x: 23,
+    y: 47,
+    exitDir: 'south',
+    roadTile: '=',
+    height: 3,
+    depth: 8,
+    shoulderWidth: 3,
+    slopeWidth: 4,
+    shoulderTile: '.',
+  });
 
   return finalizeZone(z);
 }
