@@ -26,7 +26,7 @@ describe('Save migrations', () => {
     expect(migrated!.repelSteps).toBe(0);
     expect(migrated!.stats.creaturesCaught).toBe(1);
     expect(migrated!.options.textSpeed).toBe('normal');
-    expect(migrated!.options.pixelEffect).toBe(true);
+    expect(migrated!.options.pixelEffect).toBe(false);
   });
 
   it('preserves the pixel effect option when migrating a saved game', () => {

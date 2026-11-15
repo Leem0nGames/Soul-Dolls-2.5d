@@ -114,7 +114,7 @@ export class Game {
 
     this.toastEl = document.createElement('div');
     this.toastEl.className =
-      'pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-50 hidden rounded-lg border border-resonant-gold bg-crypt-ink/95 px-3 py-1.5 text-xs font-bold text-pale-gold shadow-lg';
+      'pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-50 hidden rounded-none border-2 border-resonant-gold bg-crypt-ink px-3 py-1.5 text-xs font-bold text-pale-gold shadow-[3px_3px_0_#050505]';
     this.uiLayer.appendChild(this.toastEl);
 
     this.uiLayers.register('touchControls', this.touchControls.root);

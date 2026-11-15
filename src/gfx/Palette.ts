@@ -75,7 +75,7 @@ export const PALETTE = {
   sandDesert: '#C2A77C',
   woodHighlight: '#9E7D5A',
 
-  // 8. Acentos de UI y Efectos Especiales (7)
+  // 8. Acentos de UI y Efectos Especiales (8)
   uiDanger: '#FF0000',
   uiWarning: '#FFAA00',
   uiSuccess: '#00E639',
@@ -83,6 +83,7 @@ export const PALETTE = {
   uiPoison: '#8F00FF',
   uiGold: '#FFD700',
   pureWhite: '#FFFFFF',
+  uiInk: '#050505',
 } as const;
 
 export type PaletteKey = keyof typeof PALETTE;

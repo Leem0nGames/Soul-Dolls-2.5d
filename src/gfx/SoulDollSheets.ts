@@ -1,4 +1,4 @@
-export const SOULDOLL_SPRITE_SIZE = 256;
+export const SOULDOLL_SPRITE_SIZE = 512;
 export const SOULDOLL_MAX_SHEET_ID = 52;
 
 const PAD_X = 6;

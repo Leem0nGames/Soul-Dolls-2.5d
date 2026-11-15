@@ -44,11 +44,11 @@ export function playCardSocketFx(
   ring2.style.setProperty('--fx-color', '#E8B84A');
   overlay.appendChild(ring2);
 
-  const count = 16;
+  const count = 12;
   const palette = [accentColor, '#5FE3D2', '#E8B84A', '#FFF9F0'];
   for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 * i) / count + (i % 2 === 0 ? 0.14 : -0.14);
-    const dist = 28 + (i % 3) * 18;
+    const angle = (Math.PI * 2 * i) / count;
+    const dist = 26 + (i % 3) * 16;
     const tx = Math.round(Math.cos(angle) * dist);
     const ty = Math.round(Math.sin(angle) * dist);
     const spark = document.createElement('div');
@@ -56,11 +56,9 @@ export function playCardSocketFx(
     spark.style.left = `${cx}px`;
     spark.style.top = `${cy}px`;
     spark.style.backgroundColor = palette[i % palette.length];
-    spark.style.boxShadow = `0 0 8px ${palette[i % palette.length]}`;
-    spark.style.borderRadius = i % 2 === 0 ? '1px' : '9999px';
+    spark.style.border = '1px solid #050505';
     spark.style.setProperty('--tx', `${tx}px`);
     spark.style.setProperty('--ty', `${ty}px`);
-    spark.style.setProperty('--rot', `${45 + i * 35}deg`);
     spark.style.animationDelay = `${(i % 4) * 28}ms`;
     overlay.appendChild(spark);
   }
@@ -68,5 +66,5 @@ export function playCardSocketFx(
   document.body.appendChild(overlay);
   window.setTimeout(() => {
     overlay.remove();
-  }, 680);
+  }, 600);
 }

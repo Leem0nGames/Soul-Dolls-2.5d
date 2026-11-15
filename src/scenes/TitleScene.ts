@@ -34,85 +34,89 @@ const STARTER_ORDER = [1, 4, 7] as const;
 
 function createSoftGlowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
+  canvas.width = 16;
+  canvas.height = 16;
   const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
-  grad.addColorStop(0, 'rgba(255, 249, 240, 1)');
-  grad.addColorStop(0.35, 'rgba(255, 249, 240, 0.72)');
-  grad.addColorStop(1, 'rgba(255, 249, 240, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 64, 64);
+  ctx.fillStyle = PALETTE.warmWhite;
+  ctx.fillRect(6, 2, 4, 12);
+  ctx.fillRect(2, 6, 12, 4);
+  ctx.fillRect(4, 4, 8, 8);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
 }
 
 function createShadowDiscTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
+  canvas.width = 32;
+  canvas.height = 32;
   const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(32, 32, 4, 32, 32, 30);
-  grad.addColorStop(0, 'rgba(11, 8, 14, 0.72)');
-  grad.addColorStop(0.6, 'rgba(11, 8, 14, 0.36)');
-  grad.addColorStop(1, 'rgba(11, 8, 14, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 64, 64);
+  ctx.fillStyle = 'rgba(11, 8, 14, 0.35)';
+  ctx.beginPath();
+  ctx.arc(16, 16, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(11, 8, 14, 0.65)';
+  ctx.beginPath();
+  ctx.arc(16, 16, 10, 0, Math.PI * 2);
+  ctx.fill();
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
 }
 
 function createRuneCircleTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 512;
+  canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
-  const cx = 128;
-  const cy = 128;
+  const cx = 256;
+  const cy = 256;
 
-  const aura = ctx.createRadialGradient(cx, cy, 10, cx, cy, 122);
-  aura.addColorStop(0, 'rgba(95, 227, 210, 0.22)');
-  aura.addColorStop(0.55, 'rgba(155, 107, 255, 0.14)');
-  aura.addColorStop(1, 'rgba(20, 16, 28, 0)');
-  ctx.fillStyle = aura;
-  ctx.fillRect(0, 0, 256, 256);
-
-  ctx.strokeStyle = 'rgba(232, 184, 74, 0.55)';
-  ctx.lineWidth = 3;
+  ctx.fillStyle = 'rgba(18, 63, 60, 0.25)';
   ctx.beginPath();
-  ctx.arc(cx, cy, 108, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 224, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = PALETTE.resonantGold;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 216, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(95, 227, 210, 0.45)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = PALETTE.kiCyan;
+  ctx.lineWidth = 4;
+  ctx.setLineDash([16, 12]);
   ctx.beginPath();
-  ctx.arc(cx, cy, 94, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 188, 0, Math.PI * 2);
   ctx.stroke();
   ctx.setLineDash([]);
 
   // 8 cardinal diamond markers
-  ctx.fillStyle = 'rgba(244, 208, 115, 0.72)';
+  ctx.fillStyle = PALETTE.brightBrass;
   for (let i = 0; i < 8; i++) {
     const a = (i * Math.PI) / 4;
-    const rx = cx + Math.cos(a) * 108;
-    const ry = cy + Math.sin(a) * 108;
+    const rx = cx + Math.cos(a) * 216;
+    const ry = cy + Math.sin(a) * 216;
     ctx.save();
     ctx.translate(rx, ry);
     ctx.rotate(a);
-    ctx.fillRect(-3.5, -3.5, 7, 7);
+    ctx.fillRect(-7, -7, 14, 14);
     ctx.restore();
   }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.generateMipmaps = true;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
 }
@@ -166,7 +170,7 @@ export class TitleScene implements Scene {
     );
     this.disposables.track(skyTex);
     this.scene.background = skyTex;
-    this.scene.fog = new THREE.FogExp2(hexToNumber(PALETTE.deepAbyss), 0.045);
+    this.scene.fog = new THREE.Fog(hexToNumber(PALETTE.deepAbyss), 10, 24);
 
     this.overlay = document.createElement('div');
     this.overlay.className =
@@ -175,7 +179,15 @@ export class TitleScene implements Scene {
   }
 
   private buildDiorama(): void {
-    // Rich meadow ground
+    // Night sanctuary lighting for normal-mapped meadow turf
+    const hemiLight = new THREE.HemisphereLight(0xd2f5ef, 0x3b4d42, 1.85);
+    const keyLight = new THREE.DirectionalLight(0xeefcf8, 1.45);
+    keyLight.position.set(3.5, 7.5, 4.0);
+    this.scene.add(hemiLight, keyLight);
+    this.disposables.track(hemiLight);
+    this.disposables.track(keyLight);
+
+    // Rich meadow ground with normal map relief
     const groundGeo = new THREE.PlaneGeometry(22, 18);
     groundGeo.rotateX(-Math.PI / 2);
     const uvAttr = groundGeo.getAttribute('uv') as THREE.BufferAttribute;
@@ -184,8 +196,12 @@ export class TitleScene implements Scene {
     uvAttr.setXY(2, 0, 0);
     uvAttr.setXY(3, 6, 0);
 
-    const groundMat = new THREE.MeshBasicMaterial({
+    const groundMat = new THREE.MeshStandardMaterial({
       map: this.game.assets.getGrassTexture(),
+      normalMap: this.game.assets.getGrassNormalTexture(),
+      normalScale: new THREE.Vector2(1.2, 1.2),
+      roughness: 0.94,
+      metalness: 0.0,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     this.scene.add(ground);
@@ -450,7 +466,7 @@ export class TitleScene implements Scene {
         <div class="pointer-events-auto">
           <button
             data-mute
-            class="min-h-[44px] px-3.5 rounded-xl border border-cold-stone/70 bg-crypt-ink/80 backdrop-blur-sm hover:border-ki-cyan text-xs font-bold text-porcelain whitespace-nowrap shrink-0 transition-colors"
+            class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-porcelain whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
           >
             ${this.game.synth.getMuted() ? 'Audio: OFF' : 'Audio: ON'}
           </button>
@@ -458,51 +474,51 @@ export class TitleScene implements Scene {
         <div class="pointer-events-auto flex items-center gap-2">
           ${
             showFullscreen
-              ? `<button data-fs class="min-h-[44px] px-3.5 rounded-xl border border-cold-stone/70 bg-crypt-ink/80 backdrop-blur-sm hover:border-ki-cyan text-xs font-bold text-ice-cyan whitespace-nowrap shrink-0 transition-colors">${document.fullscreenElement ? 'Salir' : ES.app.fullscreen}</button>`
+              ? `<button data-fs class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-ice-cyan whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">${document.fullscreenElement ? 'Salir' : ES.app.fullscreen}</button>`
               : ''
           }
           ${
             showInstall
-              ? `<button data-install class="min-h-[44px] px-3.5 rounded-xl border border-resonant-gold/80 bg-crypt-ink/85 backdrop-blur-sm text-xs font-bold text-resonant-gold whitespace-nowrap shrink-0 transition-colors">${ES.app.installApp}</button>`
+              ? `<button data-install class="min-h-[44px] px-3.5 px-btn-primary text-xs font-bold whitespace-nowrap shrink-0">${ES.app.installApp}</button>`
               : ''
           }
         </div>
       </header>
 
       <div class="pt-3 sm:pt-4 flex flex-col items-center text-center">
-        <div class="text-[11px] font-bold tracking-[0.22em] uppercase text-ki-cyan drop-shadow-[0_2px_4px_rgba(11,8,14,0.95)]">
+        <div class="inline-block bg-crypt-ink border-2 border-ki-cyan px-3 py-1 text-[11px] font-bold tracking-[0.2em] uppercase text-ki-cyan shadow-[2px_2px_0_#050505]">
           RPG Táctico 2.5D · 50 Marionetas
         </div>
-        <svg viewBox="0 0 380 78" class="mt-0.5 w-[min(88vw,400px)] h-auto drop-shadow-[0_6px_18px_rgba(11,8,14,0.95)]" aria-label="SoulDolls">
+        <svg viewBox="0 0 388 84" shape-rendering="crispEdges" class="mt-1.5 w-[min(88vw,400px)] h-auto" aria-label="SoulDolls">
           <defs>
-            <linearGradient id="mxTitleGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="${PALETTE.paleGold}"/>
-              <stop offset="52%" stop-color="${PALETTE.resonantGold}"/>
-              <stop offset="100%" stop-color="${PALETTE.tarnishedGold}"/>
-            </linearGradient>
+            <clipPath id="pxTitleTopClip">
+              <rect x="0" y="0" width="388" height="35" />
+            </clipPath>
           </defs>
-          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.cryptInk}" stroke="${PALETTE.cryptInk}" stroke-width="9" stroke-linejoin="round">${ES.app.title}</text>
-          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="url(#mxTitleGrad)">${ES.app.title}</text>
+          <text x="194" y="58" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.uiInk}" stroke="${PALETTE.uiInk}" stroke-width="10" stroke-linejoin="miter">${ES.app.title}</text>
+          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.cryptInk}" stroke="${PALETTE.cryptInk}" stroke-width="8" stroke-linejoin="miter">${ES.app.title}</text>
+          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.resonantGold}">${ES.app.title}</text>
+          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.paleGold}" clip-path="url(#pxTitleTopClip)">${ES.app.title}</text>
         </svg>
-        <div class="mt-1 flex items-center justify-center gap-2.5 text-xs sm:text-sm font-semibold tracking-wider text-porcelain drop-shadow-[0_2px_6px_rgba(11,8,14,0.98)]">
-          <span class="h-px w-6 bg-resonant-gold/70"></span>
+        <div class="mt-1 flex items-center justify-center gap-2.5 text-xs sm:text-sm font-bold tracking-wider text-porcelain px-text-outline">
+          <span class="h-[2px] w-6 bg-resonant-gold"></span>
           <span>${ES.app.subtitle}</span>
-          <span class="h-px w-6 bg-resonant-gold/70"></span>
+          <span class="h-[2px] w-6 bg-resonant-gold"></span>
         </div>
       </div>
 
       <div class="flex-1 min-h-0"></div>
 
-      <footer class="-mx-4 sm:-mx-6 px-4 sm:px-6 pt-10 pb-5 bg-gradient-to-t from-crypt-ink via-crypt-ink/85 to-transparent flex flex-col items-center gap-2.5">
+      <footer class="-mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 pb-5 bg-crypt-ink border-t-2 border-old-bronze shadow-[inset_0_2px_0_#3B2B1A] flex flex-col items-center gap-2.5">
         <div class="pointer-events-auto w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5">
           ${
             hasSave
-              ? `<button data-continue class="flex-1 min-h-[50px] px-6 rounded-xl border-2 border-pale-gold bg-resonant-gold hover:bg-bright-brass text-crypt-ink font-extrabold text-base shadow-[0_6px_22px_rgba(232,184,74,0.3)] whitespace-nowrap transition-transform active:scale-[0.98]">${ES.app.continueGame}</button>
-                 <button data-new class="flex-1 min-h-[50px] px-6 rounded-xl border border-old-bronze bg-smoked-wood/95 hover:bg-ash-purple text-porcelain font-bold text-base shadow-lg whitespace-nowrap transition-transform active:scale-[0.98]">${ES.app.newGame}</button>`
-              : `<button data-new class="w-full sm:w-auto sm:min-w-[240px] min-h-[50px] px-8 rounded-xl border-2 border-pale-gold bg-resonant-gold hover:bg-bright-brass text-crypt-ink font-extrabold text-base shadow-[0_6px_22px_rgba(232,184,74,0.3)] whitespace-nowrap transition-transform active:scale-[0.98]">${ES.app.newGame}</button>`
+              ? `<button data-continue class="flex-1 min-h-[50px] px-6 px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.continueGame}</button>
+                 <button data-new class="flex-1 min-h-[50px] px-6 px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.newGame}</button>`
+              : `<button data-new class="w-full sm:w-auto sm:min-w-[240px] min-h-[50px] px-8 px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.newGame}</button>`
           }
         </div>
-        <div class="text-[11px] text-bone-gray text-center drop-shadow-[0_1px_2px_rgba(11,8,14,0.95)]">
+        <div class="text-[11px] text-bone-gray text-center">
           ${hintText}
         </div>
       </footer>

@@ -15,7 +15,11 @@ import {
   sumBodyPartsCurrent,
 } from '../src/domain/BodyParts.ts';
 import { createCreature } from '../src/domain/Creature.ts';
-import { createInitialSave, migrateSaveData } from '../src/save/migrations.ts';
+import {
+  CURRENT_SAVE_VERSION,
+  createInitialSave,
+  migrateSaveData,
+} from '../src/save/migrations.ts';
 
 describe('SoulDolls lore, 4-part body HP, containers & AR gacha', () => {
   it('computes 4-part body HP ratios from container + IVs/EVs and keeps currentHp in sync', () => {
@@ -115,7 +119,7 @@ describe('SoulDolls lore, 4-part body HP, containers & AR gacha', () => {
     });
 
     expect(migrated).not.toBeNull();
-    expect(migrated!.version).toBe(5);
+    expect(migrated!.version).toBe(CURRENT_SAVE_VERSION);
     expect(migrated!.vessels?.cuerpo_aprendiz).toBe(1);
     expect(migrated!.party[0].bodyParts).toBeDefined();
     expect(migrated!.party[0].containerId).toBe('cuerpo_asesina');
@@ -175,6 +179,56 @@ describe('SoulDolls lore, 4-part body HP, containers & AR gacha', () => {
     expect(markup).toContain('bg-ki-cyan');
     expect(markup).toContain('bg-resonant-gold');
     expect(markup).toContain('BRK');
+    expect(markup).toContain('data-marionette-stage');
+    expect(markup).toContain('data-damage-indicator="torso"');
     expect(markup.match(/role="progressbar"/g)).toHaveLength(4);
+  });
+
+  it('renders DamageIndicator overlaid on marionette limbs with battle-part-hit feedback', async () => {
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { DamageIndicator, DAMAGE_PART_ANCHORS } = await import(
+      '../src/components/DamageIndicator.tsx'
+    );
+    const { BattleContainer } = await import('../src/components/BattleContainer.tsx');
+
+    // No renderiza cuando no hay impacto activo
+    const idleMarkup = renderToStaticMarkup(
+      React.createElement(DamageIndicator, { part: 'head', tick: 0 })
+    );
+    expect(idleMarkup).toBe('');
+
+    // Renderiza sobre extremidad con animación battle-part-hit y badge de daño crítico
+    const critMarkup = renderToStaticMarkup(
+      React.createElement(DamageIndicator, {
+        part: 'arms',
+        tick: 2,
+        amount: 24,
+        crit: true,
+      })
+    );
+    expect(critMarkup).toContain('data-damage-indicator="arms"');
+    expect(critMarkup).toContain('data-damage-tick="2"');
+    expect(critMarkup).toContain('battle-part-hit');
+    expect(critMarkup).toContain('shape-rendering="crispEdges"');
+    expect(critMarkup).toContain(`top:${DAMAGE_PART_ANCHORS.arms.top}`);
+    expect(critMarkup).toContain('-24!');
+
+    // Renderiza estado de extremidad rota dentro de BattleContainer
+    const doll = createCreature(1, 20, createRng(77), 'cuerpo_aprendiz');
+    const containerMarkup = renderToStaticMarkup(
+      React.createElement(BattleContainer, {
+        creature: doll,
+        variant: 'enemy',
+        damagedPart: 'legs',
+        damageTick: 3,
+        damageAmount: 18,
+        damageBroken: true,
+      })
+    );
+    expect(containerMarkup).toContain('data-damage-indicator="legs"');
+    expect(containerMarkup).toContain(`top:${DAMAGE_PART_ANCHORS.legs.top}`);
+    expect(containerMarkup).toContain('-18');
+    expect(containerMarkup).toContain('battle-part-hit');
   });
 });

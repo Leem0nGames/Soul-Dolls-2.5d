@@ -730,7 +730,12 @@ export class BattleScene implements Scene {
       case 'damage': {
         this.refreshHud();
         if (ev.damagedPart) {
-          this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart);
+          this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart, {
+            amount: ev.amount,
+            crit: ev.crit,
+            effectiveness: ev.effectiveness,
+            broken: Boolean(ev.partBroken),
+          });
         }
         const isPlayer = ev.target === 'player';
         const mesh = isPlayer ? this.playerMesh : this.enemyMesh;

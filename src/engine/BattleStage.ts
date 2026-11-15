@@ -89,7 +89,7 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         baseTile: ',',
         hillTile: '#',
         platformTop: 'stone',
-        platformRim: 'cobble',
+        platformRim: 'cliff_rock',
         farColor: PALETTE.stoneShadow,
         midColor: PALETTE.stoneMid,
         hasClouds: true,
@@ -108,7 +108,7 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         baseTile: 'c',
         hillTile: '#',
         platformTop: 'cave_floor',
-        platformRim: 'stone',
+        platformRim: 'wall_crypt',
         farColor: PALETTE.abyssInk,
         midColor: PALETTE.nightshade,
         hasClouds: false,
@@ -127,7 +127,7 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         baseTile: 'A',
         hillTile: '#',
         platformTop: 'arena_floor',
-        platformRim: 'cobble',
+        platformRim: 'palace_tile',
         farColor: PALETTE.nightshade,
         midColor: PALETTE.royalPurple,
         hasClouds: true,
@@ -147,7 +147,7 @@ function getBiomeTheme(biome: BattleBiome, isBoss: boolean): BiomeTheme {
         baseTile: '.',
         hillTile: '*',
         platformTop: 'grass',
-        platformRim: 'dirt',
+        platformRim: 'wall_fieldstone',
         farColor: PALETTE.stoneShadow,
         midColor: PALETTE.forestGreen,
         hasClouds: true,
@@ -493,6 +493,7 @@ function buildPlatformGeometry(
   geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
   geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
   geo.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+  geo.computeVertexNormals();
   geo.computeBoundingSphere();
   return geo;
 }
@@ -529,13 +530,38 @@ export class BattleStage {
     scene.background = skyTex;
     scene.fog = new THREE.Fog(theme.fog, 16, 36);
 
-    // 24x24 heightfield terrain patch
-    const atlasMat = new THREE.MeshBasicMaterial({
+    const isCave = biome === 'cave';
+    const hemiLight = new THREE.HemisphereLight(
+      isCave ? 0xd9c8ff : 0xfff8eb,
+      isCave ? 0x6f5894 : 0xa39c8e,
+      isCave ? 1.85 : 2.05
+    );
+    scene.add(hemiLight);
+    this.disposables.track(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(
+      isCave ? 0xffe0b8 : 0xfff7e6,
+      isCave ? 1.35 : 1.55
+    );
+    sunLight.position.set(4.5, 8.2, 3.5);
+    scene.add(sunLight);
+    this.disposables.track(sunLight);
+
+    // 24x24 heightfield terrain patch with normal mapping
+    const atlasMat = new THREE.MeshStandardMaterial({
       map: assets.getTileAtlasTexture(),
+      normalMap: assets.getTileAtlasNormalTexture(),
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughness: 0.92,
+      metalness: 0.03,
       vertexColors: true,
     });
-    const grassMat = new THREE.MeshBasicMaterial({
+    const grassMat = new THREE.MeshStandardMaterial({
       map: assets.getGrassTexture(),
+      normalMap: assets.getGrassNormalTexture(),
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughness: 0.95,
+      metalness: 0.0,
       vertexColors: true,
     });
     this.disposables.track(atlasMat);

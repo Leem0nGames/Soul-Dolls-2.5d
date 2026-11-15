@@ -41,7 +41,7 @@ export class CardAlbumScreen {
   ) {
     this.root = document.createElement('div');
     this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
+      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
     parent.appendChild(this.root);
   }
 
@@ -87,10 +87,8 @@ export class CardAlbumScreen {
       const filterBtns = filters
         .map(
           (f) =>
-            `<button data-filter="${f.id}" class="min-h-[44px] px-3 rounded-lg text-xs font-bold border ${
-              this.filter === f.id
-                ? 'border-bright-brass bg-resonant-gold text-crypt-ink'
-                : 'border-cold-stone/70 bg-ash-purple text-porcelain'
+            `<button data-filter="${f.id}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+              this.filter === f.id ? 'px-btn-primary' : 'px-btn-secondary'
             }">${f.label}</button>`
         )
         .join('');
@@ -107,18 +105,18 @@ export class CardAlbumScreen {
       }
 
       const rarityBtns = [
-        `<button data-rarity="all" class="min-h-[40px] px-2.5 rounded-lg text-[11px] font-bold border ${
+        `<button data-rarity="all" class="min-h-[44px] px-2.5 rounded-none text-[11px] font-bold border-2 whitespace-nowrap shadow-[2px_2px_0_#050505] ${
           this.rarityFilter === 'all'
-            ? 'border-warm-white bg-cold-stone/40 text-warm-white'
+            ? 'border-warm-white bg-cold-stone text-warm-white'
             : 'border-ash-purple bg-crypt-ink text-bone-gray'
         }">${ES.cards.allRarities}</button>`,
         ...CARD_RARITY_ORDER.map((r) => {
           const style = CARD_RARITY_STYLES[r];
           const active = this.rarityFilter === r;
-          return `<button data-rarity="${r}" class="min-h-[40px] px-2.5 rounded-lg text-[11px] font-bold border-2 ${
+          return `<button data-rarity="${r}" class="min-h-[44px] px-2.5 rounded-none text-[11px] font-bold border-2 whitespace-nowrap ${
             active
               ? `${style.border} ${style.frameBg} ${style.accent} ${style.glow}`
-              : `${style.unownedBorder} bg-crypt-ink/80 ${style.accent} opacity-80 hover:opacity-100`
+              : `${style.unownedBorder} bg-crypt-ink ${style.accent}`
           }">${ES.cards.rarity[r]} (${rarityCounts[r]})</button>`;
         }),
       ].join('');
@@ -152,15 +150,15 @@ export class CardAlbumScreen {
 
                 if (!owned) {
                   return `
-                    <button data-card="${id}" class="text-left rounded-xl border ${rarityStyle.unownedBorder} bg-crypt-ink/70 hover:border-cold-stone p-2.5 flex flex-col items-center justify-between gap-2 min-h-[156px]">
+                    <button data-card="${id}" class="text-left rounded-none border-2 ${rarityStyle.unownedBorder} bg-abyss-ink hover:border-cold-stone p-2.5 flex flex-col items-center justify-between gap-2 min-h-[156px] shadow-[2px_2px_0_#050505]">
                       <div class="w-full flex items-center justify-between text-[11px] tabular-nums">
                         <span class="text-cold-stone">#${String(id).padStart(2, '0')}</span>
-                        <span class="font-bold ${rarityStyle.accent} opacity-75">${ES.cards.rarity[card.rarity]}</span>
+                        <span class="font-bold ${rarityStyle.accent}">${ES.cards.rarity[card.rarity]}</span>
                       </div>
-                      <img src="${this.assets.getCreatureSilhouetteDataUrl(id)}" data-souldoll-id="${id}" data-souldoll-view="silhouette" class="souldoll-img w-16 h-16 object-contain opacity-60" alt="${ES.cards.unknown}" />
+                      <img src="${this.assets.getCreatureSilhouetteDataUrl(id)}" data-souldoll-id="${id}" data-souldoll-view="silhouette" class="souldoll-img w-16 h-16 object-contain" alt="${ES.cards.unknown}" />
                       <div class="w-full text-center">
                         <div class="font-bold text-xs text-cold-stone">${ES.cards.unknown}</div>
-                        <div class="text-[10px] text-bone-gray/60 truncate">Sin obtener</div>
+                        <div class="text-[10px] text-bone-gray truncate">Sin obtener</div>
                       </div>
                     </button>
                   `;
@@ -173,19 +171,19 @@ export class CardAlbumScreen {
                 const bonusStr = formatCardBonuses(card.bonuses);
 
                 return `
-                  <button data-card="${id}" class="text-left rounded-xl border-2 ${rarityStyle.border} ${rarityStyle.frameBg} ${rarityStyle.glow} ${rarityStyle.hoverBorder} p-2.5 flex flex-col justify-between gap-1.5 min-h-[156px] relative overflow-hidden transition-colors">
+                  <button data-card="${id}" class="text-left rounded-none border-2 ${rarityStyle.border} ${rarityStyle.frameBg} ${rarityStyle.glow} ${rarityStyle.hoverBorder} p-2.5 flex flex-col justify-between gap-1.5 min-h-[156px] relative overflow-hidden">
                     <div class="w-full flex items-center justify-between gap-1 text-[11px] tabular-nums">
                       <span class="text-bone-gray font-bold">#${String(id).padStart(2, '0')}</span>
                       <span class="font-bold ${rarityStyle.accent}">${ES.cards.rarity[card.rarity]} · ×${entry!.count}</span>
                     </div>
-                    <div class="w-full flex items-center justify-center rounded-lg py-1" style="background:radial-gradient(circle, ${primaryType.bg}55 0%, rgba(20,16,28,0) 74%)">
+                    <div class="w-full flex items-center justify-center rounded-none border-2 bg-abyss-ink py-1" style="border-color:${primaryType.border}">
                       <img src="${this.assets.getCreatureDataUrl(id, 'front')}" data-souldoll-id="${id}" data-souldoll-view="front" class="souldoll-img w-16 h-16 object-contain" alt="${spec.name}" />
                     </div>
                     <div class="w-full min-w-0">
                       <div class="font-bold text-xs text-porcelain truncate">${spec.name}</div>
                       <div class="text-[10px] text-bone-gray truncate">${typesText}</div>
                       <div class="mt-0.5 text-[10px] font-bold text-ki-cyan truncate tabular-nums">${bonusStr}</div>
-                      <div class="text-[10px] ${holders ? 'text-resonant-gold' : 'text-bone-gray/80'} truncate tabular-nums">${
+                      <div class="text-[10px] ${holders ? 'text-resonant-gold' : 'text-bone-gray'} truncate tabular-nums">${
                         holders ? `Engarzada: ${holders}` : `Libres: ${avail}/${entry!.count}`
                       }</div>
                     </div>
@@ -195,13 +193,13 @@ export class CardAlbumScreen {
               .join('');
 
       this.root.innerHTML = `
-        <div class="w-full max-w-4xl max-h-[calc(100dvh-1.5rem)] flex flex-col rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-2.5 gap-2">
+        <div class="px-panel w-full max-w-4xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2.5 gap-2">
             <div>
               <div class="font-bold text-resonant-gold">${ES.cards.title}</div>
               <div class="text-xs text-bone-gray tabular-nums">${ES.cards.collected}: ${counts.collected}/${counts.total} · Copias totales: ${counts.totalCopies}</div>
             </div>
-            <button data-close class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.cards.back}</button>
+            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
           </div>
           <div class="text-xs text-bone-gray mb-2">${ES.cards.subtitle}</div>
           <div class="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 mb-2">${filterBtns}</div>
@@ -263,13 +261,13 @@ export class CardAlbumScreen {
 
     if (!owned) {
       this.root.innerHTML = `
-        <div class="w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 ${rarityStyle.border} ${rarityStyle.glow} bg-smoked-wood p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-4">
+        <div class="px-panel w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto ${rarityStyle.border} p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-4">
             <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.cards.unknown}</div>
-            <button data-back class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold">${ES.cards.back}</button>
+            <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
           </div>
           <div class="flex flex-col items-center py-6 gap-3 text-center">
-            <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain opacity-75" alt="${ES.cards.unknown}" />
+            <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain" alt="${ES.cards.unknown}" />
             <div class="text-xs font-bold uppercase tracking-wider ${rarityStyle.accent}">${ES.cards.rarity[card.rarity]}</div>
             <div class="text-[11px] text-bone-gray tabular-nums">${ES.cards.dropChanceLabel(dropPct, dropMult)}</div>
             <p class="text-sm text-bone-gray max-w-xs">${ES.cards.lockedHint}</p>
@@ -287,14 +285,14 @@ export class CardAlbumScreen {
     const typeBadges = card.types
       .map((t) => {
         const v = TYPE_VISUALS[t];
-        return `<span class="px-2 py-0.5 rounded text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
+        return `<span class="px-2 py-0.5 rounded-none text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
       })
       .join(' ');
 
     const bonusesGrid = STAT_ORDER.filter((stat) => (card.bonuses[stat] ?? 0) > 0)
       .map(
         (stat) => `
-          <div class="rounded-lg border border-ash-purple bg-smoked-wood/80 px-2.5 py-1.5 flex items-center justify-between text-xs tabular-nums">
+          <div class="rounded-none border border-ash-purple bg-smoked-wood px-2.5 py-1.5 flex items-center justify-between text-xs tabular-nums">
             <span class="font-bold text-bone-gray">${ES.stats[stat]}</span>
             <span class="font-bold text-ki-cyan">+${card.bonuses[stat]}</span>
           </div>
@@ -304,7 +302,7 @@ export class CardAlbumScreen {
 
     const partyHtml =
       save.party.length === 0
-        ? `<div class="rounded-lg border border-ash-purple bg-crypt-ink p-4 text-xs text-bone-gray text-center">${ES.cards.noParty}</div>`
+        ? `<div class="px-card p-4 text-xs text-bone-gray text-center">${ES.cards.noParty}</div>`
         : save.party
             .map((mon, idx) => {
               const hasThis = mon.socketedCardId === speciesId;
@@ -316,13 +314,13 @@ export class CardAlbumScreen {
               const canDropHere = !hasThis && availCopies > 0;
               let btnHtml = '';
               if (hasThis) {
-                btnHtml = `<button data-unsocket="${idx}" class="min-h-[44px] px-3 rounded-lg bg-rosewood hover:bg-rift-crimson text-warm-white text-xs font-bold shrink-0">${ES.cards.unsocketAction}</button>`;
+                btnHtml = `<button data-unsocket="${idx}" class="px-btn-danger min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap">${ES.cards.unsocketAction}</button>`;
               } else if (availCopies > 0) {
-                btnHtml = `<button data-socket="${idx}" class="min-h-[44px] px-3 rounded-lg bg-oceanic-teal hover:bg-vibrant-aqua text-warm-white text-xs font-bold shrink-0">${
+                btnHtml = `<button data-socket="${idx}" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap">${
                   otherCard ? ES.cards.swapAction : ES.cards.socketAction
                 }</button>`;
               } else {
-                btnHtml = `<span class="text-[11px] text-bone-gray/80 font-semibold shrink-0">${ES.cards.noCopyAvailable}</span>`;
+                btnHtml = `<span class="text-[11px] text-bone-gray font-semibold shrink-0">${ES.cards.noCopyAvailable}</span>`;
               }
 
               const statLine = (
@@ -344,23 +342,23 @@ export class CardAlbumScreen {
                 .join(' · ');
 
               return `
-                <div data-party-drop-idx="${idx}" data-can-drop="${canDropHere ? '1' : '0'}" class="rounded-lg border-2 transition-all duration-150 ${
+                <div data-party-drop-idx="${idx}" data-can-drop="${canDropHere ? '1' : '0'}" class="px-card ${
                   hasThis
-                    ? 'border-resonant-gold bg-ash-purple/40 card-socket-active'
+                    ? 'border-resonant-gold bg-ash-purple card-socket-active'
                     : 'border-ash-purple bg-crypt-ink'
                 } p-2.5 flex items-center justify-between gap-2.5">
                   <div class="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div data-socket-slot="${idx}" class="relative w-12 h-12 rounded-lg border ${
+                    <div data-socket-slot="${idx}" class="relative w-12 h-12 rounded-none border-2 ${
                       hasThis
-                        ? 'border-ki-cyan/80 bg-deep-abyss/60'
+                        ? 'border-ki-cyan bg-deep-abyss'
                         : activeCard
-                          ? 'border-old-bronze bg-smoked-wood/80'
-                          : 'border-dashed border-cold-stone/60 bg-smoked-wood/40'
+                          ? 'border-old-bronze bg-smoked-wood'
+                          : 'border-dashed border-cold-stone bg-smoked-wood'
                     } flex items-center justify-center shrink-0">
                       <img src="${this.assets.getCreatureDataUrl(mon.speciesId, 'front')}" data-souldoll-id="${mon.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain" alt="${getCreatureDisplayName(mon)}" />
                       ${
                         activeCard
-                          ? `<img src="${this.assets.getCreatureDataUrl(activeCard.speciesId, 'front')}" data-souldoll-id="${activeCard.speciesId}" data-souldoll-view="front" class="souldoll-img w-5 h-5 object-contain rounded border-2 ${CARD_RARITY_STYLES[activeCard.rarity].border} bg-crypt-ink absolute -bottom-1 -right-1 shadow" alt="${activeCard.name}" />`
+                          ? `<img src="${this.assets.getCreatureDataUrl(activeCard.speciesId, 'front')}" data-souldoll-id="${activeCard.speciesId}" data-souldoll-view="front" class="souldoll-img w-5 h-5 object-contain rounded-none border-2 ${CARD_RARITY_STYLES[activeCard.rarity].border} bg-crypt-ink absolute -bottom-1 -right-1 shadow-[1px_1px_0_#050505]" alt="${activeCard.name}" />`
                           : ''
                       }
                     </div>
@@ -372,7 +370,7 @@ export class CardAlbumScreen {
                           ? `<div class="text-[11px] font-bold text-ki-cyan">${ES.cards.bonusActive}: ${formatCardBonuses(card.bonuses)}</div>`
                           : otherCard
                             ? `<div class="text-[11px] text-pale-gold truncate">Ranura: ${otherCard.name}</div>`
-                            : `<div data-drop-hint="${idx}" class="text-[11px] text-bone-gray/70">Ranura libre</div>`
+                            : `<div data-drop-hint="${idx}" class="text-[11px] text-bone-gray">Ranura libre</div>`
                       }
                     </div>
                   </div>
@@ -385,25 +383,25 @@ export class CardAlbumScreen {
     const canDragCard = availCopies > 0 && save.party.length > 0;
 
     this.root.innerHTML = `
-      <div class="w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-        <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3 gap-2">
+      <div class="px-panel w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
+        <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
           <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${card.name}</div>
-          <button data-back class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.cards.back}</button>
+          <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
         </div>
 
-        ${this.notice ? `<div class="mb-3 rounded-lg border border-ki-cyan/60 bg-oceanic-teal/40 px-3 py-2 text-xs font-semibold text-warm-white">${this.notice}</div>` : ''}
+        ${this.notice ? `<div class="mb-3 rounded-none border-2 border-ki-cyan bg-deep-abyss px-3 py-2 text-xs font-bold text-frosted-glass">${this.notice}</div>` : ''}
 
         <div class="grid grid-cols-1 md:grid-cols-[270px_1fr] gap-4">
           <div class="flex flex-col gap-2">
-            <div data-drag-card class="rounded-xl border-2 ${rarityStyle.border} ${rarityStyle.frameBg} ${rarityStyle.glow} p-3.5 flex flex-col gap-3 shadow-xl transition-transform duration-150 ${
-              canDragCard ? 'touch-none select-none cursor-grab active:cursor-grabbing hover:-translate-y-0.5' : ''
+            <div data-drag-card class="rounded-none border-2 ${rarityStyle.border} ${rarityStyle.frameBg} ${rarityStyle.glow} p-3.5 flex flex-col gap-3 ${
+              canDragCard ? 'touch-none select-none cursor-grab active:cursor-grabbing' : ''
             }">
               <div class="flex items-center justify-between text-xs font-bold">
                 <span class="tabular-nums text-bone-gray">#${String(speciesId).padStart(2, '0')} · ${card.title}</span>
                 <span class="${rarityStyle.accent} uppercase tracking-wider">${ES.cards.rarity[card.rarity]}</span>
               </div>
 
-              <div class="rounded-lg border border-ash-purple/80 py-3 flex items-center justify-center" style="background:radial-gradient(circle, ${primaryType.bg}66 0%, #14101C 76%)">
+              <div class="rounded-none border-2 bg-abyss-ink py-3 flex items-center justify-center" style="border-color:${primaryType.border}">
                 <img src="${this.assets.getCreatureDataUrl(speciesId, 'front')}" data-souldoll-id="${speciesId}" data-souldoll-view="front" class="souldoll-img w-32 h-32 object-contain pointer-events-none" alt="${spec.name}" />
               </div>
 
@@ -412,7 +410,7 @@ export class CardAlbumScreen {
                 <div class="mt-1 flex flex-wrap gap-1">${typeBadges}</div>
               </div>
 
-              <div class="text-xs text-porcelain/90 leading-relaxed border-t border-ash-purple pt-2">
+              <div class="text-xs text-porcelain leading-relaxed border-t border-ash-purple pt-2">
                 ${card.description}
               </div>
 
@@ -429,7 +427,7 @@ export class CardAlbumScreen {
             </div>
             ${
               canDragCard
-                ? `<div class="text-[11px] text-center text-ki-cyan/90 font-semibold px-2">${ES.cards.dragHint}</div>`
+                ? `<div class="text-[11px] text-center text-ki-cyan font-semibold px-2">${ES.cards.dragHint}</div>`
                 : ''
             }
           </div>
@@ -497,17 +495,16 @@ export class CardAlbumScreen {
 
         const createGhost = (x: number, y: number) => {
           const g = document.createElement('div');
-          g.className = `pointer-events-none fixed z-[65] w-44 rounded-xl border-2 ${rarityStyle.border} ${rarityStyle.frameBg} p-2.5 shadow-2xl`;
+          g.className = `pointer-events-none fixed z-[65] w-44 rounded-none border-2 ${rarityStyle.border} ${rarityStyle.frameBg} p-2.5 shadow-[4px_4px_0_#050505]`;
           g.style.left = `${x}px`;
           g.style.top = `${y}px`;
-          g.style.transform = 'translate(-50%, -55%) rotate(-3deg) scale(0.95)';
-          g.style.boxShadow = `0 12px 30px rgba(0,0,0,0.65), 0 0 18px ${rarityStyle.fxColor}66`;
+          g.style.transform = 'translate(-50%, -55%)';
           g.innerHTML = `
             <div class="flex items-center justify-between text-[10px] font-bold mb-1">
               <span class="text-porcelain truncate">${card.name}</span>
               <span class="${rarityStyle.accent}">${ES.cards.rarity[card.rarity]}</span>
             </div>
-            <div class="flex items-center justify-center py-1 rounded bg-smoked-wood/70">
+            <div class="flex items-center justify-center py-1 rounded-none border border-ash-purple bg-abyss-ink">
               <img src="${this.assets.getCreatureDataUrl(speciesId, 'front')}" class="souldoll-img w-16 h-16 object-contain" alt="" />
             </div>
             <div class="mt-1 text-[10px] font-bold text-ki-cyan text-center tabular-nums">${formatCardBonuses(card.bonuses)}</div>

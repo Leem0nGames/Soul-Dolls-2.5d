@@ -26,7 +26,7 @@ export function computeRenderSize(
     const maxPixels = 4_194_304;
     const ratio = Math.min(
       Math.max(1, devicePixelRatio),
-      2,
+      3,
       Math.sqrt(maxPixels / pixelCount)
     );
     return {
@@ -58,7 +58,7 @@ export class PixelRenderer {
   private avgFrameMs = 16.6;
   private resizeCooldown = 2000;
   private contextLost = false;
-  private pixelEffect = true;
+  private pixelEffect = false;
   private onContextLostCb?: () => void;
   private onContextRestoredCb?: () => void;
 
@@ -150,13 +150,13 @@ export class PixelRenderer {
     let nextTier = this.qualityTier;
 
     if (this.avgFrameMs > 24) {
-      if (this.scale > 0.6) {
-        nextScale = Math.max(0.6, Math.round((this.scale - 0.1) * 10) / 10);
+      if (this.pixelEffect && this.scale > 0.75) {
+        nextScale = Math.max(0.75, Math.round((this.scale - 0.1) * 10) / 10);
       }
       if (this.qualityTier === 'high') nextTier = 'medium';
       else if (this.qualityTier === 'medium') nextTier = 'low';
     } else if (this.avgFrameMs < 17) {
-      if (this.scale < 1.0) {
+      if (this.pixelEffect && this.scale < 1.0) {
         nextScale = Math.min(1.0, Math.round((this.scale + 0.1) * 10) / 10);
       }
       if (this.qualityTier === 'low') nextTier = 'medium';
@@ -164,9 +164,12 @@ export class PixelRenderer {
     }
 
     if (nextScale !== this.scale || nextTier !== this.qualityTier) {
+      const scaleChanged = nextScale !== this.scale;
       this.scale = nextScale;
       this.qualityTier = nextTier;
-      this.applyInternalSize();
+      if (scaleChanged) {
+        this.applyInternalSize();
+      }
       this.resizeCooldown = 1800;
     }
   }

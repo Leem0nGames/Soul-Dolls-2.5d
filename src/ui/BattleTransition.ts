@@ -18,8 +18,7 @@ export class BattleTransition {
 
     this.vignetteEl = document.createElement('div');
     this.vignetteEl.className =
-      'pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300';
-    this.vignetteEl.style.boxShadow = 'inset 0 0 70px rgba(194, 35, 75, 0.58)';
+      'pointer-events-none absolute inset-0 border-[6px] border-rift-crimson opacity-0 transition-opacity duration-200';
 
     this.flashEl = document.createElement('div');
     this.flashEl.className =
@@ -34,11 +33,11 @@ export class BattleTransition {
 
     this.wipeEl = document.createElement('div');
     this.wipeEl.className =
-      'pointer-events-none absolute -inset-y-8 -inset-x-12 hidden bg-gradient-to-r from-crypt-ink via-smoked-wood to-crypt-ink border-x-4 border-resonant-gold';
+      'pointer-events-none absolute inset-0 hidden bg-crypt-ink border-x-4 border-resonant-gold';
 
     this.vsBannerEl = document.createElement('div');
     this.vsBannerEl.className =
-      'pointer-events-auto absolute inset-0 hidden flex-col items-center justify-center bg-crypt-ink/75 p-4';
+      'pointer-events-auto absolute inset-0 hidden flex-col items-center justify-center bg-abyss-ink p-4';
 
     this.transitionRoot.appendChild(this.wipeEl);
     this.transitionRoot.appendChild(this.vsBannerEl);
@@ -66,8 +65,8 @@ export class BattleTransition {
     }, Math.max(50, durationMs));
   }
 
-  setVignette(active: boolean, colorCss = 'rgba(194, 35, 75, 0.58)'): void {
-    this.vignetteEl.style.boxShadow = `inset 0 0 75px ${colorCss}`;
+  setVignette(active: boolean, colorCss = '#C2234B'): void {
+    this.vignetteEl.style.borderColor = colorCss;
     this.vignetteEl.style.opacity = active ? '1' : '0';
   }
 
@@ -80,12 +79,11 @@ export class BattleTransition {
     this.fxRoot.classList.remove('hidden');
     this.transitionRoot.classList.remove('hidden');
 
-    // Gentle warm atmospheric pulse instead of blinding white flash
-    this.flashScreen('rgba(232, 184, 74, 0.12)', 90);
+    this.flashScreen('#E8B84A', 75);
     this.seqTimers.push(
       window.setTimeout(() => {
-        this.flashScreen('rgba(232, 184, 74, 0.10)', 85);
-      }, 150)
+        this.flashScreen('#E8B84A', 75);
+      }, 140)
     );
 
     this.wipeEl.classList.remove('hidden', 'battle-wipe-slash');
@@ -97,12 +95,11 @@ export class BattleTransition {
         window.setTimeout(() => {
           this.wipeEl.classList.add('hidden');
           onDone();
-        }, 780)
+        }, 760)
       );
       return;
     }
 
-    // Trainer / Leader VS splash
     this.seqTimers.push(
       window.setTimeout(() => {
         this.wipeEl.classList.add('hidden');
@@ -123,22 +120,22 @@ export class BattleTransition {
       trainer.id
     );
     const playerImg = assets.getCharacterDataUrl('player', 'down');
-    const accent = isBoss
-      ? 'border-resonant-gold from-dried-blood/95 to-dark-oak/90'
-      : 'border-ki-cyan from-smoked-wood/95 to-nightshade/90';
+    const frameCls = isBoss
+      ? 'border-resonant-gold bg-dried-blood'
+      : 'border-ki-cyan bg-smoked-wood';
 
     this.vsBannerEl.innerHTML = `
-      <div class="w-full max-w-xl rounded-2xl border-2 ${accent} bg-gradient-to-r p-4 shadow-2xl battle-slide-left">
+      <div class="w-full max-w-xl rounded-none border-2 ${frameCls} p-4 shadow-[4px_4px_0_#050505] battle-slide-left">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-2.5">
-            <img src="${playerImg}" alt="Jugador" class="pixel-canvas w-12 h-16 object-contain bg-crypt-ink/75 rounded-lg border border-ki-cyan/60 p-1" />
+            <img src="${playerImg}" alt="Jugador" class="pixel-canvas w-12 h-16 object-contain bg-crypt-ink rounded-none border-2 border-ki-cyan p-1" />
             <div class="text-left">
               <div class="text-[10px] uppercase tracking-wider text-ki-cyan font-bold">Retador</div>
               <div class="text-sm sm:text-base font-black text-warm-white">Tú</div>
             </div>
           </div>
 
-          <div class="px-3 py-1 rounded-xl bg-resonant-gold text-crypt-ink font-black text-xl sm:text-2xl tracking-widest shadow-lg">
+          <div class="px-3 py-1 rounded-none border-2 border-pale-gold bg-resonant-gold text-ui-ink font-black text-xl sm:text-2xl tracking-widest shadow-[2px_2px_0_#050505]">
             VS
           </div>
 
@@ -147,7 +144,7 @@ export class BattleTransition {
               <div class="text-[10px] uppercase tracking-wider text-resonant-gold font-bold">${trainer.title}</div>
               <div class="text-sm sm:text-base font-black text-warm-white">${trainer.name}</div>
             </div>
-            <img src="${trainerImg}" alt="${trainer.name}" class="pixel-canvas w-12 h-16 object-contain bg-crypt-ink/75 rounded-lg border border-resonant-gold/60 p-1" />
+            <img src="${trainerImg}" alt="${trainer.name}" class="pixel-canvas w-12 h-16 object-contain bg-crypt-ink rounded-none border-2 border-resonant-gold p-1" />
           </div>
         </div>
       </div>

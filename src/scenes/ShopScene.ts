@@ -19,7 +19,7 @@ export class ShopScene implements Scene {
   ) {
     this.root = document.createElement('div');
     this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
+      'pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-abyss-ink p-3 safe-pad';
   }
 
   onEnter(): void {
@@ -47,15 +47,15 @@ export class ShopScene implements Scene {
               const owned = save.bag.find((s) => s.itemId === id)?.quantity ?? 0;
               const canAfford = save.money >= item.price;
               return `
-                <div class="flex items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+                <div class="px-card flex items-center justify-between gap-2 p-2.5">
                   <div class="min-w-0">
                     <div class="font-bold text-sm text-porcelain">${item.name} <span class="text-xs text-bone-gray tabular-nums">(${ES.shop.owned}: ${owned})</span></div>
                     <div class="text-xs text-bone-gray">${item.description}</div>
                   </div>
-                  <button data-buy="${id}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 rounded-lg text-xs font-bold tabular-nums shrink-0 ${
+                  <button data-buy="${id}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
                     canAfford
-                      ? 'bg-emerald-base hover:bg-oceanic-teal text-warm-white'
-                      : 'bg-ash-purple text-cold-stone cursor-not-allowed'
+                      ? 'px-btn-success'
+                      : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
                   }">${item.price} ◈</button>
                 </div>
               `;
@@ -68,16 +68,16 @@ export class ShopScene implements Scene {
                 const owned = save.vessels?.[cid] ?? 0;
                 const canAfford = save.money >= cdef.price;
                 return `
-                  <div class="flex items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+                  <div class="px-card flex items-center justify-between gap-2 p-2.5">
                     <div class="min-w-0">
                       <div class="font-bold text-sm text-porcelain">${cdef.name} <span class="text-xs text-bone-gray tabular-nums">(${ES.shop.owned}: ${owned})</span></div>
                       <div class="text-xs text-bone-gray">${cdef.description}</div>
                       <div class="text-[11px] text-ki-cyan tabular-nums mt-0.5">Cab ${cdef.ratios.head}% · Tor ${cdef.ratios.torso}% · Bra ${cdef.ratios.arms}% · Pie ${cdef.ratios.legs}%</div>
                     </div>
-                    <button data-buy-container="${cid}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 rounded-lg text-xs font-bold tabular-nums shrink-0 ${
+                    <button data-buy-container="${cid}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
                       canAfford
-                        ? 'bg-emerald-base hover:bg-oceanic-teal text-warm-white'
-                        : 'bg-ash-purple text-cold-stone cursor-not-allowed'
+                        ? 'px-btn-success'
+                        : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
                     }">${cdef.price} ◈</button>
                   </div>
                 `;
@@ -90,40 +90,40 @@ export class ShopScene implements Scene {
                   const item = getItem(slot.itemId);
                   const val = getSellPrice(slot.itemId);
                   return `
-                    <div class="flex items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+                    <div class="px-card flex items-center justify-between gap-2 p-2.5">
                       <div class="min-w-0">
                         <div class="font-bold text-sm text-porcelain">${item.name} <span class="text-resonant-gold tabular-nums">×${slot.quantity}</span></div>
                         <div class="text-xs text-bone-gray">${item.description}</div>
                       </div>
-                      <button data-sell="${slot.itemId}" class="min-h-[44px] px-3 rounded-lg bg-old-bronze hover:bg-tarnished-gold text-warm-white text-xs font-bold tabular-nums shrink-0">+${val} ◈</button>
+                      <button data-sell="${slot.itemId}" class="px-btn-primary min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap">+${val} ◈</button>
                     </div>
                   `;
                 })
                 .join('');
 
     this.root.innerHTML = `
-      <div class="w-full max-w-xl max-h-[calc(100dvh-1.5rem)] flex flex-col rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-        <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3">
+      <div class="px-panel w-full max-w-xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
+        <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
           <div>
             <div class="font-bold text-resonant-gold">${ES.shop.title}</div>
             <div class="text-xs text-pale-gold tabular-nums">${ES.menu.money}: ${save.money} ◈</div>
           </div>
-          <button data-exit class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.shop.exit}</button>
+          <button data-exit class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.shop.exit}</button>
         </div>
 
         <div class="flex flex-wrap gap-2 mb-3">
-          <button data-tab="buy" class="min-h-[44px] px-3.5 rounded-lg text-sm font-bold ${
-            this.mode === 'buy' ? 'bg-resonant-gold text-crypt-ink' : 'bg-ash-purple text-porcelain'
+          <button data-tab="buy" class="min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
+            this.mode === 'buy' ? 'px-btn-primary' : 'px-btn-secondary'
           }">${ES.shop.buy}</button>
-          <button data-tab="containers" class="min-h-[44px] px-3.5 rounded-lg text-sm font-bold ${
-            this.mode === 'containers' ? 'bg-resonant-gold text-crypt-ink' : 'bg-ash-purple text-porcelain'
+          <button data-tab="containers" class="min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
+            this.mode === 'containers' ? 'px-btn-primary' : 'px-btn-secondary'
           }">Contenedores</button>
-          <button data-tab="sell" class="min-h-[44px] px-3.5 rounded-lg text-sm font-bold ${
-            this.mode === 'sell' ? 'bg-resonant-gold text-crypt-ink' : 'bg-ash-purple text-porcelain'
+          <button data-tab="sell" class="min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
+            this.mode === 'sell' ? 'px-btn-primary' : 'px-btn-secondary'
           }">${ES.shop.sell}</button>
         </div>
 
-        ${this.notice ? `<div class="mb-2 rounded bg-ash-purple px-3 py-1.5 text-xs text-neon-mint">${this.notice}</div>` : ''}
+        ${this.notice ? `<div class="mb-2 rounded-none border-2 border-ki-cyan bg-deep-abyss px-3 py-1.5 text-xs font-bold text-neon-mint">${this.notice}</div>` : ''}
 
         <div class="touch-scroll overflow-y-auto space-y-2 pr-1">${rows}</div>
       </div>

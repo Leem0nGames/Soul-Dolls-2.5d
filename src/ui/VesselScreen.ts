@@ -34,7 +34,7 @@ export class VesselScreen {
   ) {
     this.root = document.createElement('div');
     this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
+      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
     parent.appendChild(this.root);
   }
 
@@ -67,10 +67,10 @@ export class VesselScreen {
           this.bindingSoulUid = null;
         } else {
           bodyHtml = `
-            <div class="rounded-lg border border-resonant-gold bg-crypt-ink p-3 space-y-2">
+            <div class="px-card border-resonant-gold p-3 space-y-2">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-bold text-resonant-gold">Elige Cuerpo Contenedor para ${spec.name} (Nv.${soul.level}):</span>
-                <button data-cancel-sub class="min-h-[36px] px-2.5 rounded border border-cold-stone bg-ash-purple text-xs font-bold">${ES.vessels.back}</button>
+                <button data-cancel-sub class="px-btn-secondary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.vessels.back}</button>
               </div>
               ${
                 ownedVesselIds.length === 0
@@ -79,12 +79,12 @@ export class VesselScreen {
                       .map((cid) => {
                         const cdef = getBodyContainer(cid);
                         return `
-                          <button data-confirm-bind="${cid}" class="w-full min-h-[48px] rounded-lg border border-ash-purple bg-smoked-wood hover:border-ki-cyan p-2 text-left flex items-center justify-between gap-2">
+                          <button data-confirm-bind="${cid}" class="px-card w-full min-h-[48px] bg-smoked-wood hover:border-ki-cyan p-2 text-left flex items-center justify-between gap-2">
                             <div>
                               <div class="text-xs font-bold text-porcelain">${cdef.name} <span class="text-resonant-gold tabular-nums">×${vessels[cid]}</span></div>
                               <div class="text-[11px] text-bone-gray tabular-nums">Cab ${cdef.ratios.head}% · Tor ${cdef.ratios.torso}% · Bra ${cdef.ratios.arms}% · Pie ${cdef.ratios.legs}%</div>
                             </div>
-                            <span class="px-2.5 py-1 rounded bg-emerald-base text-warm-white text-xs font-bold shrink-0">Vincular</span>
+                            <span class="px-btn-success px-2.5 py-1 text-xs font-bold shrink-0">Vincular</span>
                           </button>
                         `;
                       })
@@ -96,23 +96,23 @@ export class VesselScreen {
       } else if (this.equippingContainerId) {
         const cdef = getBodyContainer(this.equippingContainerId);
         bodyHtml = `
-          <div class="rounded-lg border border-ki-cyan bg-crypt-ink p-3 space-y-2">
+          <div class="px-card border-ki-cyan p-3 space-y-2">
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs font-bold text-ki-cyan">Equipar ${cdef.name} a una SoulDoll del equipo:</span>
-              <button data-cancel-sub class="min-h-[36px] px-2.5 rounded border border-cold-stone bg-ash-purple text-xs font-bold">${ES.vessels.back}</button>
+              <button data-cancel-sub class="px-btn-secondary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.vessels.back}</button>
             </div>
             <div class="space-y-1.5">
               ${save.party
                 .map((doll, idx) => {
                   const cur = getBodyContainer(doll.containerId ?? 'cuerpo_aprendiz');
                   return `
-                    <button data-confirm-equip="${idx}" class="w-full min-h-[48px] rounded-lg border border-ash-purple bg-smoked-wood hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
+                    <button data-confirm-equip="${idx}" class="px-card w-full min-h-[48px] bg-smoked-wood hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
                       <img src="${this.assets.getCreatureDataUrl(doll.speciesId, 'front')}" data-souldoll-id="${doll.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="" />
                       <div class="min-w-0 flex-1">
                         <div class="text-xs font-bold truncate">${getCreatureDisplayName(doll)}</div>
                         <div class="text-[11px] text-bone-gray">Actual: ${cur.name}</div>
                       </div>
-                      <span class="px-2.5 py-1 rounded bg-oceanic-teal text-warm-white text-xs font-bold shrink-0">Intercambiar</span>
+                      <span class="px-btn-arcane px-2.5 py-1 text-xs font-bold shrink-0">Intercambiar</span>
                     </button>
                   `;
                 })
@@ -128,18 +128,18 @@ export class VesselScreen {
                 .map((soul) => {
                   const spec = getSpecies(soul.speciesId);
                   return `
-                    <div class="flex items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+                    <div class="px-card flex items-center justify-between gap-2 p-2.5">
                       <div class="flex items-center gap-2.5 min-w-0">
-                        <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0 opacity-85" alt="" />
+                        <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0" alt="" />
                         <div class="min-w-0">
                           <div class="text-sm font-bold text-porcelain truncate">Alma de ${spec.name}</div>
                           <div class="text-xs text-bone-gray tabular-nums">${ES.party.lv}${soul.level} · Esperando cuerpo</div>
                         </div>
                       </div>
-                      <button data-bind-soul="${soul.uid}" ${ownedVesselIds.length === 0 ? 'disabled' : ''} class="min-h-[44px] px-3 rounded-lg text-xs font-bold shrink-0 ${
+                      <button data-bind-soul="${soul.uid}" ${ownedVesselIds.length === 0 ? 'disabled' : ''} class="min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap ${
                         ownedVesselIds.length > 0
-                          ? 'bg-emerald-base hover:bg-oceanic-teal text-warm-white'
-                          : 'bg-ash-purple text-cold-stone cursor-not-allowed'
+                          ? 'px-btn-success'
+                          : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
                       }">${ES.vessels.bindSoul}</button>
                     </div>
                   `;
@@ -153,13 +153,17 @@ export class VesselScreen {
                 .map((cid) => {
                   const def = getBodyContainer(cid);
                   return `
-                    <div class="flex items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+                    <div class="px-card flex items-center justify-between gap-2 p-2.5">
                       <div class="min-w-0">
                         <div class="text-sm font-bold text-porcelain">${def.name} <span class="text-resonant-gold tabular-nums">×${vessels[cid]}</span></div>
                         <div class="text-xs text-bone-gray">${def.description}</div>
                         <div class="text-[11px] text-ki-cyan tabular-nums mt-0.5">Cab ${def.ratios.head}% · Tor ${def.ratios.torso}% · Bra ${def.ratios.arms}% · Pie ${def.ratios.legs}%</div>
                       </div>
-                      <button data-equip-container="${cid}" ${save.party.length === 0 ? 'disabled' : ''} class="min-h-[44px] px-3 rounded-lg bg-oceanic-teal hover:bg-vibrant-aqua text-warm-white text-xs font-bold shrink-0 ${save.party.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}">Equipar</button>
+                      <button data-equip-container="${cid}" ${save.party.length === 0 ? 'disabled' : ''} class="min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap ${
+                        save.party.length === 0
+                          ? 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
+                          : 'px-btn-arcane'
+                      }">Equipar</button>
                     </div>
                   `;
                 })
@@ -174,12 +178,12 @@ export class VesselScreen {
                   const count = shards[cid] ?? 0;
                   const pct = Math.min(100, Math.round((count / SHARDS_PER_CONTAINER) * 100));
                   return `
-                    <div class="rounded-lg border border-ash-purple bg-crypt-ink p-2.5 space-y-1.5">
+                    <div class="px-card p-2.5 space-y-1.5">
                       <div class="flex items-center justify-between text-xs">
                         <span class="font-bold text-porcelain">${def.name}</span>
                         <span class="font-bold text-resonant-gold tabular-nums">${count} / ${SHARDS_PER_CONTAINER}</span>
                       </div>
-                      <div class="h-2 w-full rounded bg-smoked-wood overflow-hidden">
+                      <div class="h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
                         <div class="h-full bg-ki-cyan" style="width:${pct}%"></div>
                       </div>
                     </div>
@@ -195,26 +199,24 @@ export class VesselScreen {
       ];
 
       this.root.innerHTML = `
-        <div class="w-full max-w-xl max-h-[calc(100dvh-1.5rem)] flex flex-col rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3">
+        <div class="px-panel w-full max-w-xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
             <span class="font-bold text-resonant-gold">${ES.vessels.title}</span>
-            <button data-close class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.vessels.back}</button>
+            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.vessels.back}</button>
           </div>
 
           <div class="grid grid-cols-3 gap-1.5 mb-3">
             ${tabs
               .map((t) => {
                 const active = this.tab === t.id && !this.bindingSoulUid && !this.equippingContainerId;
-                return `<button data-vtab="${t.id}" class="min-h-[42px] px-2 rounded-lg text-xs font-bold border ${
-                  active
-                    ? 'border-bright-brass bg-resonant-gold text-crypt-ink'
-                    : 'border-cold-stone/70 bg-ash-purple text-porcelain'
+                return `<button data-vtab="${t.id}" class="min-h-[44px] px-2 text-xs font-bold whitespace-nowrap ${
+                  active ? 'px-btn-primary' : 'px-btn-secondary'
                 }">${t.label}</button>`;
               })
               .join('')}
           </div>
 
-          ${this.notice ? `<div class="mb-2 rounded-lg bg-oceanic-teal/40 border border-ki-cyan px-3 py-1.5 text-xs text-frosted-glass">${this.notice}</div>` : ''}
+          ${this.notice ? `<div class="mb-2 rounded-none bg-deep-abyss border-2 border-ki-cyan px-3 py-1.5 text-xs font-bold text-frosted-glass">${this.notice}</div>` : ''}
 
           <div class="touch-scroll overflow-y-auto space-y-2">${bodyHtml}</div>
         </div>

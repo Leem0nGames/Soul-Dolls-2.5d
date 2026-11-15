@@ -14,7 +14,7 @@ export const ES = {
     continueGame: 'Continuar',
     installApp: 'Instalar App',
     installIosHint: 'En Safari pulsa Compartir y luego "Añadir a pantalla de inicio".',
-    controlsHint: 'Flechas/WASD Mover · Q/E Girar cámara · Z/Enter A · X B · M Menú',
+    controlsHint: 'Flechas/WASD Mover · Shift/X Correr · Q/E Girar cámara · Z/Enter A · M Menú',
     touchControlsHint: 'Cruceta Mover · L/R Girar cámara · A Acción · B Correr/Atrás',
     fullscreen: 'Pantalla completa',
     portraitHintTitle: 'Gira tu dispositivo',

@@ -34,6 +34,7 @@ function buildGeometry(qb: QuadBuilder): THREE.BufferGeometry {
   geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(qb.uvs), 2));
   geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(qb.colors), 3));
   geo.setIndex(new THREE.BufferAttribute(new Uint16Array(qb.indices), 1));
+  geo.computeVertexNormals();
   geo.computeBoundingSphere();
   return geo;
 }
@@ -247,8 +248,9 @@ function clusterWarps(map: MapDef): GatePlacement[] {
 
 function buildArchGateGroup(
   p: GatePlacement,
-  atlasMaterial: THREE.MeshBasicMaterial,
-  getRoofTexture: (kind: RoofTextureKind) => THREE.CanvasTexture
+  atlasMaterial: THREE.Material,
+  getRoofTexture: (kind: RoofTextureKind) => THREE.CanvasTexture,
+  getRoofNormalTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture
 ): THREE.Group {
   const group = new THREE.Group();
   group.position.set(p.centerX, p.groundY, p.centerZ);
@@ -258,35 +260,35 @@ function buildArchGateGroup(
   const rqb = createQuadBuilder();
   const glowQb = createQuadBuilder();
 
-  // 1. Cut-stone foundation plinths (left & right, clear of 2-tile road [-1.0 .. 1.0])
+  // 1. Fieldstone foundation plinths (left & right, clear of 2-tile road [-1.0 .. 1.0])
   for (const side of [-1, 1] as const) {
     const sx0 = side < 0 ? -1.86 : 1.10;
     const sx1 = side < 0 ? -1.10 : 1.86;
-    pushBox(qb, sx0, sx1, -0.75, 0.62, -0.50, 0.50, 'wall_brick', 0.92);
-    // Stepped stone cap
-    pushBox(qb, sx0 - 0.06, sx1 + 0.06, 0.62, 0.78, -0.56, 0.56, 'stone', 1.05);
+    pushBox(qb, sx0, sx1, -0.75, 0.62, -0.50, 0.50, 'wall_fieldstone', 0.96);
+    // Stepped cut stone cap
+    pushBox(qb, sx0 - 0.06, sx1 + 0.06, 0.62, 0.78, -0.56, 0.56, 'stone', 1.04);
 
-    // Low stone curb + timber wing guardrails extending outward into the foliage
+    // Low mossy stone curb + timber wing guardrails extending outward into the foliage
     const wx0 = side < 0 ? -3.15 : 1.86;
     const wx1 = side < 0 ? -1.86 : 3.15;
-    pushBox(qb, wx0, wx1, -0.75, 0.34, -0.22, 0.22, 'stone', 0.90);
+    pushBox(qb, wx0, wx1, -0.75, 0.34, -0.22, 0.22, 'mossy_stone', 0.95);
     pushBox(qb, wx0, wx1, 0.56, 0.72, -0.11, 0.11, 'planks', 0.98);
     // Wing end post
     const ex0 = side < 0 ? -3.22 : 2.94;
     const ex1 = side < 0 ? -2.94 : 3.22;
-    pushBox(qb, ex0, ex1, 0.34, 1.18, -0.18, 0.18, 'log', 0.95);
+    pushBox(qb, ex0, ex1, 0.34, 1.18, -0.18, 0.18, 'log', 0.96);
 
     // 2. Heavy timber main pillars (opening clear up to y = 2.85)
     const px0 = side < 0 ? -1.68 : 1.28;
     const px1 = side < 0 ? -1.28 : 1.68;
-    pushBox(qb, px0, px1, 0.78, 2.92, -0.34, 0.34, 'log', 0.96);
+    pushBox(qb, px0, px1, 0.78, 2.92, -0.34, 0.34, 'log', 0.98);
 
     // 3. Decorative diagonal knee braces connecting inner pillar face to crossbeam
     const innerX = side < 0 ? -1.28 : 1.28;
     const braceReach = side < 0 ? -0.72 : 0.72;
     const xA = Math.min(innerX, braceReach);
     const xB = Math.max(innerX, braceReach);
-    pushBox(qb, xA, xB, 2.42, 2.64, -0.16, 0.16, 'planks', 0.88);
+    pushBox(qb, xA, xB, 2.42, 2.64, -0.16, 0.16, 'planks', 0.92);
     pushBox(
       qb,
       side < 0 ? -1.28 : 1.06,
@@ -296,17 +298,17 @@ function buildArchGateGroup(
       -0.14,
       0.14,
       'planks',
-      0.86
+      0.90
     );
 
     // 4. Iron lantern brackets & glowing hanging lanterns (both sides of the gate)
     const bx0 = side < 0 ? -1.28 : 1.00;
     const bx1 = side < 0 ? -1.00 : 1.28;
-    pushBox(qb, bx0, bx1, 2.28, 2.38, -0.06, 0.06, 'stone', 0.65);
+    pushBox(qb, bx0, bx1, 2.28, 2.38, -0.06, 0.06, 'wall_iron', 0.85);
     const lx = side < 0 ? -1.04 : 1.04;
     // Lantern cap & base
-    pushBox(qb, lx - 0.13, lx + 0.13, 2.16, 2.26, -0.13, 0.13, 'stone', 0.70);
-    pushBox(qb, lx - 0.11, lx + 0.11, 1.84, 1.92, -0.11, 0.11, 'stone', 0.70);
+    pushBox(qb, lx - 0.13, lx + 0.13, 2.16, 2.26, -0.13, 0.13, 'wall_iron', 0.88);
+    pushBox(qb, lx - 0.11, lx + 0.11, 1.84, 1.92, -0.11, 0.11, 'wall_iron', 0.88);
     // Warm amber emissive lantern core
     pushColorBox(glowQb, lx - 0.09, lx + 0.09, 1.92, 2.16, -0.09, 0.09, 1.0, 0.84, 0.42);
   }
@@ -323,11 +325,11 @@ function buildArchGateGroup(
   const yEave = 2.98;
   const yPeak = 3.86;
   pushTiledQuad(rqb, [rx0, yEave, rz1], [rx1, yEave, rz1], [rx1, yPeak, 0], [rx0, yPeak, 0], 2, 1, 1.02);
-  pushTiledQuad(rqb, [rx1, yEave, rz0], [rx0, yEave, rz0], [rx0, yPeak, 0], [rx1, yPeak, 0], 2, 1, 0.82);
+  pushTiledQuad(rqb, [rx1, yEave, rz0], [rx0, yEave, rz0], [rx0, yPeak, 0], [rx1, yPeak, 0], 2, 1, 0.88);
 
   // Gable end triangles + ridge timber beam
-  pushTriangle(qb, [rx0, yEave, rz0], [rx0, yEave, rz1], [rx0, yPeak, 0], 'planks', 0.85, 0.85, 0.85);
-  pushTriangle(qb, [rx1, yEave, rz1], [rx1, yEave, rz0], [rx1, yPeak, 0], 'planks', 0.90, 0.90, 0.90);
+  pushTriangle(qb, [rx0, yEave, rz0], [rx0, yEave, rz1], [rx0, yPeak, 0], 'planks', 0.90, 0.90, 0.90);
+  pushTriangle(qb, [rx1, yEave, rz1], [rx1, yEave, rz0], [rx1, yPeak, 0], 'planks', 0.94, 0.94, 0.94);
   pushBox(qb, -2.44, 2.44, 3.80, 3.96, -0.10, 0.10, 'log', 1.05);
 
   const archMesh = new THREE.Mesh(buildGeometry(qb), atlasMaterial);
@@ -335,8 +337,12 @@ function buildArchGateGroup(
   archMesh.updateMatrix();
   group.add(archMesh);
 
-  const roofMat = new THREE.MeshBasicMaterial({
+  const roofMat = new THREE.MeshStandardMaterial({
     map: getRoofTexture(p.roofKind),
+    normalMap: getRoofNormalTexture ? getRoofNormalTexture(p.roofKind) : null,
+    normalScale: new THREE.Vector2(1.05, 1.05),
+    roughness: 0.9,
+    metalness: 0.04,
     vertexColors: true,
   });
   const roofMesh = new THREE.Mesh(buildGeometry(rqb), roofMat);
@@ -360,7 +366,7 @@ function buildArchGateGroup(
 
 function buildCavePortalGroup(
   p: GatePlacement,
-  atlasMaterial: THREE.MeshBasicMaterial
+  atlasMaterial: THREE.Material
 ): THREE.Group {
   const group = new THREE.Group();
   group.position.set(p.centerX, p.groundY, p.centerZ);
@@ -374,20 +380,20 @@ function buildCavePortalGroup(
   for (const side of [-1, 1] as const) {
     const ix0 = side < 0 ? -2.25 : 1.06;
     const ix1 = side < 0 ? -1.06 : 2.25;
-    pushBox(qb, ix0, ix1, -0.75, 2.95, -1.35, 0.65, 'stone', 0.92, [0.85, 0.86, 0.92]);
+    pushBox(qb, ix0, ix1, -0.75, 2.95, -1.35, 0.65, 'cliff_rock', 0.96, [0.92, 0.92, 0.98]);
 
     const ox0 = side < 0 ? -3.05 : 2.10;
     const ox1 = side < 0 ? -2.10 : 3.05;
-    pushBox(qb, ox0, ox1, -0.75, 2.05, -1.05, 0.45, 'stone', 0.84, [0.82, 0.84, 0.90]);
+    pushBox(qb, ox0, ox1, -0.75, 2.05, -1.05, 0.45, 'cliff_rock', 0.90, [0.90, 0.90, 0.96]);
 
     // Inner chamfered keystone bracket
     const kx0 = side < 0 ? -1.08 : 0.68;
     const kx1 = side < 0 ? -0.68 : 1.08;
-    pushBox(qb, kx0, kx1, 2.28, 2.80, -0.95, 0.58, 'stone', 0.72, [0.78, 0.80, 0.88]);
+    pushBox(qb, kx0, kx1, 2.28, 2.80, -0.95, 0.58, 'cracked_stone', 0.88, [0.88, 0.90, 0.96]);
 
     // Crystal / torch sconce on pillar front
     const sx = side < 0 ? -1.42 : 1.42;
-    pushBox(qb, sx - 0.16, sx + 0.16, 1.35, 1.62, 0.60, 0.86, 'stone', 0.75);
+    pushBox(qb, sx - 0.16, sx + 0.16, 1.35, 1.62, 0.60, 0.86, 'wall_crypt', 0.92);
     const cr = ((p.accentColor >> 16) & 0xff) / 255;
     const cg = ((p.accentColor >> 8) & 0xff) / 255;
     const cb = (p.accentColor & 0xff) / 255;
@@ -395,8 +401,8 @@ function buildCavePortalGroup(
   }
 
   // 2. Vaulted stone arch lintel & stepped upper ridge cap
-  pushBox(qb, -2.55, 2.55, 2.75, 3.72, -1.45, 0.75, 'stone', 0.94, [0.85, 0.86, 0.92]);
-  pushBox(qb, -1.85, 1.85, 3.72, 4.35, -1.25, 0.48, 'stone', 0.98, [0.88, 0.88, 0.95]);
+  pushBox(qb, -2.55, 2.55, 2.75, 3.72, -1.45, 0.75, 'cracked_stone', 0.96, [0.90, 0.90, 0.96]);
+  pushBox(qb, -1.85, 1.85, 3.72, 4.35, -1.25, 0.48, 'cliff_rock', 1.0, [0.92, 0.92, 0.98]);
 
   // 3. Deep shadowed tunnel interior behind the opening (-Z direction)
   pushColorBox(darkQb, -1.14, 1.14, -0.45, 2.82, -2.95, -2.45, 0.03, 0.02, 0.05);
@@ -434,8 +440,9 @@ function buildCavePortalGroup(
  */
 export function buildMapGatesGroup(
   map: MapDef,
-  atlasMaterial: THREE.MeshBasicMaterial,
-  getRoofTexture: (kind: RoofTextureKind) => THREE.CanvasTexture
+  atlasMaterial: THREE.Material,
+  getRoofTexture: (kind: RoofTextureKind) => THREE.CanvasTexture,
+  getRoofNormalTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture
 ): THREE.Group | null {
   const placements = clusterWarps(map);
   if (placements.length === 0) return null;
@@ -445,7 +452,7 @@ export function buildMapGatesGroup(
     const gate =
       p.style === 'cave_portal'
         ? buildCavePortalGroup(p, atlasMaterial)
-        : buildArchGateGroup(p, atlasMaterial, getRoofTexture);
+        : buildArchGateGroup(p, atlasMaterial, getRoofTexture, getRoofNormalTexture);
     root.add(gate);
   }
   root.matrixAutoUpdate = false;

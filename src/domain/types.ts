@@ -712,6 +712,7 @@ export interface SaveData {
   champion?: boolean;
   defeatedTrainers: string[];
   flags: Record<string, boolean>;
+  questIndex?: number;
   vessels?: Record<string, number>;
   bodyPartShards?: Record<string, number>;
   soulReserve?: CapturedSoul[];

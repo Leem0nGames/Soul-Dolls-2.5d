@@ -9,7 +9,6 @@ import { BODY_PART_SHORT } from '../domain/BodyParts.ts';
 import { getCreatureDisplayName, xpForLevel } from '../domain/Creature.ts';
 import type { BodyPartName, CreatureInstance } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
-import { PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
 
 export class BattleHud {
@@ -37,8 +36,22 @@ export class BattleHud {
   private playerPartsRoot: Root | null = null;
   private lastEnemyCreature: CreatureInstance | null = null;
   private lastPlayerCreature: CreatureInstance | null = null;
-  private enemyHit: { part: BodyPartName | null; tick: number } = { part: null, tick: 0 };
-  private playerHit: { part: BodyPartName | null; tick: number } = { part: null, tick: 0 };
+  private enemyHit: {
+    part: BodyPartName | null;
+    tick: number;
+    amount?: number;
+    crit?: boolean;
+    effectiveness?: number;
+    broken?: boolean;
+  } = { part: null, tick: 0 };
+  private playerHit: {
+    part: BodyPartName | null;
+    tick: number;
+    amount?: number;
+    crit?: boolean;
+    effectiveness?: number;
+    broken?: boolean;
+  } = { part: null, tick: 0 };
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -49,11 +62,11 @@ export class BattleHud {
 
     this.enemyBox = document.createElement('div');
     this.enemyBox.className =
-      'pointer-events-none absolute top-[calc(0.375rem+env(safe-area-inset-top,0px))] inset-x-2 mx-auto max-w-[400px] sm:mx-0 sm:max-w-none sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[328px] rounded-lg border border-tarnished-gold/75 bg-crypt-ink/90 backdrop-blur-[2px] px-2.5 py-1.5 sm:p-2 text-porcelain shadow-[0_6px_18px_rgba(11,8,14,0.72),inset_0_1px_0_rgba(242,230,201,0.12)]';
+      'pointer-events-none absolute top-[calc(0.375rem+env(safe-area-inset-top,0px))] inset-x-2 mx-auto max-w-[400px] sm:mx-0 sm:max-w-none sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[328px] px-hud-box px-2.5 py-1.5 sm:p-2';
 
     this.bannerEl = document.createElement('div');
     this.bannerEl.className =
-      'pointer-events-none absolute hidden max-w-[220px] rounded-lg border border-ki-cyan/80 bg-crypt-ink/95 px-2.5 py-1 text-right shadow-lg top-[calc(6.4rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
+      'pointer-events-none absolute hidden max-w-[220px] rounded-none border-2 border-ki-cyan bg-crypt-ink px-2.5 py-1 text-right shadow-[2px_2px_0_#050505] top-[calc(6.4rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
 
     this.bottomDock = document.createElement('div');
     this.bottomDock.className =
@@ -61,15 +74,15 @@ export class BattleHud {
 
     this.playerBox = document.createElement('div');
     this.playerBox.className =
-      'pointer-events-none w-full max-w-[400px] mx-auto sm:mx-0 sm:max-w-none sm:w-[328px] sm:shrink-0 sm:ml-auto mb-[76px] sm:mb-24 rounded-lg border border-tarnished-gold/75 bg-crypt-ink/90 backdrop-blur-[2px] px-2.5 py-1.5 sm:p-2 text-porcelain shadow-[0_6px_18px_rgba(11,8,14,0.72),inset_0_1px_0_rgba(242,230,201,0.12)]';
+      'pointer-events-none w-full max-w-[400px] mx-auto sm:mx-0 sm:max-w-none sm:w-[328px] sm:shrink-0 sm:ml-auto mb-[76px] sm:mb-24 px-hud-box px-2.5 py-1.5 sm:p-2';
 
     this.menuBox = document.createElement('div');
     this.menuBox.className =
-      'pointer-events-auto w-full max-w-[400px] mx-auto sm:mx-0 sm:flex-1 sm:max-w-[424px] hidden rounded-lg border border-resonant-gold/80 bg-crypt-ink/94 backdrop-blur-[2px] p-2 sm:p-3 shadow-[0_8px_24px_rgba(11,8,14,0.82),inset_0_1px_0_rgba(242,230,201,0.14)]';
+      'pointer-events-auto w-full max-w-[400px] mx-auto sm:mx-0 sm:flex-1 sm:max-w-[424px] hidden rounded-none border-2 border-resonant-gold bg-crypt-ink p-2 sm:p-3 shadow-[inset_0_2px_0_#8A6A3B,4px_4px_0_#050505]';
 
     this.replaceModal = document.createElement('div');
     this.replaceModal.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
+      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
 
     this.bottomDock.appendChild(this.playerBox);
     this.bottomDock.appendChild(this.menuBox);
@@ -91,6 +104,8 @@ export class BattleHud {
     this.lastPlayerUid = '';
     this.lastPlayerXp = -1;
     this.lastPlayerLevel = -1;
+    this.enemyHit = { part: null, tick: 0 };
+    this.playerHit = { part: null, tick: 0 };
     this.bannerTimer = 0;
     this.bannerEl.classList.add('hidden');
     this.root.classList.remove('hidden');
@@ -170,7 +185,7 @@ export class BattleHud {
     return spec.types
       .map((t) => {
         const v = TYPE_VISUALS[t];
-        return `<span class="px-1 py-[1px] rounded-sm text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider border leading-none" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
+        return `<span class="px-1 py-[1px] rounded-none text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider border leading-none" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
       })
       .join('');
   }
@@ -181,11 +196,11 @@ export class BattleHud {
       .map((c) => {
         const cls =
           c.currentHp <= 0
-            ? 'bg-ash-purple border-cold-stone opacity-50'
+            ? 'bg-ash-purple border-cold-stone'
             : c.status !== 'none'
               ? 'bg-ui-warning border-pale-gold'
               : 'bg-rift-crimson border-warm-white';
-        return `<span class="inline-block w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border ${cls}"></span>`;
+        return `<span class="inline-block w-2.5 h-2.5 rounded-none border ${cls}"></span>`;
       })
       .join('');
   }
@@ -202,17 +217,44 @@ export class BattleHud {
         variant: side,
         damagedPart: hit.part,
         damageTick: hit.tick,
+        damageAmount: hit.amount,
+        damageCrit: hit.crit,
+        damageEffectiveness: hit.effectiveness,
+        damageBroken: hit.broken,
         labels: BODY_PART_SHORT,
         statusLabels: { broken: 'ROT' },
       })
     );
   }
 
-  flashBodyPart(side: 'player' | 'enemy', part: BodyPartName): void {
+  flashBodyPart(
+    side: 'player' | 'enemy',
+    part: BodyPartName,
+    details?: {
+      amount?: number;
+      crit?: boolean;
+      effectiveness?: number;
+      broken?: boolean;
+    }
+  ): void {
     if (side === 'player') {
-      this.playerHit = { part, tick: this.playerHit.tick + 1 };
+      this.playerHit = {
+        part,
+        tick: this.playerHit.tick + 1,
+        amount: details?.amount,
+        crit: details?.crit,
+        effectiveness: details?.effectiveness,
+        broken: details?.broken,
+      };
     } else {
-      this.enemyHit = { part, tick: this.enemyHit.tick + 1 };
+      this.enemyHit = {
+        part,
+        tick: this.enemyHit.tick + 1,
+        amount: details?.amount,
+        crit: details?.crit,
+        effectiveness: details?.effectiveness,
+        broken: details?.broken,
+      };
     }
     this.renderLimbContainer(side);
   }
@@ -230,7 +272,7 @@ export class BattleHud {
     const isLow = pct > 0 && pct <= 20;
     const statusBadge =
       c.status !== 'none'
-        ? `<span class="px-1.5 py-0.5 rounded bg-royal-purple text-warm-white text-[10px] font-bold">${ES.statusShort[c.status]}</span>`
+        ? `<span class="px-1.5 py-[1px] rounded-none border border-ethereal-orchid bg-royal-purple text-warm-white text-[10px] font-bold">${ES.statusShort[c.status]}</span>`
         : '';
 
     if (isNew || !this.enemyBox.querySelector('[data-hp-fill]')) {
@@ -251,15 +293,15 @@ export class BattleHud {
             <div class="flex items-center gap-0.5" data-balls></div>
             <span data-status>${statusBadge}</span>
             <span class="text-[10px] text-bone-gray whitespace-nowrap" data-tag></span>
-            <span class="text-[10px] text-bone-gray/60" aria-hidden="true">·</span>
+            <span class="text-[10px] text-cold-stone" aria-hidden="true">·</span>
             <span class="text-[11px] sm:text-xs font-bold text-resonant-gold tabular-nums" data-lv></span>
           </div>
         </div>
-        <div class="relative mt-1 h-[7px] w-full rounded-sm bg-abyss-ink border border-cold-stone/75 overflow-hidden">
-          <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold/80 transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
+        <div class="relative mt-1 h-[8px] w-full rounded-none bg-abyss-ink border border-cold-stone overflow-hidden">
+          <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
           <div data-hp-fill class="relative h-full ${barColor} transition-[width] duration-300 ease-out" style="width:${pct}%"></div>
         </div>
-        <div data-parts class="mt-1 pt-1 border-t border-ash-purple/60"></div>
+        <div data-parts class="mt-1 pt-1 border-t-2 border-ash-purple"></div>
       `;
       const partsSlot = this.enemyBox.querySelector('[data-parts]') as HTMLElement;
       this.enemyPartsRoot = createRoot(partsSlot);
@@ -301,7 +343,7 @@ export class BattleHud {
     const isLow = pct > 0 && pct <= 20;
     const statusBadge =
       c.status !== 'none'
-        ? `<span class="px-1.5 py-0.5 rounded bg-royal-purple text-warm-white text-[10px] font-bold">${ES.statusShort[c.status]}</span>`
+        ? `<span class="px-1.5 py-[1px] rounded-none border border-ethereal-orchid bg-royal-purple text-warm-white text-[10px] font-bold">${ES.statusShort[c.status]}</span>`
         : '';
 
     const currXp = xpForLevel(c.level, spec.growthRate);
@@ -334,14 +376,14 @@ export class BattleHud {
           </div>
         </div>
         <div class="mt-1 flex items-center gap-1.5">
-          <div class="relative h-[7px] flex-1 rounded-sm bg-abyss-ink border border-cold-stone/75 overflow-hidden">
-            <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold/80 transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
+          <div class="relative h-[8px] flex-1 rounded-none bg-abyss-ink border border-cold-stone overflow-hidden">
+            <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
             <div data-hp-fill class="relative h-full ${barColor} transition-[width] duration-300 ease-out" style="width:${pct}%"></div>
           </div>
           <span data-hp-text class="text-[10px] sm:text-[11px] font-bold text-porcelain tabular-nums shrink-0 leading-none">${c.currentHp}/${c.stats.hp} ${ES.party.hp}</span>
         </div>
-        <div data-parts class="mt-1 pt-1 border-t border-ash-purple/60"></div>
-        <div class="mt-1 h-[3px] w-full rounded-sm bg-abyss-ink overflow-hidden">
+        <div data-parts class="mt-1 pt-1 border-t-2 border-ash-purple"></div>
+        <div class="mt-1 h-[4px] w-full rounded-none bg-abyss-ink border border-ash-purple overflow-hidden">
           <div data-xp-fill class="h-full bg-ki-cyan transition-[width] duration-500 ease-out" style="width:${expPct}%"></div>
         </div>
       `;
@@ -378,11 +420,9 @@ export class BattleHud {
     this.lastPlayerXp = c.xp;
 
     if (isLow) {
-      this.playerBox.classList.remove('border-tarnished-gold/75');
-      this.playerBox.classList.add('border-rift-crimson');
+      this.playerBox.style.borderColor = '#C2234B';
     } else {
-      this.playerBox.classList.remove('border-rift-crimson');
-      this.playerBox.classList.add('border-tarnished-gold/75');
+      this.playerBox.style.borderColor = '#A67F46';
     }
   }
 
@@ -403,7 +443,7 @@ export class BattleHud {
             : tone === 'resist'
               ? 'text-bone-gray text-sm'
               : 'text-warm-white text-base';
-    el.className = `pointer-events-none absolute font-black drop-shadow-[0_2px_2px_rgba(11,8,14,0.95)] battle-float-num ${colorCls}`;
+    el.className = `pointer-events-none absolute font-black px-text-outline battle-float-num ${colorCls}`;
     el.style.left = `${Math.round(Math.max(12, Math.min(88, normX * 100)))}%`;
     el.style.top = `${Math.round(Math.max(18, Math.min(72, normY * 100)))}%`;
     el.textContent = text;
@@ -436,15 +476,15 @@ export class BattleHud {
     const renderRoot = () => {
       this.menuBox.innerHTML = `
         <div class="flex flex-col gap-2">
-          <div class="text-xs sm:text-sm font-bold text-porcelain px-0.5 pb-1 border-b border-ash-purple/50 truncate">${ES.battle.whatWillDo(getCreatureDisplayName(creature))}</div>
+          <div class="text-xs sm:text-sm font-bold text-porcelain px-0.5 pb-1 border-b-2 border-ash-purple truncate">${ES.battle.whatWillDo(getCreatureDisplayName(creature))}</div>
           <div class="grid grid-cols-2 gap-2">
-            <button data-act="fight" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border border-peach-blush/70 bg-rift-crimson hover:bg-ruby-glow active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.22),0_2px_0_rgba(11,8,14,0.8)]">${icon('fight')}<span>${ES.battle.fight}</span></button>
-            <button data-act="bag" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border border-pale-gold/70 bg-old-bronze hover:bg-tarnished-gold active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.22),0_2px_0_rgba(11,8,14,0.8)]">${icon('bag')}<span>${ES.battle.bag}</span></button>
-            <button data-act="party" class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border border-ice-cyan/70 bg-emerald-base hover:bg-moss active:scale-[0.98] font-bold text-xs sm:text-sm text-warm-white flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.22),0_2px_0_rgba(11,8,14,0.8)]">${icon('party')}<span>${ES.battle.party}</span></button>
-            <button data-act="run" ${isWild ? '' : 'disabled'} class="min-h-[44px] sm:min-h-[48px] px-2.5 rounded-lg border font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,249,240,0.18),0_2px_0_rgba(11,8,14,0.8)] ${
+            <button data-act="fight" class="min-h-[44px] sm:min-h-[48px] px-2.5 px-btn-danger font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5">${icon('fight')}<span>${ES.battle.fight}</span></button>
+            <button data-act="bag" class="min-h-[44px] sm:min-h-[48px] px-2.5 px-btn-primary font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5">${icon('bag')}<span>${ES.battle.bag}</span></button>
+            <button data-act="party" class="min-h-[44px] sm:min-h-[48px] px-2.5 px-btn-success font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5">${icon('party')}<span>${ES.battle.party}</span></button>
+            <button data-act="run" ${isWild ? '' : 'disabled'} class="min-h-[44px] sm:min-h-[48px] px-2.5 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 ${
               isWild
-                ? 'border-ice-cyan/70 bg-oceanic-teal hover:bg-vibrant-aqua active:scale-[0.98] text-warm-white'
-                : 'border-cold-stone bg-ash-purple text-bone-gray/60 cursor-not-allowed'
+                ? 'px-btn-arcane'
+                : 'rounded-none border-2 border-cold-stone bg-ash-purple text-bone-gray cursor-not-allowed'
             }">${icon('run')}<span>${ES.battle.run}</span></button>
           </div>
         </div>
@@ -468,27 +508,27 @@ export class BattleHud {
           const disabled = slot.pp <= 0;
           const hint = getMoveEffectivenessHint(m.type, m.category, enemyTypes);
           const hintBadge = hint.label
-            ? `<span class="px-1 py-0.5 rounded text-[9px] font-black ${
+            ? `<span class="px-1 py-[1px] rounded-none text-[9px] font-black border ${
                 hint.tone === 'super'
-                  ? 'bg-neon-mint text-crypt-ink'
+                  ? 'bg-neon-mint border-deep-abyss text-ui-ink'
                   : hint.tone === 'immune'
-                    ? 'bg-crypt-ink text-bone-gray'
-                    : 'bg-dried-blood text-pale-rose'
+                    ? 'bg-abyss-ink border-cold-stone text-bone-gray'
+                    : 'bg-dried-blood border-rift-crimson text-pale-rose'
               }">${hint.label}</span>`
             : '';
 
           return `
-            <button data-move="${idx}" ${disabled ? 'disabled' : ''} style="border-color:${v.border};background:linear-gradient(135deg, ${v.bg}cc, ${PALETTE.cryptInk}ee)" class="min-h-[46px] sm:min-h-[50px] rounded-lg border p-1.5 sm:p-2 text-left flex flex-col justify-between shadow-[inset_0_1px_0_rgba(255,249,240,0.16),0_2px_0_rgba(11,8,14,0.75)] transition-transform active:scale-[0.98] ${
-              disabled ? 'opacity-45 cursor-not-allowed' : ''
+            <button data-move="${idx}" ${disabled ? 'disabled' : ''} style="border-color:${v.border};background-color:#2A1F2D" class="min-h-[46px] sm:min-h-[50px] rounded-none border-2 p-1.5 sm:p-2 text-left flex flex-col justify-between shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${
+              disabled ? 'opacity-45 cursor-not-allowed' : 'hover:bg-ash-purple'
             }">
               <div class="flex items-center justify-between gap-1">
-                <span class="font-bold text-xs sm:text-sm text-warm-white truncate drop-shadow">${m.name}</span>
+                <span class="font-bold text-xs sm:text-sm text-warm-white truncate">${m.name}</span>
                 <div class="flex items-center gap-1 shrink-0">
                   ${hintBadge}
-                  <span class="px-1 py-0.5 rounded text-[8px] font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[m.type]}</span>
+                  <span class="px-1 py-[1px] rounded-none text-[8px] font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[m.type]}</span>
                 </div>
               </div>
-              <div class="flex justify-between text-[10px] text-porcelain/90 tabular-nums mt-0.5">
+              <div class="flex justify-between text-[10px] text-porcelain tabular-nums mt-0.5">
                 <span>${ES.summary.power}: ${m.power || '—'}</span>
                 <span>PP ${slot.pp}/${slot.maxPp}</span>
               </div>
@@ -500,7 +540,7 @@ export class BattleHud {
       this.menuBox.innerHTML = `
         <div class="flex flex-col gap-2">
           <div class="grid grid-cols-2 gap-2">${movesHtml}</div>
-          <button data-back class="min-h-[40px] sm:min-h-[44px] self-end px-3.5 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold text-porcelain">${ES.party.back}</button>
+          <button data-back class="min-h-[40px] sm:min-h-[44px] self-end px-3.5 px-btn-secondary text-xs font-bold">${ES.party.back}</button>
         </div>
       `;
 
@@ -532,7 +572,7 @@ export class BattleHud {
       .map((slot, idx) => {
         const m = getMove(slot.moveId);
         return `
-          <button data-slot="${idx}" class="min-h-[44px] w-full rounded-lg border border-cold-stone bg-ash-purple hover:bg-blood-moon/70 p-2.5 text-left flex justify-between items-center">
+          <button data-slot="${idx}" class="min-h-[44px] w-full rounded-none border-2 border-cold-stone bg-crypt-ink hover:bg-blood-moon hover:border-rift-crimson p-2.5 text-left flex justify-between items-center shadow-[2px_2px_0_#050505]">
             <span class="font-bold text-sm">${m.name}</span>
             <span class="text-xs text-bone-gray tabular-nums">${ES.types[m.type]} · Pot ${m.power || '—'}</span>
           </button>
@@ -541,11 +581,11 @@ export class BattleHud {
       .join('');
 
     this.replaceModal.innerHTML = `
-      <div class="w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-resonant-gold bg-smoked-wood p-4 text-porcelain shadow-2xl">
+      <div class="w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto px-panel p-4">
         <div class="text-sm font-bold text-resonant-gold mb-2">${ES.battle.wantsToLearn(getCreatureDisplayName(creature), newMove.name)}</div>
         <div class="text-xs text-bone-gray mb-3">${newMove.name} (${ES.types[newMove.type]}, Pot. ${newMove.power || '—'}): ${newMove.description}</div>
         <div class="space-y-2 mb-3">${slotsHtml}</div>
-        <button data-skip class="min-h-[44px] w-full rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold">${ES.battle.skipMove}</button>
+        <button data-skip class="min-h-[44px] w-full px-btn-secondary text-sm font-bold">${ES.battle.skipMove}</button>
       </div>
     `;
     this.replaceModal.classList.remove('hidden');

@@ -4,9 +4,9 @@ type DpadDir = 'up' | 'down' | 'left' | 'right';
 const DPAD_DIRS: readonly DpadDir[] = ['up', 'down', 'left', 'right'];
 
 const BTN_IDLE_CLS =
-  'min-w-[40px] min-h-[40px] rounded-lg border-2 border-cold-stone/60 bg-smoked-wood/85 text-porcelain font-bold text-base flex items-center justify-center pointer-events-none select-none transition-colors';
+  'min-w-[40px] min-h-[40px] rounded-none border-2 border-cold-stone bg-smoked-wood text-porcelain font-bold text-base flex items-center justify-center pointer-events-none select-none shadow-[2px_2px_0_#050505]';
 const BTN_ACTIVE_CLS =
-  'min-w-[40px] min-h-[40px] rounded-lg border-2 border-pale-gold bg-resonant-gold text-crypt-ink font-bold text-base flex items-center justify-center pointer-events-none select-none transition-colors';
+  'min-w-[40px] min-h-[40px] rounded-none border-2 border-pale-gold bg-resonant-gold text-ui-ink font-bold text-base flex items-center justify-center pointer-events-none select-none';
 
 export class TouchControls {
   readonly root: HTMLDivElement;
@@ -34,7 +34,7 @@ export class TouchControls {
       el.type = 'button';
       el.textContent = label;
       el.className =
-        'pointer-events-auto min-w-[52px] min-h-[44px] px-3 rounded-lg border-2 border-ki-cyan/70 bg-smoked-wood/85 text-ice-cyan font-bold text-xs active:bg-ki-cyan active:text-crypt-ink touch-none opacity-85';
+        'pointer-events-auto min-w-[52px] min-h-[44px] px-3 rounded-none border-2 border-ki-cyan bg-crypt-ink text-ice-cyan font-bold text-xs shadow-[2px_2px_0_#050505] active:bg-ki-cyan active:text-ui-ink touch-none';
       this.bindPointer(el, btn);
       return el;
     };
@@ -48,7 +48,7 @@ export class TouchControls {
 
     this.dpadEl = document.createElement('div');
     this.dpadEl.className =
-      'pointer-events-auto grid grid-cols-3 grid-rows-3 gap-1 w-32 h-32 sm:w-36 sm:h-36 p-1 rounded-2xl bg-crypt-ink/35 touch-none opacity-90';
+      'pointer-events-auto grid grid-cols-3 grid-rows-3 gap-1 w-32 h-32 sm:w-36 sm:h-36 p-1 rounded-none border-2 border-ash-purple bg-crypt-ink touch-none shadow-[3px_3px_0_#050505]';
 
     const makePadVisual = (label: string, dir: DpadDir, gridPos: string) => {
       const el = document.createElement('div');
@@ -62,7 +62,7 @@ export class TouchControls {
     this.dpadEl.appendChild(makePadVisual('▲', 'up', 'col-start-2 row-start-1'));
     this.dpadEl.appendChild(makePadVisual('◀', 'left', 'col-start-1 row-start-2'));
     const centerDot = document.createElement('div');
-    centerDot.className = 'col-start-2 row-start-2 rounded-lg bg-smoked-wood/45 pointer-events-none';
+    centerDot.className = 'col-start-2 row-start-2 rounded-none border border-ash-purple bg-smoked-wood pointer-events-none';
     this.dpadEl.appendChild(centerDot);
     this.dpadEl.appendChild(makePadVisual('▶', 'right', 'col-start-3 row-start-2'));
     this.dpadEl.appendChild(makePadVisual('▼', 'down', 'col-start-2 row-start-3'));
@@ -70,13 +70,13 @@ export class TouchControls {
     this.bindDpadSwipe();
 
     const rightCluster = document.createElement('div');
-    rightCluster.className = 'pointer-events-none flex flex-col items-end gap-2.5 opacity-90';
+    rightCluster.className = 'pointer-events-none flex flex-col items-end gap-2.5';
 
     const startBtn = document.createElement('button');
     startBtn.type = 'button';
     startBtn.textContent = 'MENÚ';
     startBtn.className =
-      'pointer-events-auto min-w-[64px] min-h-[44px] px-3 rounded-lg border-2 border-cold-stone/70 bg-smoked-wood/85 text-porcelain text-xs font-bold active:bg-cold-stone touch-none';
+      'pointer-events-auto min-w-[64px] min-h-[44px] px-3 rounded-none border-2 border-cold-stone bg-crypt-ink text-porcelain text-xs font-bold shadow-[2px_2px_0_#050505] active:bg-cold-stone touch-none';
     this.bindPointer(startBtn, 'start');
 
     const abRow = document.createElement('div');
@@ -84,16 +84,18 @@ export class TouchControls {
 
     const bBtn = document.createElement('button');
     bBtn.type = 'button';
-    bBtn.textContent = 'B';
+    bBtn.setAttribute('aria-label', 'Correr / Atrás');
+    bBtn.innerHTML =
+      '<span class="block text-base leading-none">B</span><span class="block text-[8px] leading-none tracking-wider text-pale-rose mt-0.5">CORRER</span>';
     bBtn.className =
-      'w-[52px] h-[52px] min-w-[52px] min-h-[52px] rounded-full border-2 border-peach-blush/80 bg-rift-crimson/90 text-warm-white font-bold text-lg shadow active:scale-95 touch-none';
+      'w-[54px] h-[54px] min-w-[54px] min-h-[54px] flex flex-col items-center justify-center px-btn-danger font-bold touch-none';
     this.bindPointer(bBtn, 'b');
 
     const aBtn = document.createElement('button');
     aBtn.type = 'button';
     aBtn.textContent = 'A';
     aBtn.className =
-      'w-[56px] h-[56px] min-w-[56px] min-h-[56px] -translate-y-2 rounded-full border-2 border-frosted-glass/80 bg-emerald-base/90 text-warm-white font-bold text-lg shadow active:scale-95 touch-none';
+      'w-[56px] h-[56px] min-w-[56px] min-h-[56px] -translate-y-2 px-btn-success font-bold text-lg touch-none';
     this.bindPointer(aBtn, 'a');
 
     abRow.appendChild(bBtn);

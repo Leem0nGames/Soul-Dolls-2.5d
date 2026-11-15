@@ -23,40 +23,40 @@ function getBuildingPalette(kind: BuildingKind): {
       };
     case 'house_blue':
       return {
-        wall: 'wall_plaster',
-        roof: 'roof_blue',
-        roofKind: 'indigo',
+        wall: 'wall_brick',
+        roof: 'roof_slate',
+        roofKind: 'slate',
         wallHeight: 2.0,
         roofHeight: 1.2,
       };
     case 'lab':
       return {
-        wall: 'wall_brick',
-        roof: 'roof_orange',
+        wall: 'wall_vine_brick',
+        roof: 'roof_patina',
         roofKind: 'patina',
         wallHeight: 2.3,
         roofHeight: 1.3,
       };
     case 'center':
       return {
-        wall: 'wall_plaster',
-        roof: 'roof_pink',
-        roofKind: 'patina',
+        wall: 'palace_tile',
+        roof: 'roof_red',
+        roofKind: 'terracotta',
         wallHeight: 2.2,
         roofHeight: 1.1,
       };
     case 'shop':
       return {
-        wall: 'wall_plaster',
-        roof: 'roof_teal',
+        wall: 'wall_wood_gold',
+        roof: 'roof_wood',
         roofKind: 'wood',
         wallHeight: 2.1,
         roofHeight: 1.1,
       };
     case 'arena_hall':
       return {
-        wall: 'wall_brick',
-        roof: 'roof_purple',
+        wall: 'wall_castle',
+        roof: 'roof_blue',
         roofKind: 'indigo',
         wallHeight: 2.8,
         roofHeight: 1.4,
@@ -81,6 +81,7 @@ function buildGeometryFromQuadBuilder(qb: QuadBuilder): THREE.BufferGeometry {
   geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(qb.uvs), 2));
   geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(qb.colors), 3));
   geo.setIndex(new THREE.BufferAttribute(new Uint16Array(qb.indices), 1));
+  geo.computeVertexNormals();
   geo.computeBoundingSphere();
   return geo;
 }
@@ -162,10 +163,10 @@ function addBuildingGeometry(
   const yPeak = yTop + pal.roofHeight;
 
   // Front (+Z), Back (-Z), Right (+X), Left (-X) walls
-  pushQuad(qb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], pal.wall, 0.98);
-  pushQuad(qb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], pal.wall, 0.78);
-  pushQuad(qb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], pal.wall, 0.88);
-  pushQuad(qb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], pal.wall, 0.84);
+  pushQuad(qb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], pal.wall, 1.0);
+  pushQuad(qb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], pal.wall, 0.88);
+  pushQuad(qb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], pal.wall, 0.94);
+  pushQuad(qb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], pal.wall, 0.90);
 
   // Door & windows on front (+Z) face
   const doorW = 0.85;
@@ -224,23 +225,24 @@ function addBuildingGeometry(
     // Front roof slope
     pushTiledQuad(rqb, [rx0, yTop, rz1], [rx1, yTop, rz1], [rx1, yPeak, rMidZ], [rx0, yPeak, rMidZ], uRepeat, 1, 1.0);
     // Back roof slope
-    pushTiledQuad(rqb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], uRepeat, 1, 0.8);
+    pushTiledQuad(rqb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], uRepeat, 1, 0.88);
   } else {
     // Front roof slope
     pushQuad(qb, [rx0, yTop, rz1], [rx1, yTop, rz1], [rx1, yPeak, rMidZ], [rx0, yPeak, rMidZ], pal.roof, 1.0);
     // Back roof slope
-    pushQuad(qb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], pal.roof, 0.82);
+    pushQuad(qb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], pal.roof, 0.88);
   }
 
   // Gable end triangles
-  pushTriangle(qb, [rx0, yTop, rz0], [rx0, yTop, rz1], [rx0, yPeak, rMidZ], pal.wall, 0.85);
-  pushTriangle(qb, [rx1, yTop, rz1], [rx1, yTop, rz0], [rx1, yPeak, rMidZ], pal.wall, 0.9);
+  pushTriangle(qb, [rx0, yTop, rz0], [rx0, yTop, rz1], [rx0, yPeak, rMidZ], pal.wall, 0.90);
+  pushTriangle(qb, [rx1, yTop, rz1], [rx1, yTop, rz0], [rx1, yPeak, rMidZ], pal.wall, 0.95);
 }
 
 export function buildBuildingsMesh(
   map: MapDef,
-  atlasMaterial: THREE.MeshBasicMaterial,
-  getRoofTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture
+  atlasMaterial: THREE.Material,
+  getRoofTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture,
+  getRoofNormalTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture
 ): THREE.Group | null {
   if (map.buildings.length === 0) return null;
 
@@ -259,8 +261,12 @@ export function buildBuildingsMesh(
   if (roofBuilders && getRoofTexture) {
     for (const [kind, rqb] of roofBuilders.entries()) {
       if (rqb.indices.length === 0) continue;
-      const roofMat = new THREE.MeshBasicMaterial({
+      const roofMat = new THREE.MeshStandardMaterial({
         map: getRoofTexture(kind),
+        normalMap: getRoofNormalTexture ? getRoofNormalTexture(kind) : null,
+        normalScale: new THREE.Vector2(1.05, 1.05),
+        roughness: 0.9,
+        metalness: 0.04,
         vertexColors: true,
       });
       const roofMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(rqb), roofMat);

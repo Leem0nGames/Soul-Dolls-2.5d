@@ -21,7 +21,7 @@ export function getBodyPartTone(current: number, max: number): PartTone {
     return {
       fill: PALETTE.ashPurple,
       hi: PALETTE.coldStone,
-      barCls: 'bg-ash-purple/60',
+      barCls: 'bg-ash-purple',
       textCls: 'text-coral-red font-bold',
       broken: true,
     };
@@ -64,7 +64,7 @@ function renderPixelSegments(pct: number, tone: PartTone): string {
   for (let i = 0; i < totalPips; i++) {
     const active = i < filledPips;
     html += `<span class="h-1.5 flex-1 ${
-      active ? tone.barCls : 'bg-abyss-ink border border-ash-purple/80'
+      active ? tone.barCls : 'bg-abyss-ink border border-ash-purple'
     }"></span>`;
   }
   return html;
@@ -206,7 +206,7 @@ export function renderDollIntegrityHtml(
         : `${p.current}/${p.max}`;
 
     const labelText = isSummary
-      ? `${BODY_PART_LABELS[key]} <span class="text-bone-gray/75">(${ratios![key]}%)</span>`
+      ? `${BODY_PART_LABELS[key]} <span class="text-cold-stone">(${ratios![key]}%)</span>`
       : BODY_PART_SHORT[key];
 
     return `
