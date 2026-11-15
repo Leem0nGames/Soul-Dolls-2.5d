@@ -2,6 +2,7 @@ import { getItem } from '../data/items.ts';
 import type { BagSlot, ItemCategory } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 
 const OVERWORLD_CATEGORIES: readonly ItemCategory[] = [
   'medicine',
@@ -12,18 +13,14 @@ const OVERWORLD_CATEGORIES: readonly ItemCategory[] = [
 ];
 const BATTLE_CATEGORIES: readonly ItemCategory[] = ['medicine', 'capsule', 'battle'];
 
-export class BagScreen {
-  readonly root: HTMLDivElement;
+export class BagScreen extends ModalOverlay {
   private activeCat: ItemCategory = 'medicine';
 
   constructor(
     parent: HTMLElement,
     private readonly assets?: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(
@@ -117,17 +114,7 @@ export class BagScreen {
       });
     };
 
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.root.remove();
   }
 }

@@ -7,7 +7,12 @@ import {
 } from '../domain/FxPool.ts';
 import type { BattleBiome, CreatureType, MoveCategory } from '../domain/types.ts';
 import { hexToNumber, hexToRgb01, PALETTE } from '../gfx/Palette.ts';
-import { AbilityVfxSystem, type MoveVfxOptions } from './AbilityVfxSystem.ts';
+import {
+  AbilityVfxSystem,
+  computeVfxScaleMetrics,
+  DEFAULT_VFX_SPRITE_SCALE,
+  type MoveVfxOptions,
+} from './AbilityVfxSystem.ts';
 import { DisposableRegistry } from './Disposables.ts';
 
 const _dummy = new THREE.Object3D();
@@ -25,6 +30,7 @@ export interface BurstOptions {
   gravity?: number;
   spreadY?: number;
   spin?: number;
+  spreadScale?: number;
 }
 
 export interface RingOptions {
@@ -144,6 +150,7 @@ export class FxSystem {
     const count = this.pool.scaleCount(opts.count);
     _color.setHex(opts.colorHex);
     const spreadY = opts.spreadY ?? 1.0;
+    const spreadScale = opts.spreadScale ?? 1.0;
 
     for (let i = 0; i < count; i++) {
       const theta = this.rand() * Math.PI * 2;
@@ -152,11 +159,11 @@ export class FxSystem {
       const life = opts.lifeMin + this.rand() * (opts.lifeMax - opts.lifeMin);
 
       this.pool.spawn({
-        x: pos.x + (this.rand() - 0.5) * 0.25,
-        y: pos.y + (this.rand() - 0.5) * 0.25,
-        z: pos.z + (this.rand() - 0.5) * 0.25,
+        x: pos.x + (this.rand() - 0.5) * 0.25 * spreadScale,
+        y: pos.y + (this.rand() - 0.5) * 0.25 * spreadScale,
+        z: pos.z + (this.rand() - 0.5) * 0.25 * spreadScale,
         vx: Math.cos(theta) * Math.cos(phi) * speed,
-        vy: Math.sin(phi) * speed + 0.5,
+        vy: Math.sin(phi) * speed + 0.5 * spreadScale,
         vz: Math.sin(theta) * Math.cos(phi) * speed,
         ay: opts.gravity ?? -3.2,
         life,
@@ -176,16 +183,17 @@ export class FxSystem {
     count: number,
     colorHex: number,
     duration = 0.34,
-    size = 0.28
+    size = 0.28,
+    spreadScale = 1.0
   ): void {
     const scaled = this.pool.scaleCount(count);
     _color.setHex(colorHex);
     const invDur = 1 / Math.max(0.08, duration);
 
     for (let i = 0; i < scaled; i++) {
-      const jitterX = (this.rand() - 0.5) * 0.45;
-      const jitterY = (this.rand() - 0.5) * 0.45;
-      const jitterZ = (this.rand() - 0.5) * 0.45;
+      const jitterX = (this.rand() - 0.5) * 0.45 * spreadScale;
+      const jitterY = (this.rand() - 0.5) * 0.45 * spreadScale;
+      const jitterZ = (this.rand() - 0.5) * 0.45 * spreadScale;
       const tBias = 0.8 + this.rand() * 0.35;
 
       this.pool.spawn({
@@ -247,105 +255,117 @@ export class FxSystem {
     const hex =
       (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255);
 
+    const fromScale = computeVfxScaleMetrics(
+      opts?.fromScale ?? DEFAULT_VFX_SPRITE_SCALE
+    ).silhouette;
+    const toScale = computeVfxScaleMetrics(
+      opts?.toScale ?? DEFAULT_VFX_SPRITE_SCALE
+    ).silhouette;
+    const avgScale = (fromScale + toScale) * 0.5;
+
     if (category === 'status') {
       this.ring(from, {
         count: 18,
-        radius: 0.3,
-        speed: 1.9,
+        radius: 0.3 * fromScale,
+        speed: 1.9 * fromScale,
         life: 0.55,
-        sizeStart: 0.24,
-        sizeEnd: 0.04,
+        sizeStart: 0.24 * fromScale,
+        sizeEnd: 0.04 * fromScale,
         colorHex: hex,
-        vy: 1.1,
+        vy: 1.1 * fromScale,
       });
       this.ring(to, {
         count: 16,
-        radius: 0.55,
-        speed: -0.9,
+        radius: 0.55 * toScale,
+        speed: -0.9 * toScale,
         life: 0.5,
-        sizeStart: 0.22,
-        sizeEnd: 0.05,
+        sizeStart: 0.22 * toScale,
+        sizeEnd: 0.05 * toScale,
         colorHex: hex,
-        vy: 0.9,
+        vy: 0.9 * toScale,
       });
       return;
     }
 
     if (category === 'special') {
-      this.stream(from, to, 24, hex, 0.32, 0.3);
+      this.stream(from, to, 24, hex, 0.32, 0.3 * avgScale, avgScale);
     }
 
     switch (type) {
       case 'brasa':
         this.burst(to, {
           count: 28,
-          speedMin: 1.6,
-          speedMax: 3.8,
+          speedMin: 1.6 * toScale,
+          speedMax: 3.8 * toScale,
           lifeMin: 0.35,
           lifeMax: 0.65,
-          sizeStart: 0.34,
-          sizeEnd: 0.05,
+          sizeStart: 0.34 * toScale,
+          sizeEnd: 0.05 * toScale,
           colorHex: hexToNumber(PALETTE.coralRed),
-          gravity: 1.4,
+          gravity: 1.4 * toScale,
+          spreadScale: toScale,
         });
         this.burst(to, {
           count: 12,
-          speedMin: 0.9,
-          speedMax: 2.2,
+          speedMin: 0.9 * toScale,
+          speedMax: 2.2 * toScale,
           lifeMin: 0.25,
           lifeMax: 0.45,
-          sizeStart: 0.24,
-          sizeEnd: 0.04,
+          sizeStart: 0.24 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.paleGold),
-          gravity: 2.0,
+          gravity: 2.0 * toScale,
+          spreadScale: toScale,
         });
         break;
 
       case 'marea':
         this.ring(to, {
           count: 20,
-          radius: 0.15,
-          speed: 2.8,
+          radius: 0.15 * toScale,
+          speed: 2.8 * toScale,
           life: 0.45,
-          sizeStart: 0.24,
-          sizeEnd: 0.04,
+          sizeStart: 0.24 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.kiCyan),
-          vy: 0.3,
+          vy: 0.3 * toScale,
         });
         this.burst(to, {
           count: 22,
-          speedMin: 1.4,
-          speedMax: 3.2,
+          speedMin: 1.4 * toScale,
+          speedMax: 3.2 * toScale,
           lifeMin: 0.3,
           lifeMax: 0.55,
-          sizeStart: 0.26,
-          sizeEnd: 0.04,
+          sizeStart: 0.26 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.frostedGlass),
-          gravity: -5.0,
+          gravity: -5.0 * toScale,
+          spreadScale: toScale,
         });
         break;
 
       case 'flora':
         this.ring(to, {
           count: 22,
-          radius: 0.65,
-          speed: -0.8,
+          radius: 0.65 * toScale,
+          speed: -0.8 * toScale,
           life: 0.6,
-          sizeStart: 0.28,
-          sizeEnd: 0.08,
+          sizeStart: 0.28 * toScale,
+          sizeEnd: 0.08 * toScale,
           colorHex: hexToNumber(PALETTE.moss),
-          vy: 1.2,
+          vy: 1.2 * toScale,
         });
         this.burst(to, {
           count: 16,
-          speedMin: 1.0,
-          speedMax: 2.5,
+          speedMin: 1.0 * toScale,
+          speedMax: 2.5 * toScale,
           lifeMin: 0.4,
           lifeMax: 0.7,
-          sizeStart: 0.24,
-          sizeEnd: 0.05,
+          sizeStart: 0.24 * toScale,
+          sizeEnd: 0.05 * toScale,
           colorHex: hexToNumber(PALETTE.emerald),
-          gravity: -1.4,
+          gravity: -1.4 * toScale,
+          spreadScale: toScale,
         });
         break;
 
@@ -353,83 +373,95 @@ export class FxSystem {
         this.flash('rgba(252, 237, 184, 0.35)', 120);
         this.burst(to, {
           count: 30,
-          speedMin: 2.6,
-          speedMax: 5.5,
+          speedMin: 2.6 * toScale,
+          speedMax: 5.5 * toScale,
           lifeMin: 0.18,
           lifeMax: 0.36,
-          sizeStart: 0.3,
-          sizeEnd: 0.04,
+          sizeStart: 0.3 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.uiGold),
           gravity: 0,
+          spreadScale: toScale,
         });
         break;
 
       case 'roca':
         this.burst(to, {
           count: 24,
-          speedMin: 1.5,
-          speedMax: 3.4,
+          speedMin: 1.5 * toScale,
+          speedMax: 3.4 * toScale,
           lifeMin: 0.35,
           lifeMax: 0.65,
-          sizeStart: 0.32,
-          sizeEnd: 0.08,
+          sizeStart: 0.32 * toScale,
+          sizeEnd: 0.08 * toScale,
           colorHex: hexToNumber(PALETTE.sandDesert),
-          gravity: -7.5,
+          gravity: -7.5 * toScale,
+          spreadScale: toScale,
         });
         this.ring(to, {
           count: 14,
-          radius: 0.2,
-          speed: 2.4,
+          radius: 0.2 * toScale,
+          speed: 2.4 * toScale,
           life: 0.4,
-          sizeStart: 0.28,
-          sizeEnd: 0.05,
+          sizeStart: 0.28 * toScale,
+          sizeEnd: 0.05 * toScale,
           colorHex: hexToNumber(PALETTE.woodHighlight),
-          vy: 0.2,
+          vy: 0.2 * toScale,
         });
         break;
 
       case 'brisa':
         this.stream(
-          new THREE.Vector3(to.x - 1.5, to.y + 0.8, to.z + 0.6),
-          new THREE.Vector3(to.x + 1.5, to.y - 0.3, to.z - 0.6),
+          new THREE.Vector3(
+            to.x - 1.5 * toScale,
+            to.y + 0.8 * toScale,
+            to.z + 0.6 * toScale
+          ),
+          new THREE.Vector3(
+            to.x + 1.5 * toScale,
+            to.y - 0.3 * toScale,
+            to.z - 0.6 * toScale
+          ),
           22,
           hexToNumber(PALETTE.iceCyan),
           0.26,
-          0.25
+          0.25 * toScale,
+          toScale
         );
         this.ring(to, {
           count: 16,
-          radius: 0.25,
-          speed: 3.0,
+          radius: 0.25 * toScale,
+          speed: 3.0 * toScale,
           life: 0.35,
-          sizeStart: 0.22,
-          sizeEnd: 0.04,
+          sizeStart: 0.22 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.frostedGlass),
-          vy: 0.7,
+          vy: 0.7 * toScale,
         });
         break;
 
       case 'umbra':
         this.ring(to, {
           count: 20,
-          radius: 0.85,
-          speed: -1.8,
+          radius: 0.85 * toScale,
+          speed: -1.8 * toScale,
           life: 0.45,
-          sizeStart: 0.32,
-          sizeEnd: 0.06,
+          sizeStart: 0.32 * toScale,
+          sizeEnd: 0.06 * toScale,
           colorHex: hexToNumber(PALETTE.soulViolet),
-          vy: 0.4,
+          vy: 0.4 * toScale,
         });
         this.burst(to, {
           count: 18,
-          speedMin: 1.0,
-          speedMax: 2.6,
+          speedMin: 1.0 * toScale,
+          speedMax: 2.6 * toScale,
           lifeMin: 0.35,
           lifeMax: 0.6,
-          sizeStart: 0.28,
-          sizeEnd: 0.04,
+          sizeStart: 0.28 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.royalPurple),
-          gravity: 0.6,
+          gravity: 0.6 * toScale,
+          spreadScale: toScale,
         });
         break;
 
@@ -437,14 +469,15 @@ export class FxSystem {
       default:
         this.burst(to, {
           count: 22,
-          speedMin: 2.0,
-          speedMax: 4.0,
+          speedMin: 2.0 * toScale,
+          speedMax: 4.0 * toScale,
           lifeMin: 0.2,
           lifeMax: 0.4,
-          sizeStart: 0.3,
-          sizeEnd: 0.04,
+          sizeStart: 0.3 * toScale,
+          sizeEnd: 0.04 * toScale,
           colorHex: hexToNumber(PALETTE.paleGold),
-          gravity: -1.5,
+          gravity: -1.5 * toScale,
+          spreadScale: toScale,
         });
         break;
     }

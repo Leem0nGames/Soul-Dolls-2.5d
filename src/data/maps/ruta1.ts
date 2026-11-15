@@ -127,6 +127,15 @@ export const MAP_RUTA_1: MapDef = {
       dialogKey: 'trainer',
       trainerId: 'ruta1_scout',
       sightRange: 4,
+      patrol: {
+        waypoints: [
+          { x: 15, y: 31 },
+          { x: 15, y: 34 },
+        ],
+        speed: 1.35,
+        pauseSec: 1.6,
+      },
+      lookAtPlayerAfterTalk: true,
     },
     {
       id: 'npc_rival_1',

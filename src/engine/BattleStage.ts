@@ -175,10 +175,27 @@ function getStagePropDimensions(kind: PropKind): [number, number] {
     case 'mushroom_tree_arcane':
       return [1.9, 2.05];
     case 'cave_entrance':
-      return [2.6, 2.5];
+      return [2.93, 2.2];
     case 'well':
+      return [1.16, 1.75];
     case 'pillar':
-      return [1.25, 1.75];
+      return [0.84, 1.9];
+    case 'sign':
+      return [0.7, 1.13];
+    case 'fence':
+      return [1.08, 0.81];
+    case 'bench':
+      return [1.12, 1.08];
+    case 'boulder':
+      return [1.12, 1.02];
+    case 'crystal':
+      return [0.7, 1.2];
+    case 'flower_patch':
+      return [1.12, 0.97];
+    case 'mushroom':
+      return [0.72, 0.84];
+    case 'stump':
+      return [1.05, 0.9];
     case 'lamp_post':
       return [0.38, 1.9];
     case 'lamp_wood':
@@ -194,8 +211,6 @@ function getStagePropDimensions(kind: PropKind): [number, number] {
       return [1.25, 1.05];
     case 'tall_grass_flower':
       return [1.25, 1.1];
-    case 'sign':
-      return [0.92, 1.05];
     default:
       return [1.0, 1.0];
   }

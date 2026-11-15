@@ -14,6 +14,7 @@ export interface MenuCallbacks {
   onVessels?: () => void;
   onBestiary?: () => void;
   onCards?: () => void;
+  onQuests?: () => void;
   onSave: () => boolean;
   onOptionsChanged: (options: GameOptions) => void;
   onClose: () => void;
@@ -82,6 +83,10 @@ export class PauseMenu {
             <span>${ES.menu.cards}</span>
             <span class="text-xs text-resonant-gold tabular-nums">${cardCounts.collected}/${cardCounts.total}</span>
           </button>
+          <button data-act="quests" class="px-btn-secondary min-h-[44px] px-3 text-left font-bold text-sm flex items-center justify-between">
+            <span>${ES.menu.quests}</span>
+            <span class="text-xs text-pale-gold tabular-nums">${save.completedSideQuests?.length ?? 0}/5</span>
+          </button>
           <button data-act="save" class="px-btn-secondary min-h-[44px] px-3 text-left font-bold text-sm">${ES.menu.save}</button>
           <button data-act="options" class="px-btn-secondary min-h-[44px] px-3 text-left font-bold text-sm">${ES.menu.options}</button>
           <button data-act="close" class="px-btn-danger min-h-[44px] px-3 text-left font-bold text-sm">${ES.menu.close}</button>
@@ -115,6 +120,12 @@ export class PauseMenu {
       if (callbacks.onCards) {
         this.close();
         callbacks.onCards();
+      }
+    });
+    this.root.querySelector('[data-act="quests"]')?.addEventListener('click', () => {
+      if (callbacks.onQuests) {
+        this.close();
+        callbacks.onQuests();
       }
     });
     this.root.querySelector('[data-act="save"]')?.addEventListener('click', () => {

@@ -2,7 +2,6 @@ import { getBodyContainer, getSpeciesDollProfile } from '../data/containers.ts';
 import { getItem } from '../data/items.ts';
 import { getMove } from '../data/moves.ts';
 import { getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
 import { getCreatureAbilityDef } from '../domain/Abilities.ts';
 import {
   formatCardBonuses,
@@ -18,9 +17,10 @@ import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import { renderDollIntegrityHtml } from './DollIntegrityView.ts';
 import { AnimatedSoulDollView } from './components/AnimatedSoulDollView.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import { CARD_RARITY_STYLES } from './cardRarityStyles.ts';
 import { playCardSocketFx } from './cardSocketFx.ts';
+import { renderTypeBadge, renderTypeBadges } from './renderTypeBadge.ts';
 
 export interface SummaryHeldConfig {
   bag: BagSlot[];
@@ -32,19 +32,17 @@ export interface SummaryCardConfig {
   onChanged?: () => void;
 }
 
-export class SummaryScreen {
-  readonly root: HTMLDivElement;
-  private unbindImages: (() => void) | null = null;
+export class SummaryScreen extends ModalOverlay {
   private activeAnimView: AnimatedSoulDollView | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(
+      parent,
+      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 safe-pad'
+    );
   }
 
   open(
@@ -89,22 +87,16 @@ export class SummaryScreen {
               )
             );
 
-      const typeBadges = spec.types
-        .map((t) => {
-          const v = TYPE_VISUALS[t];
-          return `<span class="px-2 py-0.5 rounded-none text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-        })
-        .join(' ');
+      const typeBadges = renderTypeBadges(spec.types, 'md');
 
       const movesHtml = creature.moves
         .map((slot) => {
           const m = getMove(slot.moveId);
-          const v = TYPE_VISUALS[m.type];
           return `
             <div class="px-card p-2">
               <div class="flex items-center justify-between gap-2">
                 <span class="font-bold text-sm text-porcelain">${m.name}</span>
-                <span class="px-1.5 py-0.5 rounded-none border text-[11px] font-bold" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[m.type]}</span>
+                ${renderTypeBadge(m.type, 'move')}
               </div>
               <div class="mt-1 flex justify-between text-xs text-bone-gray tabular-nums">
                 <span>${ES.summary.power}: ${m.power || '—'} · ${ES.summary.acc}: ${m.accuracy}%</span>
@@ -412,27 +404,13 @@ export class SummaryScreen {
       this.root.querySelector('[data-anim-portrait]')?.replaceChildren(this.activeAnimView.root);
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
   }
 
-  close(): void {
+  protected override onBeforeClose(): void {
     this.activeAnimView?.dispose();
     this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.activeAnimView?.dispose();
-    this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

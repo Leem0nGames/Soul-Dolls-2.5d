@@ -67,10 +67,6 @@ export const BESTIARY_MILESTONES: readonly BestiaryMilestone[] = [
   },
 ];
 
-export function createEmptyBestiary(): Record<number, BestiaryEntry> {
-  return {};
-}
-
 export function getBestiaryEntry(
   bestiary: Record<number, BestiaryEntry>,
   speciesId: number

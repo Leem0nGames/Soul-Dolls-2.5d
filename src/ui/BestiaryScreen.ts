@@ -2,7 +2,6 @@ import { ABILITIES } from '../data/abilities.ts';
 import { ITEMS } from '../data/items.ts';
 import { getMove } from '../data/moves.ts';
 import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
 import {
   getBestiaryCounts,
   getBestiaryEntry,
@@ -13,7 +12,8 @@ import type { EvolutionRule, SaveData, StatName } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import { AnimatedSoulDollView } from './components/AnimatedSoulDollView.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
+import { renderTypeBadges } from './renderTypeBadge.ts';
 
 type BestiaryFilter = 'all' | 'caught' | 'seen' | 'unseen';
 
@@ -37,21 +37,16 @@ function formatEvoRule(rule: EvolutionRule): string {
   }
 }
 
-export class BestiaryScreen {
-  readonly root: HTMLDivElement;
+export class BestiaryScreen extends ModalOverlay {
   private filter: BestiaryFilter = 'all';
   private selectedId: number | null = null;
-  private unbindImages: (() => void) | null = null;
   private activeAnimView: AnimatedSoulDollView | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(save: SaveData, onClose: () => void): void {
@@ -109,14 +104,7 @@ export class BestiaryScreen {
           const imgSrc = seen
             ? this.assets.getCreatureDataUrl(id, 'front')
             : this.assets.getCreatureSilhouetteDataUrl(id);
-          const typesHtml = seen
-            ? spec.types
-                .map((t) => {
-                  const v = TYPE_VISUALS[t];
-                  return `<span class="px-1.5 py-0.5 rounded-none border text-[10px] font-bold" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-                })
-                .join(' ')
-            : '';
+          const typesHtml = seen ? renderTypeBadges(spec.types, 'sm') : '';
 
           return `
             <button data-species="${id}" class="px-card text-left ${
@@ -173,10 +161,8 @@ export class BestiaryScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
   }
 
@@ -203,12 +189,7 @@ export class BestiaryScreen {
       return;
     }
 
-    const typeBadges = spec.types
-      .map((t) => {
-        const v = TYPE_VISUALS[t];
-        return `<span class="px-2 py-0.5 rounded-none text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-      })
-      .join(' ');
+    const typeBadges = renderTypeBadges(spec.types, 'md');
 
     const statBars = STAT_ORDER.map((stat) => {
       const val = spec.baseStats[stat];
@@ -310,20 +291,8 @@ export class BestiaryScreen {
     this.root.querySelector('[data-anim-portrait]')?.replaceChildren(this.activeAnimView.root);
   }
 
-  close(): void {
+  protected override onBeforeClose(): void {
     this.activeAnimView?.dispose();
     this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.activeAnimView?.dispose();
-    this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

@@ -10,6 +10,7 @@ import { getCreatureDisplayName, xpForLevel } from '../domain/Creature.ts';
 import type { BodyPartName, CreatureInstance } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { renderTypeBadge, renderTypeBadges } from './renderTypeBadge.ts';
 
 export class BattleHud {
   readonly root: HTMLDivElement;
@@ -181,13 +182,7 @@ export class BattleHud {
   }
 
   private renderTypeChips(speciesId: number): string {
-    const spec = getSpecies(speciesId);
-    return spec.types
-      .map((t) => {
-        const v = TYPE_VISUALS[t];
-        return `<span class="px-1 py-[1px] rounded-none text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider border leading-none" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-      })
-      .join('');
+    return renderTypeBadges(getSpecies(speciesId).types, 'chip', '');
   }
 
   private renderPartyBalls(party: readonly CreatureInstance[]): string {
@@ -525,7 +520,7 @@ export class BattleHud {
                 <span class="font-bold text-xs sm:text-sm text-warm-white truncate">${m.name}</span>
                 <div class="flex items-center gap-1 shrink-0">
                   ${hintBadge}
-                  <span class="px-1 py-[1px] rounded-none text-[8px] font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[m.type]}</span>
+                  ${renderTypeBadge(m.type, 'chip')}
                 </div>
               </div>
               <div class="flex justify-between text-[10px] text-porcelain tabular-nums mt-0.5">

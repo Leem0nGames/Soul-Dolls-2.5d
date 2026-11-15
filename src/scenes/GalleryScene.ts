@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import type { Game } from '../core/Game.ts';
 import type { Scene } from '../core/SceneStack.ts';
 import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
 import { bindSoulDollImageUpdates } from '../ui/bindSoulDollImages.ts';
+import { renderTypeBadges } from '../ui/renderTypeBadge.ts';
 
 export class GalleryScene implements Scene {
   readonly name = 'gallery';
@@ -46,12 +46,7 @@ export class GalleryScene implements Scene {
         s.baseStats.spe;
       const frontUrl = this.game.assets.getCreatureDataUrl(id, 'front');
       const backUrl = this.game.assets.getCreatureDataUrl(id, 'back');
-      const badges = s.types
-        .map((t) => {
-          const v = TYPE_VISUALS[t];
-          return `<span class="px-1.5 py-0.5 rounded-none border text-[10px] font-bold uppercase" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-        })
-        .join(' ');
+      const badges = renderTypeBadges(s.types, 'smUpper');
 
       return `
         <div class="px-card border-cold-stone bg-smoked-wood p-2.5 flex flex-col gap-1.5">

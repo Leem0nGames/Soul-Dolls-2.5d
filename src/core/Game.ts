@@ -13,6 +13,7 @@ import { DialogBox } from '../ui/DialogBox.ts';
 import { EndingModal } from '../ui/EndingModal.ts';
 import { PauseMenu } from '../ui/Menu.ts';
 import { PartyScreen } from '../ui/PartyScreen.ts';
+import { QuestJournalModal } from '../ui/QuestJournalModal.ts';
 import { StorageScreen } from '../ui/StorageScreen.ts';
 import { SummaryScreen } from '../ui/SummaryScreen.ts';
 import { TouchControls } from '../ui/TouchControls.ts';
@@ -72,6 +73,7 @@ export class Game {
   readonly endingModal: EndingModal;
   readonly arGachaModal: ArGachaModal;
   readonly vesselScreen: VesselScreen;
+  readonly questJournal: QuestJournalModal;
 
   saveData: SaveData;
   private deferredInstall: BeforeInstallPromptEvent | null = null;
@@ -111,6 +113,7 @@ export class Game {
     this.endingModal = new EndingModal(this.uiLayer, this.assets);
     this.arGachaModal = new ArGachaModal(this.uiLayer, this.assets);
     this.vesselScreen = new VesselScreen(this.uiLayer, this.assets);
+    this.questJournal = new QuestJournalModal(this.uiLayer);
 
     this.toastEl = document.createElement('div');
     this.toastEl.className =
@@ -133,7 +136,8 @@ export class Game {
       this.summary.root,
       this.endingModal.root,
       this.arGachaModal.root,
-      this.vesselScreen.root
+      this.vesselScreen.root,
+      this.questJournal.root
     );
     this.uiLayers.register('toast', this.toastEl);
 
@@ -145,10 +149,7 @@ export class Game {
     this.bus.on('audio:music', ({ track }) => this.synth.playMusic(track));
     this.bus.on('game:toast', ({ message }) => this.showToast(message));
 
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      this.deferredInstall = e as BeforeInstallPromptEvent;
-    });
+    window.addEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt);
 
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
     window.addEventListener('pagehide', this.handlePageHide);
@@ -282,6 +283,11 @@ export class Game {
     this.scenes.push(new ShopScene(this, stock, onDone));
   }
 
+  private handleBeforeInstallPrompt = (e: Event): void => {
+    e.preventDefault();
+    this.deferredInstall = e as BeforeInstallPromptEvent;
+  };
+
   private handlePageHide = (): void => {
     this.input.clearAll();
     this.synth.suspend();
@@ -299,15 +305,26 @@ export class Game {
   };
 
   dispose(): void {
+    window.removeEventListener('beforeinstallprompt', this.handleBeforeInstallPrompt);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     window.removeEventListener('pagehide', this.handlePageHide);
     this.loop.dispose();
     this.input.dispose();
     this.synth.dispose();
+    this.touchControls.dispose();
+    this.dialog.dispose();
+    this.menu.dispose();
+    this.partyScreen.dispose();
+    this.bagScreen.dispose();
+    this.bestiaryScreen.dispose();
+    this.storageScreen.dispose();
+    this.summary.dispose();
+    this.endingModal.dispose();
     this.battleTransition.dispose();
     this.battleHud.dispose();
     this.arGachaModal.dispose();
     this.vesselScreen.dispose();
+    this.questJournal.dispose();
     this.cardAlbumScreen.dispose();
     this.assets.dispose();
     this.renderer.dispose();

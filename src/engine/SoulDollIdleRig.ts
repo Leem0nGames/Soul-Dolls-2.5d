@@ -8,7 +8,6 @@ import {
 
 export const DEFAULT_BREATH_CYCLE_DURATION = 3.5;
 export const MAX_THORAX_EXPANSION_RATIO = 0.055; // 5.5% unified ribcage expansion (linear around torso spine)
-export const MAX_THORAX_LIFT_RATIO = 0.044; // 4.4% peak thoracic/shoulder heave (~4.5-5 px at 240p)
 export const MAX_THORAX_ROTATION_DEG = 3.2; // 3.2 degrees expressive 3D thoracic pitch
 export const SECONDARY_BREATH_PHASE_OFFSET = 0.06; // 6% cycle (~0.21s) follow-through lag for secondary silhouette elements
 

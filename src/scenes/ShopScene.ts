@@ -47,10 +47,13 @@ export class ShopScene implements Scene {
               const owned = save.bag.find((s) => s.itemId === id)?.quantity ?? 0;
               const canAfford = save.money >= item.price;
               return `
-                <div class="px-card flex items-center justify-between gap-2 p-2.5">
-                  <div class="min-w-0">
-                    <div class="font-bold text-sm text-porcelain">${item.name} <span class="text-xs text-bone-gray tabular-nums">(${ES.shop.owned}: ${owned})</span></div>
-                    <div class="text-xs text-bone-gray">${item.description}</div>
+                <div class="px-card flex items-center justify-between gap-2.5 p-2.5">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <img src="${this.game.assets.getItemIconDataUrl(id)}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />
+                    <div class="min-w-0">
+                      <div class="font-bold text-sm text-porcelain">${item.name} <span class="text-xs text-bone-gray tabular-nums">(${ES.shop.owned}: ${owned})</span></div>
+                      <div class="text-xs text-bone-gray">${item.description}</div>
+                    </div>
                   </div>
                   <button data-buy="${id}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
                     canAfford
@@ -90,10 +93,13 @@ export class ShopScene implements Scene {
                   const item = getItem(slot.itemId);
                   const val = getSellPrice(slot.itemId);
                   return `
-                    <div class="px-card flex items-center justify-between gap-2 p-2.5">
-                      <div class="min-w-0">
-                        <div class="font-bold text-sm text-porcelain">${item.name} <span class="text-resonant-gold tabular-nums">×${slot.quantity}</span></div>
-                        <div class="text-xs text-bone-gray">${item.description}</div>
+                    <div class="px-card flex items-center justify-between gap-2.5 p-2.5">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <img src="${this.game.assets.getItemIconDataUrl(slot.itemId)}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />
+                        <div class="min-w-0">
+                          <div class="font-bold text-sm text-porcelain">${item.name} <span class="text-resonant-gold tabular-nums">×${slot.quantity}</span></div>
+                          <div class="text-xs text-bone-gray">${item.description}</div>
+                        </div>
                       </div>
                       <button data-sell="${slot.itemId}" class="px-btn-primary min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap">+${val} ◈</button>
                     </div>

@@ -2,7 +2,7 @@ import { getCreatureDisplayName } from '../domain/Creature.ts';
 import type { SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 
 function formatPlayTime(sec: number): string {
   const s = Math.floor(sec);
@@ -11,18 +11,15 @@ function formatPlayTime(sec: number): string {
   return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
-export class EndingModal {
-  readonly root: HTMLDivElement;
-  private unbindImages: (() => void) | null = null;
-
+export class EndingModal extends ModalOverlay {
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 sm:p-4 safe-pad';
-    parent.appendChild(this.root);
+    super(
+      parent,
+      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 sm:p-4 safe-pad'
+    );
   }
 
   open(save: SaveData, onKeepPlaying: () => void, onBackTitle: () => void): void {
@@ -56,10 +53,8 @@ export class EndingModal {
       </div>
     `;
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
 
     this.root.querySelector('[data-keep]')?.addEventListener('click', () => {
       this.close();
@@ -69,18 +64,5 @@ export class EndingModal {
       this.close();
       onBackTitle();
     });
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

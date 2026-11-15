@@ -129,6 +129,27 @@ export const SHEET_TILE_MAPPING: Partial<Record<TileAtlasKey, SheetCellCoord>> =
   roof_purple: { row: 4, col: 4 },
 };
 
+export const EXTRA_SHEET_COLS = 5;
+export const EXTRA_SHEET_ROWS = 2;
+
+/**
+ * Coherent mapping for the extra 5x2 terrain/facade sheet (`tiles_extra_albedo.png` & `tiles_extra_normal.png`).
+ * Row 0: water, water_1, window, snow, stairs
+ * Row 1: door, flowers, tall_grass, sand, leaves
+ */
+export const EXTRA_TILE_MAPPING: Partial<Record<TileAtlasKey, SheetCellCoord>> = {
+  water: { row: 0, col: 0 },
+  water_1: { row: 0, col: 1 },
+  window: { row: 0, col: 2 },
+  snow: { row: 0, col: 3 },
+  stairs: { row: 0, col: 4 },
+  door: { row: 1, col: 0 },
+  flowers: { row: 1, col: 1 },
+  tall_grass: { row: 1, col: 2 },
+  sand: { row: 1, col: 3 },
+  leaves: { row: 1, col: 4 },
+};
+
 const SCALE = TILE_SIZE / 16;
 
 function drawPixelTile(
@@ -586,5 +607,27 @@ export function stampTileSheetOntoNormalAtlas(
     ctx.fillRect(stx, ty, TILE_SIZE, 3);
     ctx.fillStyle = '#8048ea';
     ctx.fillRect(stx, ty + 13, TILE_SIZE, 3);
+  }
+}
+
+/**
+ * Stamps all 10 tiles from the extra 5x2 sheet (`tiles_extra_albedo.png` or `tiles_extra_normal.png`)
+ * into their assigned 64x64 slots in the 512x512 atlas, overriding derived fallbacks with dedicated artwork.
+ */
+export function stampExtraTilesOntoAtlas(
+  atlasCanvas: HTMLCanvasElement,
+  extraSheetImg: CanvasImageSource
+): void {
+  const ctx = atlasCanvas.getContext('2d');
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+
+  for (const [key, cell] of Object.entries(EXTRA_TILE_MAPPING) as Array<
+    [TileAtlasKey, SheetCellCoord]
+  >) {
+    const idx = TILE_ATLAS_INDEX[key];
+    const ox = (idx % ATLAS_GRID) * TILE_SIZE;
+    const oy = Math.floor(idx / ATLAS_GRID) * TILE_SIZE;
+    drawSheetCell(ctx, extraSheetImg, cell, ox, oy);
   }
 }

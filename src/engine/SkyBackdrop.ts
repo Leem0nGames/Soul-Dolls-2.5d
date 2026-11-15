@@ -32,7 +32,7 @@ export function createGradientSkyTexture(
   return tex;
 }
 
-export function createCloudTexture(): THREE.CanvasTexture {
+function createCloudTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 32;
   canvas.height = 16;

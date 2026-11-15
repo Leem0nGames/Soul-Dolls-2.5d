@@ -5,7 +5,7 @@ import {
   computeBodyPartRatios,
   ensureBodyParts,
 } from '../domain/BodyParts.ts';
-import type { BodyPartName, CreatureInstance } from '../domain/types.ts';
+import type { CreatureInstance } from '../domain/types.ts';
 import { PALETTE } from '../gfx/Palette.ts';
 
 export interface PartTone {
@@ -70,7 +70,7 @@ function renderPixelSegments(pct: number, tone: PartTone): string {
   return html;
 }
 
-export function renderDollSilhouetteSvg(
+function renderDollSilhouetteSvg(
   creature: CreatureInstance,
   scale: 2 | 3 = 2
 ): string {
@@ -226,19 +226,4 @@ export function renderDollIntegrityHtml(
       </div>
     </div>
   `;
-}
-
-export function triggerBodyPartHitFlash(container: HTMLElement | null, part: BodyPartName): void {
-  if (!container) return;
-  const targets = [
-    container.querySelector<HTMLElement>(`[data-part="${part}"]`),
-    container.querySelector<HTMLElement>(`[data-part-row="${part}"]`),
-  ];
-  for (const el of targets) {
-    if (!el) continue;
-    el.classList.remove('battle-part-hit');
-    // Force reflow so rapid multi-hit moves retrigger the pixel impact pulse cleanly
-    void el.getBoundingClientRect();
-    el.classList.add('battle-part-hit');
-  }
 }

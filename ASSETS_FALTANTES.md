@@ -8,73 +8,72 @@ Auditoría completa de los recursos gráficos que actualmente el motor **genera 
 > **Formato recomendado:** Celdas de **`64×64 px`** (sin suavizado/antialiasing, bordes limpios sin márgenes blancos), acompañadas de su **mapa normal tangente OpenGL (`#8080ff` fondo plano, `+X` derecha, `+Y` arriba)**.
 
 ### Alta prioridad (visibles directamente en los mapas actuales)
-- [ ] **`water` (Frame 1) y `water_1` (Frame 2)** — Agua animada de 2 cuadros (`64×64` c/u + normal map sutil de ondas). Se usa en *Villa Origen*, *Ruta 1*, *Pueblo Bruma* y *Cueva Eco*.
-- [ ] **`window`** — Ventana iluminada / vidrio enmarcado (`64×64` + normal map con bisel de marco). Se estampa actualmente de forma procedural en las fachadas de casas, centro, tienda y laboratorio (`BuildingMesher`).
-- [ ] **`snow`** — Nieve / escarcha para terreno elevado (`64×64` + normal map suave). Se usa automáticamente por encima de `snowLine` en *Ruta 2* y *Arena Cumbre*.
-- [ ] **`stairs`** *(opcional mejora artesanal)* — Escalera de piedra. Hoy se genera superponiendo peldaños sobre el tile `(0,3)` de piedra; crear un tile + normal dedicado mejorará los desniveles.
-- [ ] **`door`** *(opcional para separar de vigas)* — Puerta de edificio con marco y picaporte (`64×64` + normal map). Actualmente comparte el tile `(2,2)` (madera con herrajes) con los pilares de madera `log`.
+- [x] **`water` (Frame 1) y `water_1` (Frame 2)** — Agua animada de 2 cuadros (`64×64` c/u + normal map sutil de ondas). Integrados en `/assets/tiles_extra_albedo.png` y `/assets/tiles_extra_normal.png`.
+- [x] **`window`** — Ventana iluminada / vidrio enmarcado (`64×64` + normal map con bisel de marco). Integrada en `tiles_extra`.
+- [x] **`snow`** — Nieve / escarcha para terreno elevado (`64×64` + normal map suave). Integrada en `tiles_extra`.
+- [x] **`stairs`** — Escalera de piedra con peldaños dedicados y normal map. Integrada en `tiles_extra`.
+- [x] **`door`** — Puerta de edificio con marco y picaporte (`64×64` + normal map), separada de los pilares `log`. Integrada en `tiles_extra`.
 
 ### Prioridad media / variantes
-- [ ] **`flowers`** — Tile de césped con flores integrado (`64×64` + normal). Hoy estampa 4 sprites procedurales sobre el césped `(0,0)`.
-- [ ] **`tall_grass`** — Tile base debajo de la hierba alta (`64×64` + normal). Hoy usa el césped `(0,0)` con matojos procedurales encima.
-- [ ] **`sand`** — Arena / costa (`64×64` + normal). Definido en `DEFAULT_LEGEND` (`'s'`) y bioma `'coast'`.
-- [ ] **`leaves`** — Copa/hojas de relleno (`64×64` + normal). Slot reservado en el atlas.
+- [x] **`flowers`** — Tile de césped con flores integrado (`64×64` + normal). Integrado en `tiles_extra`.
+- [x] **`tall_grass`** — Tile base debajo de la hierba alta (`64×64` + normal). Integrado en `tiles_extra`.
+- [x] **`sand`** — Arena / costa (`64×64` + normal). Integrado en `tiles_extra`.
+- [x] **`leaves`** — Copa/hojas de relleno (`64×64` + normal). Integrado en `tiles_extra`.
 
 ---
 
 ## 2. Props 3D / Billboards del Mundo y Batalla (`PropSprites.ts`)
-> **Formato recomendado:** PNG transparente (`alpha` limpio), pixel-art nítido, pivote centrado en la base inferior. Hoy estos **13 props** son dibujos procedurales en `24×24` o `32×32`.
+> Todos integrados en `/public/assets/props/*.png` con fondo transparente limpio y relación de aspecto ajustada en `BillboardBatch.ts`, `BattleStage.ts` y `OverworldScene.ts`.
 
-### Naturaleza y Cuevas (Alta prioridad)
-- [ ] **`boulder`** — Roca / peñasco (`32×32` o `48×48`). Muy presente en *Ruta 2*, *Cueva Eco*, decoración aleatoria y bordes de mapa.
-- [ ] **`crystal`** — Cristal arcano brillante (`32×48`). Se usa en *Cueva Eco* y como pickup visible de **Fragmento de Alma** en el suelo.
-- [ ] **`flower_patch`** — Macizo de flores silvestres (`32×32`). Usado en *Pueblo Bruma* y decoración de praderas.
-- [ ] **`mushroom`** — Hongo pequeño de suelo (`24×24`). Usado en *Ruta 1* y bosques.
-- [ ] **`stump`** — Tocón de árbol cortado (`24×24`). Usado en *Ruta 1*.
-- [ ] **`cave_entrance`** — Boca de caverna / arco rocoso (`64×64`). Usado en el fondo del escenario de batalla bioma `cave`.
+### Naturaleza y Cuevas
+- [x] **`boulder`** — Roca / peñasco (`/assets/props/boulder.png`).
+- [x] **`crystal`** — Cristal arcano brillante (`/assets/props/crystal.png`).
+- [x] **`flower_patch`** — Macizo de flores silvestres (`/assets/props/flower_patch.png`).
+- [x] **`mushroom`** — Hongo pequeño de suelo (`/assets/props/mushroom.png`).
+- [x] **`stump`** — Tocón de árbol cortado (`/assets/props/stump.png`).
+- [x] **`cave_entrance`** — Boca de caverna / arco rocoso (`/assets/props/cave_entrance.png`).
 
-### Mobiliario y Arquitectura de Pueblos (Alta prioridad)
-- [ ] **`sign`** — Cartel de madera con poste (`32×32`). Usado en **todos los mapas** (`signs`) y en arenas de batalla.
-- [ ] **`well`** — Pozo de piedra con tejadillo (`48×48`). Usado en plazas de *Villa Origen*, *Pueblo Bruma* y bioma `meadow` de batalla.
-- [ ] **`pillar`** — Pilar rúnico / columna de arena (`32×64`). Usado en *Arena Cumbre* y en batallas (`mountain`, `cave`, `arena`, `boss`).
-- [ ] **`fence`** — Valla de madera horizontal (`32×24`, repetible lateralmente). Usada en *Villa Origen* y *Ruta 1*.
-- [ ] **`bench`** — Banco de madera de plaza/ruta (`32×24`). Usado en *Villa Origen*, *Pueblo Bruma* y *Ruta 1*.
+### Mobiliario y Arquitectura de Pueblos
+- [x] **`sign`** — Cartel de madera con poste (`/assets/props/sign.png`).
+- [x] **`well`** — Pozo de piedra con tejadillo (`/assets/props/well.png`).
+- [x] **`pillar`** — Pilar rúnico / columna de arena (`/assets/props/pillar.png`).
+- [x] **`fence`** — Valla de madera horizontal (`/assets/props/fence.png`).
+- [x] **`bench`** — Banco de madera de plaza/ruta (`/assets/props/bench.png`).
 
-### Puntos Interactivos Clave (Alta prioridad)
-- [ ] **`capsule_pedestal`** — Altar/pedestal de piedra con Soulpot encima (`32×32`). Representa las SoulDolls iniciales del laboratorio y todos los objetos recogibles del suelo.
-- [ ] **`heal_machine`** — Máquina / santuario de restauración de SoulDolls (`32×32` o `48×48`). Usada en el punto de curación de *Arena Cumbre*.
+### Puntos Interactivos Clave
+- [x] **`capsule_pedestal`** — Altar/pedestal de piedra con Soulpot encima (`/assets/props/capsule_pedestal.png`).
+- [x] **`heal_machine`** — Máquina / santuario de restauración de SoulDolls (`/assets/props/heal_machine.png`).
 
 ---
 
-## 3. Sprites de Personajes (`PLAYER.jpeg`, `NPC07.jpg`, `NPC08.jpg`)
-- [x] **Jugador (`PLAYER.jpeg`)** ya cuenta con hoja `4×4` (4 direcciones × 4 frames de caminata).
-- [ ] **Hojas animadas para NPCs por rol (Opcional / Mejora visual)**: Actualmente `NPC07.jpg` y `NPC08.jpg` tienen 16 retratos/poses estáticas cada uno (32 variantes), por lo que los NPCs **no cambian de dirección ni tienen animación al caminar** cuando rotas la cámara. Se beneficiarían de sprites `4×4` (o al menos 4 direcciones `down / left / right / up`) para:
-  - `professor` (Profesor)
-  - `rival` (Rival)
-  - `healer` (Sanadora)
-  - `merchant` (Mercader)
-  - `leader` (Líderes de Arena / Jefes)
-  - `trainer` / `npc`
+## 3. Sprites de Personajes (`PLAYER.jpeg`, `/assets/chars/*.png`, `NPC07.jpg`, `NPC08.jpg`)
+- [x] **Jugador (`PLAYER.jpeg`)** — Hoja animada `4×4` (4 direcciones × 4 frames de caminata).
+- [x] **Profesor (`professor`)** — Hoja animada `4×4` (`/assets/chars/professor.png`).
+- [x] **Rival (`rival`)** — Hoja animada `4×4` (`/assets/chars/rival.png`).
+- [x] **Sanadora (`healer`)** — Hoja animada `4×4` (`/assets/chars/healer.png`).
+- [x] **Entrenadores (`trainer`)** — Hoja animada `4×4` (`/assets/chars/trainer.png`).
+- [x] **Aldeanos / NPCs generales (`npc`)** — Hoja animada `4×4` (`/assets/chars/npc.png`).
+- [x] **Líderes de Arena (`leader`)** — Hoja animada `4×4` (`/assets/chars/leader.png`).
+- [ ] **Mercader (`merchant`)** — Pendiente hoja `4×4` dedicada (actualmente usa pose estática de `NPC07.jpg` / `NPC08.jpg`).
 
 ---
 
 ## 4. Iconos de Inventario, Batalla y UI
-> Actualmente generados con píxeles básicos `16×16` en `ItemIconGen.ts` y `AssetProvider.ts` (10 siluetas genéricas recoloreadas para 35 ítems).
+> 25 iconos de ítems + 4 iconos de batalla ya integrados como PNG transparentes `64×64`. Faltan únicamente las medicinas, Soulpots, cuerpos contenedores e insignias.
 
-### Iconos de Menú de Batalla (`16×16` o `24×24` PNG transparente)
-- [ ] **`fight`** — Espadas cruzadas / símbolo de combate
-- [ ] **`bag`** — Mochila / bolsa de objetos
-- [ ] **`party`** — Soulpot / símbolo de equipo
-- [ ] **`run`** — Ala / bota veloz de huida
+### Iconos de Menú de Batalla (`/assets/ui/battle_*.png`)
+- [x] **`fight`** — Espadas cruzadas (`/assets/ui/battle_fight.png`)
+- [x] **`bag`** — Mochila / bolsa de objetos (`/assets/ui/battle_bag.png`)
+- [x] **`party`** — Soulpot / símbolo de equipo (`/assets/ui/battle_party.png`)
+- [x] **`run`** — Ala / bota veloz de huida (`/assets/ui/battle_run.png`)
 
-### Iconos de Ítems (`src/data/items.ts` — 35 ítems totales, `16×16` o `24×24` PNG)
-Pueden entregarse como un **sprite sheet** ordenado o archivos individuales:
-- [ ] **Medicinas (7):** `pocion` (Elixir Ki), `superpocion` (Super Elixir Ki), `hiperpocion` (Hiper Elixir Ki), `antidoto` (Incienso Puro), `despertar` (Campana de Alma), `antiparalizador` (Aceite de Juntas), `revivir` (Núcleo Revivir).
-- [ ] **Soulpots (3):** `capsula` (Soulpot), `supercapsula` (Super Soulpot), `ultracapsula` (Ultra Soulpot).
-- [ ] **Piedras Evolutivas (6):** `piedra_chispa`, `piedra_brasa`, `piedra_flora`, `piedra_marea`, `piedra_aurora`, `piedra_eclipse`.
-- [ ] **Utilidad y Reliquia AR (3):** `repelente`, `cuerda_huida` (Hilo de Retorno), `fragmento_alma`.
-- [ ] **Cristales y Equipables (8):** `baya_roble`, `baya_alba`, `baya_pura`, `baya_vigil`, `gema_poder` (Núcleo Brío), `cinta_aguante` (Sello Firme), `pluma_veloz` (Hilo Céfiro), `musgo_vital` (Savia de Resina).
-- [ ] **Talismanes de Tipo (8):** `amuleto_brasa`, `amuleto_marea`, `amuleto_flora`, `amuleto_chispa`, `amuleto_roca`, `amuleto_brisa`, `amuleto_umbra`, `amuleto_comun`.
+### Iconos de Ítems (`src/data/items.ts` — 25/35 completados, faltan 10)
+- [ ] **Medicinas (7 faltantes):** `pocion` (Elixir Ki), `superpocion` (Super Elixir Ki), `hiperpocion` (Hiper Elixir Ki), `antidoto` (Incienso Puro), `despertar` (Campana de Alma), `antiparalizador` (Aceite de Juntas), `revivir` (Núcleo Revivir).
+- [ ] **Soulpots (3 faltantes):** `capsula` (Soulpot), `supercapsula` (Super Soulpot), `ultracapsula` (Ultra Soulpot).
+- [x] **Piedras Evolutivas (6/6):** `piedra_chispa`, `piedra_brasa`, `piedra_flora`, `piedra_marea`, `piedra_aurora`, `piedra_eclipse` (`/assets/items/*.png`).
+- [x] **Utilidad y Reliquia AR (3/3):** `repelente`, `cuerda_huida` (Hilo de Retorno), `fragmento_alma` (`/assets/items/*.png`).
+- [x] **Cristales y Equipables (8/8):** `baya_roble`, `baya_alba`, `baya_pura`, `baya_vigil`, `gema_poder` (Núcleo Brío), `cinta_aguante` (Sello Firme), `pluma_veloz` (Hilo Céfiro), `musgo_vital` (Savia de Resina) (`/assets/items/*.png`).
+- [x] **Talismanes de Tipo (8/8):** `amuleto_brasa`, `amuleto_marea`, `amuleto_flora`, `amuleto_chispa`, `amuleto_roca`, `amuleto_brisa`, `amuleto_umbra`, `amuleto_comun` (`/assets/items/*.png`).
 
 ### Armazones / Cuerpos Contenedores e Insignias (`src/data/containers.ts`)
 - [ ] **Iconos de los 7 Cuerpos Contenedores (`32×32` PNG):** `cuerpo_aprendiz`, `cuerpo_maga`, `cuerpo_priest`, `cuerpo_paladin`, `cuerpo_bruja`, `cuerpo_asesina`, `cuerpo_titan` *(hoy `VesselScreen.ts` solo muestra texto y barras sin ilustración del armazón)*.
@@ -93,11 +92,10 @@ Pueden entregarse como un **sprite sheet** ordenado o archivos individuales:
 
 ---
 
-## 6. Orden de Prioridad Sugerido
-1. **Batch 1 (Impacto inmediato en mapas):** `water` (2 frames) + `window` + `snow` (+ sus mapas normales) + `door` separada de `log`.
-2. **Batch 2 (Props principales del Overworld):** hoja con `boulder`, `sign`, `well`, `pillar`, `crystal`, `capsule_pedestal`, `heal_machine`, `fence`, `bench`, `stump`, `mushroom`, `flower_patch`, `cave_entrance`.
-3. **Batch 3 (UI e Inventario):** sprite sheet de los **35 ítems** + **4 iconos de batalla** + **7 cuerpos contenedores**.
-4. **Batch 4 (Pulido extra):** fondos parallax por bioma y hojas direccionales de NPCs clave.
+## 6. Siguientes Pendientes por Prioridad
+1. **Batch restante de Ítems y Personajes:** 7 medicinas + 3 Soulpots + hoja `4×4` del `merchant`.
+2. **Contenedores y Medallas:** 7 cuerpos contenedores (`VesselScreen`) + 4 medallas de progreso.
+3. **Fondos y UI Modular (ver Sección 7):** fondos parallax de batalla, marcos 9-slice, esquinas ornamentales, patrones de menú, botones e iconos HUD/estado.
 
 ---
 

@@ -110,6 +110,15 @@ export const MAP_CUEVA_ECO: MapDef = {
       dialogKey: 'trainer',
       trainerId: 'cueva_minero',
       sightRange: 4,
+      patrol: {
+        waypoints: [
+          { x: 22, y: 26 },
+          { x: 22, y: 23 },
+        ],
+        speed: 1.3,
+        pauseSec: 1.6,
+      },
+      lookAtPlayerAfterTalk: true,
     },
     {
       id: 'npc_rival_2',

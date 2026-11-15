@@ -12,48 +12,55 @@ import {
   rebindCreatureContainer,
 } from '../domain/BodyParts.ts';
 import { createCreature, getCreatureDisplayName } from '../domain/Creature.ts';
+import {
+  ALL_BLUEPRINT_IDS,
+  craftContainerFromBlueprint,
+  ensureSaveSideQuestState,
+  getBlueprint,
+} from '../domain/SideQuests.ts';
 import { addCapturedCreature } from '../domain/Storage.ts';
 import type { SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 
 type VesselTab = 'reserve' | 'containers' | 'shards';
 
-export class VesselScreen {
-  readonly root: HTMLDivElement;
+export class VesselScreen extends ModalOverlay {
   private tab: VesselTab = 'reserve';
   private notice = '';
   private bindingSoulUid: string | null = null;
   private equippingContainerId: string | null = null;
-  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(
     save: SaveData,
     rng: Rng,
     onMutated: () => void,
-    onClose: () => void
+    onClose: () => void,
+    onCraftSfx?: () => void
   ): void {
     ensureSaveVesselState(save);
+    ensureSaveSideQuestState(save);
     this.notice = '';
     this.bindingSoulUid = null;
     this.equippingContainerId = null;
 
     const render = () => {
       ensureSaveVesselState(save);
+      ensureSaveSideQuestState(save);
       const reserve = save.soulReserve ?? [];
       const vessels = save.vessels ?? {};
       const shards = save.bodyPartShards ?? {};
+      const ownedBlueprints = (save.blueprints ?? []).filter((id) =>
+        ALL_BLUEPRINT_IDS.includes(id)
+      );
 
       const ownedVesselIds = ALL_CONTAINER_IDS.filter((id) => (vessels[id] ?? 0) > 0);
       const shardIds = ALL_CONTAINER_IDS.filter((id) => (shards[id] ?? 0) > 0);
@@ -169,9 +176,34 @@ export class VesselScreen {
                 })
                 .join('');
       } else {
-        bodyHtml =
+        const blueprintsHtml =
+          ownedBlueprints.length === 0
+            ? `<div class="px-card p-3 text-xs text-bone-gray">Aún no tienes Planos de crafteo. Completa misiones secundarias (NPCs con <span class="text-resonant-gold font-bold">!</span>) para conseguirlos.</div>`
+            : ownedBlueprints
+                .map((bpId) => {
+                  const bp = getBlueprint(bpId);
+                  const cdef = getBodyContainer(bp.containerId);
+                  const canAfford = save.money >= bp.craftGoldCost;
+                  return `
+                    <div class="px-card border-resonant-gold p-2.5 flex items-center justify-between gap-2">
+                      <div class="min-w-0">
+                        <div class="text-xs font-bold text-pale-gold">${bp.name}</div>
+                        <div class="text-[11px] text-porcelain">${cdef.name} · Cab ${cdef.ratios.head}% Tor ${cdef.ratios.torso}% Bra ${cdef.ratios.arms}% Pie ${cdef.ratios.legs}%</div>
+                        <div class="text-[11px] text-bone-gray">${bp.description}</div>
+                      </div>
+                      <button data-craft-bp="${bp.id}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap tabular-nums ${
+                        canAfford
+                          ? 'px-btn-primary'
+                          : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
+                      }">Forjar (${bp.craftGoldCost} ◈)</button>
+                    </div>
+                  `;
+                })
+                .join('');
+
+        const shardsHtml =
           shardIds.length === 0
-            ? `<div class="py-8 text-center text-xs text-bone-gray">${ES.vessels.noShards}</div>`
+            ? `<div class="py-4 text-center text-xs text-bone-gray">${ES.vessels.noShards}</div>`
             : shardIds
                 .map((cid) => {
                   const def = getBodyContainer(cid);
@@ -190,12 +222,26 @@ export class VesselScreen {
                   `;
                 })
                 .join('');
+
+        bodyHtml = `
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-resonant-gold">
+              <span>Planos de crafteo (${ownedBlueprints.length}/${ALL_BLUEPRINT_IDS.length})</span>
+              <span class="text-pale-gold tabular-nums">Oro: ${save.money} ◈</span>
+            </div>
+            ${blueprintsHtml}
+            <div class="pt-1 text-[11px] font-bold uppercase tracking-wider text-ki-cyan">
+              Piezas de Armazón (${shardIds.length})
+            </div>
+            ${shardsHtml}
+          </div>
+        `;
       }
 
       const tabs: Array<{ id: VesselTab; label: string }> = [
         { id: 'reserve', label: `${ES.vessels.reserveTab} (${reserve.length})` },
         { id: 'containers', label: `${ES.vessels.containersTab} (${ownedVesselIds.length})` },
-        { id: 'shards', label: `${ES.vessels.shardsTab} (${shardIds.length})` },
+        { id: 'shards', label: `${ES.vessels.shardsTab} (${shardIds.length + ownedBlueprints.length})` },
       ];
 
       this.root.innerHTML = `
@@ -297,25 +343,25 @@ export class VesselScreen {
           render();
         });
       });
+
+      this.root.querySelectorAll<HTMLElement>('[data-craft-bp]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const bpId = btn.dataset.craftBp!;
+          const result = craftContainerFromBlueprint(save, bpId);
+          if (result.ok && result.containerName) {
+            this.notice = `¡Forjaste 1× ${result.containerName}! Disponible en Cuerpos Completos.`;
+            onCraftSfx?.();
+            onMutated();
+          } else if (result.reason === 'no_money') {
+            this.notice = ES.shop.noMoney;
+          }
+          render();
+        });
+      });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

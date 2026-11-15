@@ -3,7 +3,14 @@ import { getTileWorldY } from '../domain/TerrainRules.ts';
 import type { BuildingKind, BuildingPlacement, MapDef } from '../domain/types.ts';
 import type { RoofTextureKind } from '../gfx/AssetProvider.ts';
 import type { TileAtlasKey } from '../gfx/ProceduralTiles.ts';
-import { getTileUv } from './AtlasBuilder.ts';
+import {
+  buildGeometryFromQuadBuilder,
+  createQuadBuilder,
+  pushQuad,
+  pushTiledQuad,
+  pushTriangle,
+  type QuadBuilder,
+} from './QuadGeometry.ts';
 
 function getBuildingPalette(kind: BuildingKind): {
   wall: TileAtlasKey;
@@ -62,84 +69,6 @@ function getBuildingPalette(kind: BuildingKind): {
         roofHeight: 1.4,
       };
   }
-}
-
-interface QuadBuilder {
-  positions: number[];
-  uvs: number[];
-  colors: number[];
-  indices: number[];
-}
-
-function createQuadBuilder(): QuadBuilder {
-  return { positions: [], uvs: [], colors: [], indices: [] };
-}
-
-function buildGeometryFromQuadBuilder(qb: QuadBuilder): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(qb.positions), 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(qb.uvs), 2));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(qb.colors), 3));
-  geo.setIndex(new THREE.BufferAttribute(new Uint16Array(qb.indices), 1));
-  geo.computeVertexNormals();
-  geo.computeBoundingSphere();
-  return geo;
-}
-
-function pushQuad(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  p3: [number, number, number],
-  texKey: TileAtlasKey,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2, ...p3);
-  const r = getTileUv(texKey);
-  qb.uvs.push(r.u0, r.v0, r.u1, r.v0, r.u1, r.v1, r.u0, r.v1);
-  for (let i = 0; i < 4; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function pushTiledQuad(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  p3: [number, number, number],
-  uRepeat: number,
-  vRepeat: number,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2, ...p3);
-  qb.uvs.push(0, 0, uRepeat, 0, uRepeat, vRepeat, 0, vRepeat);
-  for (let i = 0; i < 4; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function pushTriangle(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  texKey: TileAtlasKey,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2);
-  const r = getTileUv(texKey);
-  qb.uvs.push(r.u0, r.v0, r.u1, r.v0, (r.u0 + r.u1) * 0.5, r.v1);
-  for (let i = 0; i < 3; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2);
 }
 
 function addBuildingGeometry(

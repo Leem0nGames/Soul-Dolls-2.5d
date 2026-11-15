@@ -18,6 +18,7 @@ export interface PropBatchGroup {
   kind: PropKind;
   mesh: THREE.InstancedMesh;
   items: PropInstancePlacement[];
+  lastYaw?: number;
 }
 
 export function buildEncounterGrassPlacements(map: MapDef): PropInstancePlacement[] {
@@ -58,10 +59,31 @@ function getPropDimensions(kind: PropKind): [number, number] {
     case 'mushroom_tree_arcane':
       return [1.85, 1.98];
     case 'cave_entrance':
-      return [2.4, 2.4];
+      return [2.66, 2.0];
     case 'well':
+      return [1.16, 1.75];
     case 'pillar':
-      return [1.3, 1.7];
+      return [0.84, 1.9];
+    case 'sign':
+      return [0.68, 1.1];
+    case 'fence':
+      return [1.04, 0.78];
+    case 'bench':
+      return [1.08, 1.04];
+    case 'boulder':
+      return [1.05, 0.96];
+    case 'crystal':
+      return [0.65, 1.11];
+    case 'flower_patch':
+      return [1.05, 0.91];
+    case 'mushroom':
+      return [0.68, 0.8];
+    case 'stump':
+      return [0.98, 0.84];
+    case 'capsule_pedestal':
+      return [0.78, 1.04];
+    case 'heal_machine':
+      return [0.92, 1.37];
     case 'lamp_post':
       return [0.34, 1.85];
     case 'lamp_wood':
@@ -141,6 +163,10 @@ export function updatePropBatchAnimation(
 ): void {
   for (const g of groups) {
     const isGrass = g.kind === 'tall_grass_clump' || g.kind === 'tall_grass_flower';
+    if (!isGrass && g.lastYaw === yaw) {
+      continue;
+    }
+
     const items = g.items;
     const inst = g.mesh;
     for (let i = 0; i < items.length; i++) {
@@ -150,9 +176,10 @@ export function updatePropBatchAnimation(
 
       if (isGrass) {
         const dist = Math.hypot(item.x - playerX, item.z - playerZ);
-        const sway = dist < 1.3
-          ? Math.sin(time * 16 + i * 1.7) * 0.28 * Math.max(0, 1.3 - dist) / 1.3
-          : Math.sin(time * 2.8 + i * 0.9) * 0.05;
+        const sway =
+          dist < 1.3
+            ? (Math.sin(time * 16 + i * 1.7) * 0.28 * Math.max(0, 1.3 - dist)) / 1.3
+            : Math.sin(time * 2.8 + i * 0.9) * 0.05;
         _dummy.rotation.z = sway;
       }
 
@@ -161,12 +188,6 @@ export function updatePropBatchAnimation(
       inst.setMatrixAt(i, _dummy.matrix);
     }
     inst.instanceMatrix.needsUpdate = true;
+    g.lastYaw = yaw;
   }
-}
-
-export function updatePropBatchYaw(
-  groups: readonly PropBatchGroup[],
-  yaw: number
-): void {
-  updatePropBatchAnimation(groups, yaw, 0, -999, -999);
 }

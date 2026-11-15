@@ -16,33 +16,29 @@ import { getCreatureDisplayName } from '../domain/Creature.ts';
 import type { CardRarity, SaveData, StatName } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import { CARD_RARITY_STYLES } from './cardRarityStyles.ts';
 import { playCardSocketFx } from './cardSocketFx.ts';
+import { renderTypeBadges } from './renderTypeBadge.ts';
 
 type CardFilter = 'all' | 'owned' | 'missing';
 type RarityFilter = 'all' | CardRarity;
 
 const STAT_ORDER: readonly StatName[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
 
-export class CardAlbumScreen {
-  readonly root: HTMLDivElement;
+export class CardAlbumScreen extends ModalOverlay {
   private filter: CardFilter = 'all';
   private rarityFilter: RarityFilter = 'all';
   private selectedId: number | null = null;
   private notice = '';
   private justSocketedPartyIdx: number | null = null;
-  private unbindImages: (() => void) | null = null;
   private dragCleanup: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(save: SaveData, onClose: () => void, onChanged?: () => void): void {
@@ -238,10 +234,8 @@ export class CardAlbumScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
   }
 
@@ -282,12 +276,7 @@ export class CardAlbumScreen {
     const availCopies = getAvailableCardCopies(save, speciesId);
     const holdersText = formatCreaturesUsingCard(save, speciesId);
     const primaryType = TYPE_VISUALS[card.types[0]];
-    const typeBadges = card.types
-      .map((t) => {
-        const v = TYPE_VISUALS[t];
-        return `<span class="px-2 py-0.5 rounded-none text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-      })
-      .join(' ');
+    const typeBadges = renderTypeBadges(card.types, 'md');
 
     const bonusesGrid = STAT_ORDER.filter((stat) => (card.bonuses[stat] ?? 0) > 0)
       .map(
@@ -606,20 +595,8 @@ export class CardAlbumScreen {
     }
   }
 
-  close(): void {
+  protected override onBeforeClose(): void {
     this.dragCleanup?.();
     this.dragCleanup = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.dragCleanup?.();
-    this.dragCleanup = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

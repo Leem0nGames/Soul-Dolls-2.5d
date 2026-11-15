@@ -8,7 +8,7 @@ import {
   SHARDS_PER_CONTAINER,
 } from '../data/containers.ts';
 import { getItem } from '../data/items.ts';
-import { getMap, MAPS } from '../data/maps/index.ts';
+import { getMap } from '../data/maps/index.ts';
 import { getSpecies } from '../data/species.ts';
 import { getTrainer } from '../data/trainers.ts';
 import { getClaimableMilestones, claimBestiaryMilestone } from '../domain/Bestiary.ts';
@@ -27,14 +27,25 @@ import {
 } from '../domain/Inventory.ts';
 import { addToParty, healPartyFull } from '../domain/Party.ts';
 import {
+  createNpcBehaviorState,
+  engageNpcLook,
+  hasTrainerLineOfSight,
+  stepNpcBehavior,
+  type NpcBehaviorState,
+} from '../domain/NpcBehavior.ts';
+import {
   clampQuestIndex,
-  computeQuestArrowAngleDeg,
   evaluateQuestProgress,
   getActiveQuest,
-  MAIN_QUESTS,
-  resolveQuestNavTarget,
-  type QuestNavTarget,
 } from '../domain/Quests.ts';
+import {
+  acceptSideQuest,
+  completeSideQuest,
+  ensureSaveSideQuestState,
+  getSideQuestForNpc,
+  getSideQuestStatus,
+  SIDE_QUESTS,
+} from '../domain/SideQuests.ts';
 import {
   createStaminaState,
   stepStamina,
@@ -82,6 +93,7 @@ import {
   type TerrainChunk,
 } from '../engine/TerrainMesher.ts';
 import { ES } from '../i18n/es.ts';
+import { OverworldHud } from '../ui/OverworldHud.ts';
 
 interface RuntimeNpc {
   def: NpcDef;
@@ -89,6 +101,63 @@ interface RuntimeNpc {
   mat: THREE.MeshBasicMaterial;
   visible: boolean;
   isPedestal: boolean;
+  behavior: NpcBehaviorState;
+  lastRelDir?: Direction;
+  lastWalkFrame?: CharacterFrame;
+  markerMesh?: THREE.Mesh;
+  markerMat?: THREE.MeshBasicMaterial;
+}
+
+function createQuestMarkerTexture(symbol: '!' | '?'): THREE.CanvasTexture {
+  const size = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, size, size);
+
+  const isExcl = symbol === '!';
+  const borderColor = '#050505';
+  const trimColor = isExcl ? '#E8B84A' : '#5FE3D2';
+  const fillColor = isExcl ? '#24123B' : '#123F3C';
+  const glyphColor = isExcl ? '#FFD700' : '#D9FBF7';
+  const glyphHi = isExcl ? '#FCEDB8' : '#7BF2E2';
+
+  // Badge frame (diamond-trimmed square badge)
+  ctx.fillStyle = borderColor;
+  ctx.fillRect(2, 1, 12, 14);
+  ctx.fillRect(1, 2, 14, 12);
+
+  ctx.fillStyle = trimColor;
+  ctx.fillRect(2, 2, 12, 12);
+
+  ctx.fillStyle = fillColor;
+  ctx.fillRect(3, 3, 10, 10);
+
+  if (isExcl) {
+    ctx.fillStyle = glyphColor;
+    ctx.fillRect(7, 4, 2, 5);
+    ctx.fillRect(7, 10, 2, 2);
+    ctx.fillStyle = glyphHi;
+    ctx.fillRect(7, 4, 1, 4);
+  } else {
+    ctx.fillStyle = glyphColor;
+    ctx.fillRect(6, 4, 4, 2);
+    ctx.fillRect(5, 5, 2, 2);
+    ctx.fillRect(9, 5, 2, 3);
+    ctx.fillRect(7, 7, 2, 2);
+    ctx.fillRect(7, 10, 2, 2);
+    ctx.fillStyle = glyphHi;
+    ctx.fillRect(6, 4, 3, 1);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 interface RuntimePickup {
@@ -130,6 +199,9 @@ export class OverworldScene implements Scene {
   private playerMesh: THREE.Mesh;
   private playerMat: THREE.MeshBasicMaterial;
   private charGeo: THREE.PlaneGeometry;
+  private markerGeo: THREE.PlaneGeometry;
+  private questExclamationTex: THREE.CanvasTexture;
+  private questQuestionTex: THREE.CanvasTexture;
 
   private gridX = 24;
   private gridY = 26;
@@ -144,37 +216,10 @@ export class OverworldScene implements Scene {
   private walkAnimTimer = 0;
   private waterTimer = 0;
   private waterFrame: 0 | 1 = 0;
-  private lastSpriteYawStep = -1;
   private sceneTime = 0;
 
-  private leftHudStack: HTMLDivElement;
-  private hudBadge: HTMLDivElement;
-  private hudLocationEl: HTMLDivElement;
-  private staminaLabelEl: HTMLSpanElement;
-  private staminaFillEl: HTMLDivElement;
   private stamina: StaminaState = createStaminaState();
-  private lastStaminaPct = -1;
-  private lastStaminaTone = '';
-
-  private questPanel: HTMLDivElement;
-  private questToggleBtn: HTMLButtonElement;
-  private questArrowBoxEl: HTMLDivElement;
-  private questArrowSvgEl: SVGSVGElement;
-  private questStepLabelEl: HTMLSpanElement;
-  private questTitleEl: HTMLDivElement;
-  private questDistHeaderEl: HTMLSpanElement;
-  private questChevronEl: HTMLSpanElement;
-  private questBodyEl: HTMLDivElement;
-  private questObjectiveEl: HTMLDivElement;
-  private questTargetEl: HTMLSpanElement;
-  private questDistBodyEl: HTMLSpanElement;
-  private questCollapsed = false;
-  private lastArrowAngle = -999;
-  private lastQuestDistance = -1;
-
-  private warpCurtain: HTMLDivElement;
-  private zoneBanner: HTMLDivElement;
-  private zoneBannerTimer = 0;
+  private hud: OverworldHud;
 
   private pendingWarp: {
     targetMap: string;
@@ -190,7 +235,13 @@ export class OverworldScene implements Scene {
 
   constructor(private readonly game: Game) {
     this.charGeo = createBottomPivotPlaneGeometry(0.95, 1.4);
+    this.markerGeo = new THREE.PlaneGeometry(0.46, 0.46);
+    this.questExclamationTex = createQuestMarkerTexture('!');
+    this.questQuestionTex = createQuestMarkerTexture('?');
     this.persistentDisposables.track(this.charGeo);
+    this.persistentDisposables.track(this.markerGeo);
+    this.persistentDisposables.track(this.questExclamationTex);
+    this.persistentDisposables.track(this.questQuestionTex);
 
     this.playerMat = new THREE.MeshBasicMaterial({
       map: game.assets.getCharacterTexture('player', 'up', 0),
@@ -202,165 +253,19 @@ export class OverworldScene implements Scene {
     this.playerMesh = new THREE.Mesh(this.charGeo, this.playerMat);
     this.scene.add(this.playerMesh);
 
-    this.leftHudStack = document.createElement('div');
-    this.leftHudStack.className =
-      'pointer-events-none fixed top-2.5 left-3 z-20 flex flex-col items-start gap-1.5 w-[212px] sm:w-[244px] max-w-[62vw]';
-    this.leftHudStack.style.top = 'calc(0.625rem + env(safe-area-inset-top, 0px))';
-    this.leftHudStack.style.left = 'calc(0.75rem + env(safe-area-inset-left, 0px))';
-
-    this.hudBadge = document.createElement('div');
-    this.hudBadge.className =
-      'pointer-events-none w-full rounded-none border-2 border-cold-stone bg-crypt-ink px-2.5 py-1.5 text-xs font-bold text-porcelain shadow-[2px_2px_0_#050505]';
-
-    this.hudLocationEl = document.createElement('div');
-    this.hudLocationEl.className = 'truncate';
-    this.hudBadge.appendChild(this.hudLocationEl);
-
-    const staminaWrap = document.createElement('div');
-    staminaWrap.className = 'mt-1.5 pt-1 border-t border-ash-purple';
-
-    const staminaHeader = document.createElement('div');
-    staminaHeader.className =
-      'flex items-center justify-between gap-2 text-[10px] font-bold tracking-wider uppercase mb-1';
-
-    const staminaTitle = document.createElement('span');
-    staminaTitle.className = 'text-bone-gray';
-    staminaTitle.textContent = 'Estamina';
-
-    this.staminaLabelEl = document.createElement('span');
-    this.staminaLabelEl.className = 'text-ki-cyan tabular-nums';
-    this.staminaLabelEl.textContent = '100%';
-
-    staminaHeader.appendChild(staminaTitle);
-    staminaHeader.appendChild(this.staminaLabelEl);
-
-    const staminaTrack = document.createElement('div');
-    staminaTrack.className =
-      'w-full h-2.5 rounded-none border border-ash-purple bg-abyss-ink p-[1px]';
-    staminaTrack.setAttribute('role', 'progressbar');
-    staminaTrack.setAttribute('aria-label', 'Estamina');
-    staminaTrack.setAttribute('aria-valuemin', '0');
-    staminaTrack.setAttribute('aria-valuemax', '100');
-
-    this.staminaFillEl = document.createElement('div');
-    this.staminaFillEl.className = 'h-full bg-ki-cyan';
-    this.staminaFillEl.style.width = '100%';
-
-    staminaTrack.appendChild(this.staminaFillEl);
-    staminaWrap.appendChild(staminaHeader);
-    staminaWrap.appendChild(staminaTrack);
-    this.hudBadge.appendChild(staminaWrap);
-    this.updateStaminaHud();
-
-    // Collapsible Left-Side Quest Panel + Dynamic Directional Arrow
-    this.questPanel = document.createElement('div');
-    this.questPanel.className =
-      'pointer-events-auto w-full rounded-none border-2 border-cold-stone bg-crypt-ink text-porcelain shadow-[2px_2px_0_#050505]';
-
-    this.questToggleBtn = document.createElement('button');
-    this.questToggleBtn.type = 'button';
-    this.questToggleBtn.setAttribute('aria-expanded', 'true');
-    this.questToggleBtn.setAttribute('aria-label', 'Alternar panel de misión');
-    this.questToggleBtn.className =
-      'w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left rounded-none bg-crypt-ink hover:bg-smoked-wood active:bg-ash-purple cursor-pointer select-none';
-
-    const questHeaderLeft = document.createElement('div');
-    questHeaderLeft.className = 'flex items-center gap-2 min-w-0 flex-1';
-
-    this.questArrowBoxEl = document.createElement('div');
-    this.questArrowBoxEl.className =
-      'w-6 h-6 shrink-0 rounded-none border border-ash-purple bg-abyss-ink flex items-center justify-center';
-
-    const svgNs = 'http://www.w3.org/2000/svg';
-    this.questArrowSvgEl = document.createElementNS(svgNs, 'svg');
-    this.questArrowSvgEl.setAttribute('viewBox', '0 0 16 16');
-    this.questArrowSvgEl.setAttribute('width', '16');
-    this.questArrowSvgEl.setAttribute('height', '16');
-    this.questArrowSvgEl.setAttribute('shape-rendering', 'crispEdges');
-    this.questArrowSvgEl.style.display = 'block';
-    this.questArrowSvgEl.innerHTML =
-      '<polygon points="8,1 14,9 10,9 10,15 6,15 6,9 2,9" fill="#E8B84A" stroke="#050505" stroke-width="1" />';
-    this.questArrowBoxEl.appendChild(this.questArrowSvgEl);
-
-    const questTitleWrap = document.createElement('div');
-    questTitleWrap.className = 'min-w-0 flex-1';
-
-    this.questStepLabelEl = document.createElement('div');
-    this.questStepLabelEl.className =
-      'text-[9px] font-bold tracking-widest uppercase text-resonant-gold leading-none';
-
-    this.questTitleEl = document.createElement('div');
-    this.questTitleEl.className =
-      'text-[11px] font-bold text-porcelain truncate leading-tight mt-0.5';
-
-    questTitleWrap.appendChild(this.questStepLabelEl);
-    questTitleWrap.appendChild(this.questTitleEl);
-    questHeaderLeft.appendChild(this.questArrowBoxEl);
-    questHeaderLeft.appendChild(questTitleWrap);
-
-    const questHeaderRight = document.createElement('div');
-    questHeaderRight.className = 'flex items-center gap-1.5 shrink-0';
-
-    this.questDistHeaderEl = document.createElement('span');
-    this.questDistHeaderEl.className =
-      'text-[10px] font-bold text-ki-cyan tabular-nums';
-
-    this.questChevronEl = document.createElement('span');
-    this.questChevronEl.className = 'text-[10px] font-bold text-bone-gray';
-    this.questChevronEl.textContent = '▼';
-
-    questHeaderRight.appendChild(this.questDistHeaderEl);
-    questHeaderRight.appendChild(this.questChevronEl);
-
-    this.questToggleBtn.appendChild(questHeaderLeft);
-    this.questToggleBtn.appendChild(questHeaderRight);
-    this.questToggleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleQuestCollapsed();
+    this.hud = new OverworldHud({
+      onToggleQuest: () => {
+        this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      },
+      onOpenJournal: () => {
+        this.openQuestJournal();
+      },
     });
-
-    this.questBodyEl = document.createElement('div');
-    this.questBodyEl.className = 'px-2.5 pb-2 pt-1.5 border-t border-ash-purple';
-
-    this.questObjectiveEl = document.createElement('div');
-    this.questObjectiveEl.className = 'text-[11px] leading-snug text-porcelain';
-
-    const questMetaRow = document.createElement('div');
-    questMetaRow.className =
-      'mt-1.5 flex items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-wider';
-
-    this.questTargetEl = document.createElement('span');
-    this.questTargetEl.className = 'text-ice-cyan truncate';
-
-    this.questDistBodyEl = document.createElement('span');
-    this.questDistBodyEl.className = 'text-bone-gray tabular-nums shrink-0';
-
-    questMetaRow.appendChild(this.questTargetEl);
-    questMetaRow.appendChild(this.questDistBodyEl);
-    this.questBodyEl.appendChild(this.questObjectiveEl);
-    this.questBodyEl.appendChild(questMetaRow);
-
-    this.questPanel.appendChild(this.questToggleBtn);
-    this.questPanel.appendChild(this.questBodyEl);
-
-    this.leftHudStack.appendChild(this.hudBadge);
-    this.leftHudStack.appendChild(this.questPanel);
-
-    this.warpCurtain = document.createElement('div');
-    this.warpCurtain.className =
-      'pointer-events-none fixed inset-0 z-30 bg-[#0b080e] opacity-0';
-
-    this.zoneBanner = document.createElement('div');
-    this.zoneBanner.className =
-      'pointer-events-none fixed left-1/2 -translate-x-1/2 z-20 rounded-none border-2 border-resonant-gold bg-crypt-ink px-4 py-1.5 text-center shadow-[3px_3px_0_#050505] opacity-0 transition-opacity duration-200';
-    this.zoneBanner.style.top = 'calc(3.1rem + env(safe-area-inset-top, 0px))';
+    this.hud.updateStamina(this.stamina);
   }
 
   onEnter(): void {
-    this.game.uiLayer.appendChild(this.leftHudStack);
-    this.game.uiLayer.appendChild(this.zoneBanner);
-    this.game.uiLayer.appendChild(this.warpCurtain);
-    this.game.uiLayers.register('overworldHud', this.leftHudStack, this.zoneBanner);
+    this.hud.mount(this.game.uiLayer, this.game.uiLayers);
     this.game.uiLayers.applySceneVisibility({
       overworldHud: true,
       touchControls: true,
@@ -373,6 +278,7 @@ export class OverworldScene implements Scene {
 
     const save = this.game.saveData;
     ensureSaveVesselState(save);
+    ensureSaveSideQuestState(save);
     this.loadMap(save.mapId, save.playerX, save.playerY, save.playerDir, false);
 
     if (!save.flags.isekai_intro_seen) {
@@ -405,95 +311,19 @@ export class OverworldScene implements Scene {
     this.updateBadge();
     this.updateStaminaHud();
     this.refreshQuestHud(true);
-  }
-
-  private toggleQuestCollapsed(): void {
-    this.questCollapsed = !this.questCollapsed;
-    this.questBodyEl.classList.toggle('hidden', this.questCollapsed);
-    this.questChevronEl.textContent = this.questCollapsed ? '▶' : '▼';
-    this.questToggleBtn.setAttribute('aria-expanded', String(!this.questCollapsed));
-    this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+    this.refreshSideQuestMarkers();
   }
 
   private refreshQuestHud(force = false): void {
-    const idx = clampQuestIndex(this.game.saveData.questIndex);
-    const active = getActiveQuest(idx);
-    if (!active) {
-      this.questStepLabelEl.textContent = `MISIONES ${MAIN_QUESTS.length}/${MAIN_QUESTS.length}`;
-      this.questStepLabelEl.className =
-        'text-[9px] font-bold tracking-widest uppercase text-ki-cyan leading-none';
-      this.questTitleEl.textContent = 'Exploración completa';
-      this.questObjectiveEl.textContent =
-        'Has recorrido todos los enclaves de la región.';
-      this.questTargetEl.textContent = 'Arena Cumbre';
-      this.questDistHeaderEl.textContent = '✓';
-      this.questDistBodyEl.textContent = 'LISTO';
-      this.questArrowSvgEl.style.transform = 'rotate(0deg)';
-      this.questArrowSvgEl.innerHTML =
-        '<polygon points="4,8 7,11 13,4 14,6 7,13 3,9" fill="#5FE3D2" stroke="#050505" stroke-width="1" />';
-      this.lastArrowAngle = 0;
-      this.lastQuestDistance = 0;
-      return;
-    }
-
-    this.questStepLabelEl.textContent = `MISIÓN ${idx + 1}/${MAIN_QUESTS.length}`;
-    this.questStepLabelEl.className =
-      'text-[9px] font-bold tracking-widest uppercase text-resonant-gold leading-none';
-    this.questTitleEl.textContent = active.title;
-    this.questObjectiveEl.textContent = active.objective;
-
-    const nav = this.getCurrentQuestNav(active);
-    const viaLabel = ES.maps[nav.viaMapId] ?? nav.viaMapId;
-    this.questTargetEl.textContent = nav.isCrossMap
-      ? `Hacia ${viaLabel} (${Math.round(nav.x)}, ${Math.round(nav.y)})`
-      : `${viaLabel} (${active.targetX}, ${active.targetY})`;
-
-    if (force) {
-      this.questArrowSvgEl.innerHTML =
-        '<polygon points="8,1 14,9 10,9 10,15 6,15 6,9 2,9" fill="#E8B84A" stroke="#050505" stroke-width="1" />';
-    }
-    this.updateQuestArrow(force, nav);
-  }
-
-  private getCurrentQuestNav(
-    active: NonNullable<ReturnType<typeof getActiveQuest>>
-  ): QuestNavTarget {
-    return resolveQuestNavTarget(
-      active,
+    if (!this.currentMap) return;
+    this.hud.refreshQuestTracker(
+      this.game.saveData.questIndex,
       this.currentMap,
       this.playerMesh.position.x,
       this.playerMesh.position.z,
-      MAPS
+      this.game.cameraRig.getCurrentYaw(),
+      force
     );
-  }
-
-  private updateQuestArrow(force = false, precomputedNav?: QuestNavTarget): void {
-    if (!this.currentMap) return;
-    const idx = clampQuestIndex(this.game.saveData.questIndex);
-    const active = getActiveQuest(idx);
-    if (!active) return;
-
-    const nav = precomputedNav ?? this.getCurrentQuestNav(active);
-    const yaw = this.game.cameraRig.getCurrentYaw();
-    const angle = computeQuestArrowAngleDeg(
-      this.playerMesh.position.x,
-      this.playerMesh.position.z,
-      nav.x,
-      nav.y,
-      yaw
-    );
-    const distRounded = Math.max(0, Math.round(nav.distance));
-
-    if (force || Math.abs(angle - this.lastArrowAngle) >= 0.5) {
-      this.lastArrowAngle = angle;
-      this.questArrowSvgEl.style.transform = `rotate(${angle.toFixed(1)}deg)`;
-    }
-    if (force || distRounded !== this.lastQuestDistance) {
-      this.lastQuestDistance = distRounded;
-      this.questDistHeaderEl.textContent = `${distRounded}p`;
-      this.questDistBodyEl.textContent =
-        distRounded === 1 ? '1 paso' : `${distRounded} pasos`;
-    }
   }
 
   private checkQuestCoordinates(): void {
@@ -520,56 +350,15 @@ export class OverworldScene implements Scene {
   }
 
   private updateBadge(): void {
-    const mapLabel = ES.maps[this.currentMap.id] ?? this.currentMap.id;
-    const repel =
-      this.game.saveData.repelSteps > 0
-        ? ` · 🛡️${this.game.saveData.repelSteps}`
-        : '';
-    this.hudLocationEl.textContent = `${mapLabel} · ${this.game.saveData.money} ◈${repel}`;
+    this.hud.updateBadge(
+      this.currentMap.id,
+      this.game.saveData.money,
+      this.game.saveData.repelSteps
+    );
   }
 
   private updateStaminaHud(): void {
-    const pct = Math.max(
-      0,
-      Math.min(100, Math.round((this.stamina.current / this.stamina.max) * 100))
-    );
-    const tone = this.stamina.exhausted
-      ? 'exhausted'
-      : pct <= 25
-        ? 'low'
-        : pct <= 55
-          ? 'mid'
-          : 'high';
-
-    if (pct !== this.lastStaminaPct) {
-      this.lastStaminaPct = pct;
-      this.staminaFillEl.style.width = `${pct}%`;
-      this.staminaFillEl.parentElement?.setAttribute('aria-valuenow', String(pct));
-      if (!this.stamina.exhausted) {
-        this.staminaLabelEl.textContent = `${pct}%`;
-      }
-    }
-
-    if (tone !== this.lastStaminaTone) {
-      this.lastStaminaTone = tone;
-      if (tone === 'exhausted') {
-        this.staminaFillEl.className = 'h-full bg-rift-crimson';
-        this.staminaLabelEl.className = 'text-coral-red tabular-nums';
-        this.staminaLabelEl.textContent = 'AGOTADA';
-      } else if (tone === 'low') {
-        this.staminaFillEl.className = 'h-full bg-rift-crimson';
-        this.staminaLabelEl.className = 'text-coral-red tabular-nums';
-        this.staminaLabelEl.textContent = `${pct}%`;
-      } else if (tone === 'mid') {
-        this.staminaFillEl.className = 'h-full bg-resonant-gold';
-        this.staminaLabelEl.className = 'text-resonant-gold tabular-nums';
-        this.staminaLabelEl.textContent = `${pct}%`;
-      } else {
-        this.staminaFillEl.className = 'h-full bg-ki-cyan';
-        this.staminaLabelEl.className = 'text-ki-cyan tabular-nums';
-        this.staminaLabelEl.textContent = `${pct}%`;
-      }
-    }
+    this.hud.updateStamina(this.stamina);
   }
 
   private collectPropPlacements(map: MapDef): PropInstancePlacement[] {
@@ -600,6 +389,22 @@ export class OverworldScene implements Scene {
       for (let dz = -1; dz <= 1; dz++) {
         for (let dx = -1; dx <= 1; dx++) {
           occupied.add(`${npc.x + dx},${npc.y + dz}`);
+        }
+      }
+      if (npc.patrol?.waypoints) {
+        const wps = npc.patrol.waypoints;
+        for (let i = 0; i < wps.length; i++) {
+          const a = wps[i];
+          const b = wps[(i + 1) % wps.length];
+          const minX = Math.min(a.x, b.x);
+          const maxX = Math.max(a.x, b.x);
+          const minY = Math.min(a.y, b.y);
+          const maxY = Math.max(a.y, b.y);
+          for (let py = minY; py <= maxY; py++) {
+            for (let px = minX; px <= maxX; px++) {
+              occupied.add(`${px},${py}`);
+            }
+          }
         }
       }
     }
@@ -841,7 +646,6 @@ export class OverworldScene implements Scene {
     this.npcs = [];
     this.pickups = [];
     this.blockedTiles.clear();
-    this.lastSpriteYawStep = -1;
 
     const toRemove: THREE.Object3D[] = [];
     for (const child of this.scene.children) {
@@ -992,11 +796,16 @@ export class OverworldScene implements Scene {
     }
 
     // 5. NPC billboards placed at interpolated terrain height
-    const pedestalGeo = createBottomPivotPlaneGeometry(0.95, 0.95);
-    this.mapDisposables.track(pedestalGeo);
+    const capsulePedestalGeo = createBottomPivotPlaneGeometry(0.78, 1.04);
+    const healMachineGeo = createBottomPivotPlaneGeometry(0.92, 1.37);
+    const crystalPickupGeo = createBottomPivotPlaneGeometry(0.62, 1.06);
+    this.mapDisposables.track(capsulePedestalGeo);
+    this.mapDisposables.track(healMachineGeo);
+    this.mapDisposables.track(crystalPickupGeo);
 
     const yawStep = this.game.cameraRig.getYawStep();
-    for (const npcDef of map.npcs) {
+    for (let idx = 0; idx < map.npcs.length; idx++) {
+      const npcDef = map.npcs[idx];
       const isStarter = npcDef.starterIndex !== undefined;
       const isHealMachine = npcDef.id === 'arena_heal';
       const isPedestal = isStarter || isHealMachine;
@@ -1020,12 +829,50 @@ export class OverworldScene implements Scene {
       });
       this.mapDisposables.track(mat);
 
-      const mesh = new THREE.Mesh(isPedestal ? pedestalGeo : this.charGeo, mat);
+      const npcGeo = isStarter
+        ? capsulePedestalGeo
+        : isHealMachine
+          ? healMachineGeo
+          : this.charGeo;
+      const mesh = new THREE.Mesh(npcGeo, mat);
       const ny = getTileWorldY(map, npcDef.x, npcDef.y);
       mesh.position.set(npcDef.x, ny, npcDef.y);
       this.scene.add(mesh);
 
-      this.npcs.push({ def: npcDef, mesh, mat, visible: true, isPedestal });
+      let markerMesh: THREE.Mesh | undefined;
+      let markerMat: THREE.MeshBasicMaterial | undefined;
+      if (!isPedestal) {
+        markerMat = new THREE.MeshBasicMaterial({
+          map: this.questExclamationTex,
+          alphaTest: 0.5,
+          side: THREE.DoubleSide,
+        });
+        this.mapDisposables.track(markerMat);
+        markerMesh = new THREE.Mesh(this.markerGeo, markerMat);
+        markerMesh.position.set(npcDef.x, ny + 1.65, npcDef.y);
+        markerMesh.visible = false;
+        this.scene.add(markerMesh);
+      }
+
+      const behavior = createNpcBehaviorState(
+        npcDef.x,
+        npcDef.y,
+        npcDef.dir,
+        0.5 + (idx % 4) * 0.35
+      );
+
+      this.npcs.push({
+        def: npcDef,
+        mesh,
+        mat,
+        visible: true,
+        isPedestal,
+        behavior,
+        lastRelDir: relDir,
+        lastWalkFrame: 0,
+        markerMesh,
+        markerMat,
+      });
     }
 
     // 6. Ground pickups not yet collected
@@ -1033,8 +880,9 @@ export class OverworldScene implements Scene {
       if (this.game.saveData.collectedPickups.includes(pk.id)) continue;
       let mesh: THREE.Mesh | null = null;
       if (!pk.hidden) {
+        const isCrystal = pk.itemId === 'fragmento_alma';
         const tex = this.game.assets.getPropTexture(
-          pk.itemId === 'fragmento_alma' ? 'crystal' : 'capsule_pedestal'
+          isCrystal ? 'crystal' : 'capsule_pedestal'
         );
         const pkMat = new THREE.MeshBasicMaterial({
           map: tex,
@@ -1042,7 +890,7 @@ export class OverworldScene implements Scene {
           side: THREE.DoubleSide,
         });
         this.mapDisposables.track(pkMat);
-        mesh = new THREE.Mesh(pedestalGeo, pkMat);
+        mesh = new THREE.Mesh(isCrystal ? crystalPickupGeo : capsulePedestalGeo, pkMat);
         const py = getTileWorldY(map, pk.x, pk.y);
         mesh.position.set(pk.x, py, pk.y);
         this.scene.add(mesh);
@@ -1084,6 +932,60 @@ export class OverworldScene implements Scene {
       npc.visible = show;
       npc.mesh.visible = show;
     }
+    this.refreshSideQuestMarkers();
+  }
+
+  private refreshSideQuestMarkers(): void {
+    const save = this.game.saveData;
+    ensureSaveSideQuestState(save);
+    for (const npc of this.npcs) {
+      if (!npc.markerMesh || !npc.markerMat) continue;
+      if (!npc.visible) {
+        npc.markerMesh.visible = false;
+        continue;
+      }
+      const state = getSideQuestForNpc(npc.def.id, save);
+      if (!state || !state.marker) {
+        npc.markerMesh.visible = false;
+        continue;
+      }
+      const targetTex =
+        state.marker === '?' ? this.questQuestionTex : this.questExclamationTex;
+      if (npc.markerMat.map !== targetTex) {
+        npc.markerMat.map = targetTex;
+        npc.markerMat.needsUpdate = true;
+      }
+      npc.markerMesh.visible = true;
+    }
+
+    let readyCount = 0;
+    let availableCount = 0;
+    let activeCount = 0;
+    let completedCount = 0;
+    for (const q of SIDE_QUESTS) {
+      const st = getSideQuestStatus(q, save);
+      if (st === 'completed') completedCount += 1;
+      else if (st === 'available') availableCount += 1;
+      else if (st === 'active') {
+        activeCount += 1;
+        if (q.evaluateProgress(save).ready) readyCount += 1;
+      }
+    }
+
+    this.hud.updateSideQuestBadge(
+      readyCount,
+      availableCount,
+      activeCount,
+      completedCount
+    );
+  }
+
+  private openQuestJournal(): void {
+    if (this.warpPhase !== 'idle' || this.isBlockingUiOpen()) return;
+    this.game.bus.emit('audio:sfx', { sfx: 'quest_journal' });
+    this.game.questJournal.open(this.game.saveData, () => {
+      this.refreshSideQuestMarkers();
+    });
   }
 
   private syncPlayerVisual(): void {
@@ -1105,6 +1007,61 @@ export class OverworldScene implements Scene {
     }
   }
 
+  private isNpcStepBlocked(
+    self: RuntimeNpc,
+    fromX: number,
+    fromY: number,
+    nx: number,
+    ny: number
+  ): boolean {
+    if (!isTileWalkable(this.currentMap, fromX, fromY, nx, ny, this.blockedTiles)) {
+      return true;
+    }
+    if (nx === this.gridX && ny === this.gridY) return true;
+    if (this.moving && nx === this.moveToX && ny === this.moveToY) return true;
+
+    for (const w of this.currentMap.warps) {
+      if (w.x === nx && w.y === ny) return true;
+    }
+    for (const s of this.currentMap.signs) {
+      if (s.x === nx && s.y === ny) return true;
+    }
+    for (let i = 0; i < this.pickups.length; i++) {
+      const p = this.pickups[i];
+      if (!p.hidden && p.mesh?.visible && p.x === nx && p.y === ny) return true;
+    }
+    for (let i = 0; i < this.npcs.length; i++) {
+      const other = this.npcs[i];
+      if (other === self || !other.visible) continue;
+      if (other.behavior.gridX === nx && other.behavior.gridY === ny) return true;
+      if (
+        other.behavior.moving &&
+        other.behavior.moveToX === nx &&
+        other.behavior.moveToY === ny
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private updateNpcs(dt: number): void {
+    const paused = this.isBlockingUiOpen() || this.warpPhase !== 'idle';
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      if (!npc.visible || npc.isPedestal) continue;
+      stepNpcBehavior(npc.behavior, {
+        dt,
+        patrol: npc.def.patrol,
+        lookAtPlayerAfterTalk: npc.def.lookAtPlayerAfterTalk,
+        playerX: this.gridX,
+        playerY: this.gridY,
+        paused,
+        canStepTo: (fx, fy, tx, ty) => !this.isNpcStepBlocked(npc, fx, fy, tx, ty),
+      });
+    }
+  }
+
   private syncBillboardYaw(dt: number): void {
     this.sceneTime += dt;
     const yaw = this.game.cameraRig.getCurrentYaw();
@@ -1114,21 +1071,44 @@ export class OverworldScene implements Scene {
     for (let i = 0; i < this.npcs.length; i++) {
       const npc = this.npcs[i];
       npc.mesh.rotation.y = yaw;
-      if (yawStep !== this.lastSpriteYawStep && !npc.isPedestal) {
-        const relDir = relativeSpriteDir(npc.def.dir, yawStep);
-        const tex = this.game.assets.getCharacterTexture(
-          npc.def.role as CharacterRole,
-          relDir,
-          0,
-          npc.def.trainerId ?? npc.def.id
-        );
-        if (npc.mat.map !== tex) {
-          npc.mat.map = tex;
-          npc.mat.needsUpdate = true;
+
+      if (!npc.isPedestal) {
+        const b = npc.behavior;
+        const nx = b.moving
+          ? THREE.MathUtils.lerp(b.moveFromX, b.moveToX, b.moveProgress)
+          : b.gridX;
+        const nz = b.moving
+          ? THREE.MathUtils.lerp(b.moveFromY, b.moveToY, b.moveProgress)
+          : b.gridY;
+        const ny = sampleInterpolatedHeight(this.currentMap, nx, nz);
+        npc.mesh.position.set(nx, ny, nz);
+
+        if (npc.markerMesh && npc.markerMesh.visible) {
+          npc.markerMesh.rotation.y = yaw;
+          npc.markerMesh.position.set(
+            nx,
+            ny + 1.65 + Math.sin(this.sceneTime * 4.5 + i) * 0.05,
+            nz
+          );
+        }
+
+        const relDir = relativeSpriteDir(b.dir, yawStep);
+        if (relDir !== npc.lastRelDir || b.walkFrame !== npc.lastWalkFrame) {
+          npc.lastRelDir = relDir;
+          npc.lastWalkFrame = b.walkFrame;
+          const tex = this.game.assets.getCharacterTexture(
+            npc.def.role as CharacterRole,
+            relDir,
+            b.walkFrame,
+            npc.def.trainerId ?? npc.def.id
+          );
+          if (npc.mat.map !== tex) {
+            npc.mat.map = tex;
+            npc.mat.needsUpdate = true;
+          }
         }
       }
     }
-    this.lastSpriteYawStep = yawStep;
 
     for (let i = 0; i < this.pickups.length; i++) {
       const m = this.pickups[i].mesh;
@@ -1143,7 +1123,16 @@ export class OverworldScene implements Scene {
       updateCloudBillboards(this.clouds, yaw, dt);
     }
 
-    this.updateQuestArrow(false);
+    if (this.currentMap) {
+      this.hud.updateQuestArrow(
+        this.game.saveData.questIndex,
+        this.currentMap,
+        playerX,
+        playerZ,
+        yaw,
+        false
+      );
+    }
   }
 
   private isTileBlocked(nx: number, ny: number): boolean {
@@ -1152,7 +1141,11 @@ export class OverworldScene implements Scene {
     }
     for (let i = 0; i < this.npcs.length; i++) {
       const n = this.npcs[i];
-      if (n.visible && n.def.x === nx && n.def.y === ny) return true;
+      if (!n.visible) continue;
+      if (n.behavior.gridX === nx && n.behavior.gridY === ny) return true;
+      if (n.behavior.moving && n.behavior.moveToX === nx && n.behavior.moveToY === ny) {
+        return true;
+      }
     }
     for (let i = 0; i < this.pickups.length; i++) {
       const p = this.pickups[i];
@@ -1165,14 +1158,16 @@ export class OverworldScene implements Scene {
     return (
       this.game.dialog.isOpen() ||
       this.game.menu.isOpen() ||
-      this.game.partyScreen.root.classList.contains('flex') ||
-      this.game.bagScreen.root.classList.contains('flex') ||
-      this.game.bestiaryScreen.root.classList.contains('flex') ||
-      this.game.storageScreen.root.classList.contains('flex') ||
-      this.game.summary.root.classList.contains('flex') ||
-      this.game.endingModal.root.classList.contains('flex') ||
-      this.game.arGachaModal.root.classList.contains('flex') ||
-      this.game.vesselScreen.root.classList.contains('flex')
+      this.game.partyScreen.isOpen() ||
+      this.game.bagScreen.isOpen() ||
+      this.game.bestiaryScreen.isOpen() ||
+      this.game.cardAlbumScreen.isOpen() ||
+      this.game.storageScreen.isOpen() ||
+      this.game.summary.isOpen() ||
+      this.game.endingModal.isOpen() ||
+      this.game.arGachaModal.isOpen() ||
+      this.game.vesselScreen.isOpen() ||
+      this.game.questJournal.isOpen()
     );
   }
 
@@ -1189,33 +1184,28 @@ export class OverworldScene implements Scene {
 
     this.game.dialog.update(dt, this.game.input);
 
-    if (this.zoneBannerTimer > 0) {
-      this.zoneBannerTimer -= dt;
-      if (this.zoneBannerTimer <= 0) {
-        this.zoneBanner.style.opacity = '0';
-      }
-    }
+    this.hud.stepZoneBanner(dt);
 
     if (this.warpPhase !== 'idle') {
       this.warpTimer += dt;
       const fadeDuration = 0.18;
       if (this.warpPhase === 'out') {
         const alpha = Math.min(1, this.warpTimer / fadeDuration);
-        this.warpCurtain.style.opacity = alpha.toFixed(3);
+        this.hud.setWarpAlpha(alpha);
         if (this.warpTimer >= fadeDuration && this.pendingWarp) {
           const w = this.pendingWarp;
           this.pendingWarp = null;
           this.loadMap(w.targetMap, w.targetX, w.targetY, w.dir, true);
-          this.showZoneBanner(w.targetMap);
+          this.hud.showZoneBanner(w.targetMap);
           this.warpPhase = 'in';
           this.warpTimer = 0;
         }
       } else {
         const alpha = Math.max(0, 1 - this.warpTimer / fadeDuration);
-        this.warpCurtain.style.opacity = alpha.toFixed(3);
+        this.hud.setWarpAlpha(alpha);
         if (this.warpTimer >= fadeDuration) {
           this.warpPhase = 'idle';
-          this.warpCurtain.style.opacity = '0';
+          this.hud.setWarpAlpha(0);
         }
       }
       this.syncBillboardYaw(dt);
@@ -1230,6 +1220,8 @@ export class OverworldScene implements Scene {
       this.updateStaminaHud();
       return;
     }
+
+    this.updateNpcs(dt);
 
     if (this.game.input.justPressed('start')) {
       this.openPauseMenu();
@@ -1394,17 +1386,39 @@ export class OverworldScene implements Scene {
     }
   }
 
-  private findSpottingTrainer(): NpcDef | null {
+  private isSightStepClear(observer: RuntimeNpc, fx: number, fy: number, nx: number, ny: number): boolean {
+    if (!isTileWalkable(this.currentMap, fx, fy, nx, ny, this.blockedTiles)) {
+      return false;
+    }
+    for (const s of this.currentMap.signs) {
+      if (s.x === nx && s.y === ny) return false;
+    }
+    for (let i = 0; i < this.pickups.length; i++) {
+      const p = this.pickups[i];
+      if (!p.hidden && p.mesh?.visible && p.x === nx && p.y === ny) return false;
+    }
+    for (let i = 0; i < this.npcs.length; i++) {
+      const other = this.npcs[i];
+      if (other === observer || !other.visible) continue;
+      if (other.behavior.gridX === nx && other.behavior.gridY === ny) return false;
+    }
+    return true;
+  }
+
+  private findSpottingTrainer(): RuntimeNpc | null {
     for (const npc of this.npcs) {
       if (!npc.visible || !npc.def.trainerId || !npc.def.sightRange) continue;
       if (this.game.saveData.defeatedTrainers.includes(npc.def.trainerId)) continue;
-      const range = npc.def.sightRange;
-      const dx = this.gridX - npc.def.x;
-      const dy = this.gridY - npc.def.y;
-      if (npc.def.dir === 'up' && dx === 0 && dy < 0 && -dy <= range) return npc.def;
-      if (npc.def.dir === 'down' && dx === 0 && dy > 0 && dy <= range) return npc.def;
-      if (npc.def.dir === 'left' && dy === 0 && dx < 0 && -dx <= range) return npc.def;
-      if (npc.def.dir === 'right' && dy === 0 && dx > 0 && dx <= range) return npc.def;
+      const spotted = hasTrainerLineOfSight(
+        npc.behavior.gridX,
+        npc.behavior.gridY,
+        npc.behavior.dir,
+        npc.def.sightRange,
+        this.gridX,
+        this.gridY,
+        (fx, fy, nx, ny) => this.isSightStepClear(npc, fx, fy, nx, ny)
+      );
+      if (spotted) return npc;
     }
     return null;
   }
@@ -1434,13 +1448,23 @@ export class OverworldScene implements Scene {
       onDone: (outcome) => {
         if (outcome === 'lose') {
           this.handleBlackout();
+        } else {
+          this.refreshSideQuestMarkers();
         }
       },
     });
   }
 
-  private triggerTrainerBattle(npc: NpcDef): void {
+  private triggerTrainerBattle(runtimeNpc: RuntimeNpc): void {
+    const npc = runtimeNpc.def;
     if (!npc.trainerId) return;
+    engageNpcLook(
+      runtimeNpc.behavior,
+      this.gridX,
+      this.gridY,
+      Boolean(npc.lookAtPlayerAfterTalk)
+    );
+    this.syncBillboardYaw(0);
     const trainer = getTrainer(npc.trainerId);
     const enemyParty = trainer.party.map((spec) =>
       createCreature(spec.speciesId, spec.level, this.game.rng)
@@ -1524,9 +1548,14 @@ export class OverworldScene implements Scene {
       return;
     }
 
-    const npc = this.npcs.find((n) => n.visible && n.def.x === tx && n.def.y === ty);
+    const npc = this.npcs.find(
+      (n) =>
+        n.visible &&
+        ((n.behavior.gridX === tx && n.behavior.gridY === ty) ||
+          (n.behavior.moving && n.behavior.moveToX === tx && n.behavior.moveToY === ty))
+    );
     if (!npc) return;
-    this.interactNpc(npc.def);
+    this.interactNpc(npc);
   }
 
   private collectPickup(pickup: RuntimePickup): void {
@@ -1561,8 +1590,19 @@ export class OverworldScene implements Scene {
     return `Botín: +2 piezas de ${def.name} (${res.currentShards}/${SHARDS_PER_CONTAINER})`;
   }
 
-  private interactNpc(npc: NpcDef): void {
+  private interactNpc(runtimeNpc: RuntimeNpc): void {
+    const npc = runtimeNpc.def;
     this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+
+    if (!runtimeNpc.isPedestal) {
+      engageNpcLook(
+        runtimeNpc.behavior,
+        this.gridX,
+        this.gridY,
+        Boolean(npc.lookAtPlayerAfterTalk)
+      );
+      this.syncBillboardYaw(0);
+    }
 
     if (npc.starterIndex !== undefined) {
       if (this.game.saveData.flags.starter_chosen) {
@@ -1605,7 +1645,7 @@ export class OverworldScene implements Scene {
       } else if (this.game.saveData.party.length === 0) {
         this.game.dialog.show(ES.dialogs.prof_welcome);
       } else {
-        this.triggerTrainerBattle(npc);
+        this.triggerTrainerBattle(runtimeNpc);
       }
       return;
     }
@@ -1678,6 +1718,51 @@ export class OverworldScene implements Scene {
       return;
     }
 
+    const sideState = getSideQuestForNpc(npc.id, this.game.saveData);
+    if (sideState) {
+      const { quest, status, progress } = sideState;
+      if (status === 'active' && progress.ready) {
+        const reward = completeSideQuest(this.game.saveData, quest.id);
+        if (reward) {
+          this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
+          this.updateBadge();
+          this.refreshSideQuestMarkers();
+          this.game.saveManager.save(this.game.saveData);
+          this.game.dialog.show(quest.completeDialogue, () => {
+            this.game.showToast(
+              `Recompensa: +${reward.rewardGold} Oro y ${reward.blueprint.name}`
+            );
+          });
+          return;
+        }
+      }
+      if (status === 'available') {
+        this.game.dialog.show(quest.offerDialogue, undefined, [
+          {
+            label: '¡Aceptar misión!',
+            onSelect: () => {
+              if (acceptSideQuest(this.game.saveData, quest.id)) {
+                this.game.bus.emit('audio:sfx', { sfx: 'quest_accept' });
+                this.refreshSideQuestMarkers();
+                this.game.saveManager.save(this.game.saveData);
+                this.game.showToast(`Misión aceptada: ${quest.title}`);
+              }
+            },
+          },
+          { label: 'Más tarde', onSelect: () => {} },
+        ]);
+        return;
+      }
+      if (status === 'active') {
+        this.game.dialog.show(`${quest.progressDialogue} (${progress.label})`);
+        return;
+      }
+      if (status === 'completed') {
+        this.game.dialog.show(quest.afterDialogue);
+        return;
+      }
+    }
+
     const dialogText = (ES.dialogs as Record<string, unknown>)[npc.dialogKey];
     if (typeof dialogText === 'string') {
       this.game.dialog.show(dialogText);
@@ -1707,7 +1792,10 @@ export class OverworldScene implements Scene {
             this.updateBadge();
             this.game.saveManager.save(this.game.saveData);
           },
-          () => {}
+          () => {},
+          () => {
+            this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+          }
         );
       },
       onBestiary: () => {
@@ -1722,6 +1810,9 @@ export class OverworldScene implements Scene {
             this.game.saveManager.save(this.game.saveData);
           }
         );
+      },
+      onQuests: () => {
+        this.openQuestJournal();
       },
       onSave: () => {
         const ok = this.game.saveManager.save(this.game.saveData);
@@ -1818,22 +1909,12 @@ export class OverworldScene implements Scene {
     );
   }
 
-  private showZoneBanner(mapId: string): void {
-    const label = ES.maps[mapId] ?? mapId;
-    this.zoneBanner.innerHTML = `<div class="text-[11px] font-bold tracking-widest uppercase text-resonant-gold">${label}</div>`;
-    this.zoneBanner.style.opacity = '1';
-    this.zoneBannerTimer = 2.2;
-  }
-
   render(): void {
     this.game.renderer.render(this.scene, this.game.cameraRig.camera);
   }
 
   onExit(): void {
-    this.game.uiLayers.unregister('overworldHud');
-    this.leftHudStack.remove();
-    this.zoneBanner.remove();
-    this.warpCurtain.remove();
+    this.hud.unmount(this.game.uiLayers);
     this.mapDisposables.disposeAll();
     this.persistentDisposables.disposeAll();
   }

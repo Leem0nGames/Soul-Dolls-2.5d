@@ -75,6 +75,7 @@ export const ES = {
     vessels: 'Contenedores',
     dex: 'Grimorio',
     cards: 'Álbum de Cartas',
+    quests: 'Diario de Misiones',
     save: 'Guardar',
     options: 'Opciones',
     close: 'Cerrar',
@@ -93,7 +94,7 @@ export const ES = {
     title: 'TALLER DE CONTENEDORES',
     reserveTab: 'Almas en Reserva',
     containersTab: 'Cuerpos Completos',
-    shardsTab: 'Piezas (X/5)',
+    shardsTab: 'Piezas / Planos',
     bindSoul: 'Vincular a Cuerpo',
     equipContainer: 'Cambiar Cuerpo a Equipo',
     noSouls: 'No hay Almas esperando cuerpo contenedor. Sella almas salvajes con Soulpots.',
@@ -359,6 +360,8 @@ export const ES = {
     starter_already: 'Ya despertaste a tu SoulDoll inicial. ¡Explora la Ruta 1 al norte!',
     villager_origen:
       'Las almas salvajes vagan por la hierba alta. Recuerda: tras sellarlas en un Soulpot necesitan un Cuerpo Contenedor para combatir.',
+    artesano_gael:
+      'Soy Gael, el forjador de armazones. Trae experiencia en combate y te enseñaré mis planos secretos de crafteo.',
     healer_clara:
       '¡Bienvenido al Centro de Curación! Déjame reparar los armazones de tus SoulDolls... ¡Listo, al 100%!',
     healer_menu: '¡Bienvenido al Centro de Curación! ¿En qué puedo ayudarte hoy?',

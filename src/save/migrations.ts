@@ -12,7 +12,7 @@ import type {
   SaveData,
 } from '../domain/types.ts';
 
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 7;
 
 export function defaultOptions(): GameOptions {
   return {
@@ -50,6 +50,9 @@ export function createInitialSave(): SaveData {
     defeatedTrainers: [],
     flags: {},
     questIndex: 0,
+    activeSideQuests: [],
+    completedSideQuests: [],
+    blueprints: [],
     vessels: { cuerpo_aprendiz: 1 },
     bodyPartShards: {},
     soulReserve: [],
@@ -147,6 +150,15 @@ export function migrateSaveData(raw: unknown): SaveData | null {
         ? (obj.flags as Record<string, boolean>)
         : {},
     questIndex: clampQuestIndex(obj.questIndex),
+    activeSideQuests: Array.isArray(obj.activeSideQuests)
+      ? Array.from(new Set((obj.activeSideQuests as unknown[]).filter((x): x is string => typeof x === 'string')))
+      : [],
+    completedSideQuests: Array.isArray(obj.completedSideQuests)
+      ? Array.from(new Set((obj.completedSideQuests as unknown[]).filter((x): x is string => typeof x === 'string')))
+      : [],
+    blueprints: Array.isArray(obj.blueprints)
+      ? Array.from(new Set((obj.blueprints as unknown[]).filter((x): x is string => typeof x === 'string')))
+      : [],
     vessels,
     bodyPartShards,
     soulReserve,

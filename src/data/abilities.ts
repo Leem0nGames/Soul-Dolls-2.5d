@@ -146,11 +146,3 @@ export const ABILITIES: Record<string, AbilityDef> = {
     },
   },
 };
-
-export const ALL_ABILITY_IDS = Object.keys(ABILITIES);
-
-export function getAbility(id: string): AbilityDef {
-  const a = ABILITIES[id];
-  if (!a) throw new Error(`Unknown ability: ${id}`);
-  return a;
-}

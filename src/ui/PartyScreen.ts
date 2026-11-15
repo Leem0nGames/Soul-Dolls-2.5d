@@ -4,27 +4,21 @@ import { swapPartySlots } from '../domain/Party.ts';
 import type { BagSlot, CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import type { SummaryScreen } from './SummaryScreen.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 export type PartyMode =
   | { kind: 'manage'; bag?: BagSlot[]; save?: SaveData }
   | { kind: 'switch'; activeIndex: number; allowCancel: boolean; onPick: (index: number) => void }
   | { kind: 'item_target'; onPick: (index: number) => void; onCancel: () => void };
 
-export class PartyScreen {
-  readonly root: HTMLDivElement;
-  private unbindImages: (() => void) | null = null;
-
+export class PartyScreen extends ModalOverlay {
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider,
     private readonly summary: SummaryScreen
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(party: CreatureInstance[], mode: PartyMode, onClose: () => void): void {
@@ -150,23 +144,8 @@ export class PartyScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

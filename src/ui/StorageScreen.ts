@@ -11,33 +11,31 @@ import {
 import type { CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import type { SummaryScreen } from './SummaryScreen.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 type SelectedSource =
   | { kind: 'party'; partyIndex: number }
   | { kind: 'box'; boxIndex: number; slotIndex: number }
   | null;
 
-export class StorageScreen {
-  readonly root: HTMLDivElement;
+export class StorageScreen extends ModalOverlay {
   private activeBox = 0;
   private selected: SelectedSource = null;
   private movingFrom: { boxIndex: number; slotIndex: number } | null = null;
   private renaming = false;
   private confirmRelease: { boxIndex: number; slotIndex: number } | null = null;
   private notice = '';
-  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider,
     private readonly summary: SummaryScreen
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-2.5 sm:p-4 safe-pad';
-    parent.appendChild(this.root);
+    super(
+      parent,
+      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-2.5 sm:p-4 safe-pad'
+    );
   }
 
   open(save: SaveData, onClose: () => void): void {
@@ -370,23 +368,8 @@ export class StorageScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

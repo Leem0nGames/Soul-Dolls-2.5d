@@ -456,6 +456,13 @@ export interface DecorationDensity {
   treeKinds: PropKind[];
 }
 
+export interface NpcPatrolDef {
+  waypoints?: Array<{ x: number; y: number }>;
+  radius?: number;
+  speed?: number;
+  pauseSec?: number;
+}
+
 export interface NpcDef {
   id: string;
   name: string;
@@ -471,6 +478,8 @@ export interface NpcDef {
   shopStock?: string[];
   flagRequired?: string;
   flagHidden?: string;
+  patrol?: NpcPatrolDef;
+  lookAtPlayerAfterTalk?: boolean;
   staticEncounter?: { speciesId: number; level: number; flagOnEnd: string };
 }
 
@@ -713,6 +722,9 @@ export interface SaveData {
   defeatedTrainers: string[];
   flags: Record<string, boolean>;
   questIndex?: number;
+  activeSideQuests?: string[];
+  completedSideQuests?: string[];
+  blueprints?: string[];
   vessels?: Record<string, number>;
   bodyPartShards?: Record<string, number>;
   soulReserve?: CapturedSoul[];

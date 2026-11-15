@@ -8,6 +8,9 @@ import { buildTerrainBorderApron, buildTerrainChunks } from '../src/engine/Terra
 import {
   ATLAS_GRID,
   ATLAS_SIZE,
+  EXTRA_SHEET_COLS,
+  EXTRA_SHEET_ROWS,
+  EXTRA_TILE_MAPPING,
   SHEET_CELL_SIZE,
   SHEET_TILE_MAPPING,
   TILE_ATLAS_INDEX,
@@ -36,6 +39,19 @@ describe('5x5 tile & normal atlas integration', () => {
 
     // All 25 cells of the 5x5 sheet must be mapped
     expect(coveredCells.size).toBe(25);
+
+    // Extra 5x2 sheet must map all 10 extra terrain/facade tiles
+    const extraCovered = new Set<string>();
+    for (const [key, cell] of Object.entries(EXTRA_TILE_MAPPING)) {
+      expect(cell.row).toBeGreaterThanOrEqual(0);
+      expect(cell.row).toBeLessThan(EXTRA_SHEET_ROWS);
+      expect(cell.col).toBeGreaterThanOrEqual(0);
+      expect(cell.col).toBeLessThan(EXTRA_SHEET_COLS);
+      expect(TILE_ATLAS_INDEX[key as TileAtlasKey]).toBeGreaterThanOrEqual(0);
+      expect(TILE_ATLAS_INDEX[key as TileAtlasKey]).toBeLessThan(ATLAS_GRID * ATLAS_GRID);
+      extraCovered.add(`${cell.row},${cell.col}`);
+    }
+    expect(extraCovered.size).toBe(10);
 
     // Verify UV rects stay crisp inside slot boundaries
     for (const key of Object.keys(TILE_ATLAS_INDEX) as TileAtlasKey[]) {

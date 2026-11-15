@@ -8,14 +8,13 @@ import { getItemCount, removeItem } from '../domain/Inventory.ts';
 import type { CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 
 interface BarcodeDetectorLike {
   detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
 }
 
-export class ArGachaModal {
-  readonly root: HTMLDivElement;
+export class ArGachaModal extends ModalOverlay {
   private stream: MediaStream | null = null;
   private scanTimer: number | null = null;
   private cameraActive = false;
@@ -23,16 +22,15 @@ export class ArGachaModal {
   private lastReward: ArGachaReward | null = null;
   private teachTargetIdx: number | null = null;
   private notice = '';
-  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(
+      parent,
+      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 safe-pad'
+    );
   }
 
   open(
@@ -346,11 +344,13 @@ export class ArGachaModal {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
+  }
+
+  protected override onBeforeClose(): void {
+    this.stopCamera();
   }
 
   private stopCamera(): void {
@@ -365,20 +365,5 @@ export class ArGachaModal {
       }
       this.stream = null;
     }
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.stopCamera();
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.stopCamera();
-    this.root.remove();
   }
 }

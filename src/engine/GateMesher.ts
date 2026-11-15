@@ -2,8 +2,14 @@ import * as THREE from 'three';
 import { getTileWorldY } from '../domain/TerrainRules.ts';
 import type { MapDef, WarpDef } from '../domain/types.ts';
 import type { RoofTextureKind } from '../gfx/AssetProvider.ts';
-import type { TileAtlasKey } from '../gfx/ProceduralTiles.ts';
-import { getTileUv } from './AtlasBuilder.ts';
+import {
+  buildGeometryFromQuadBuilder,
+  createQuadBuilder,
+  pushBox,
+  pushColorBox,
+  pushTiledQuad,
+  pushTriangle,
+} from './QuadGeometry.ts';
 
 type GateExitDir = 'north' | 'south' | 'west' | 'east';
 
@@ -15,148 +21,6 @@ interface GatePlacement {
   style: 'arch_gate' | 'cave_portal';
   roofKind: RoofTextureKind;
   accentColor: number;
-}
-
-interface QuadBuilder {
-  positions: number[];
-  uvs: number[];
-  colors: number[];
-  indices: number[];
-}
-
-function createQuadBuilder(): QuadBuilder {
-  return { positions: [], uvs: [], colors: [], indices: [] };
-}
-
-function buildGeometry(qb: QuadBuilder): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(qb.positions), 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(qb.uvs), 2));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(qb.colors), 3));
-  geo.setIndex(new THREE.BufferAttribute(new Uint16Array(qb.indices), 1));
-  geo.computeVertexNormals();
-  geo.computeBoundingSphere();
-  return geo;
-}
-
-function pushQuad(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  p3: [number, number, number],
-  texKey: TileAtlasKey,
-  rTint: number,
-  gTint: number,
-  bTint: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2, ...p3);
-  const r = getTileUv(texKey);
-  qb.uvs.push(r.u0, r.v0, r.u1, r.v0, r.u1, r.v1, r.u0, r.v1);
-  for (let i = 0; i < 4; i++) {
-    qb.colors.push(rTint, gTint, bTint);
-  }
-  qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function pushTiledQuad(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  p3: [number, number, number],
-  uRepeat: number,
-  vRepeat: number,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2, ...p3);
-  qb.uvs.push(0, 0, uRepeat, 0, uRepeat, vRepeat, 0, vRepeat);
-  for (let i = 0; i < 4; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function pushTriangle(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  texKey: TileAtlasKey,
-  rTint: number,
-  gTint: number,
-  bTint: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2);
-  const r = getTileUv(texKey);
-  qb.uvs.push(r.u0, r.v0, r.u1, r.v0, (r.u0 + r.u1) * 0.5, r.v1);
-  for (let i = 0; i < 3; i++) {
-    qb.colors.push(rTint, gTint, bTint);
-  }
-  qb.indices.push(base, base + 1, base + 2);
-}
-
-function pushBox(
-  qb: QuadBuilder,
-  x0: number,
-  x1: number,
-  y0: number,
-  y1: number,
-  z0: number,
-  z1: number,
-  texKey: TileAtlasKey,
-  shade = 1,
-  tint: [number, number, number] = [1, 1, 1]
-): void {
-  const [tr, tg, tb] = tint;
-  // Front (+Z)
-  pushQuad(qb, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], texKey, 0.96 * shade * tr, 0.96 * shade * tg, 0.96 * shade * tb);
-  // Back (-Z)
-  pushQuad(qb, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], texKey, 0.80 * shade * tr, 0.80 * shade * tg, 0.80 * shade * tb);
-  // Right (+X)
-  pushQuad(qb, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], texKey, 0.88 * shade * tr, 0.88 * shade * tg, 0.88 * shade * tb);
-  // Left (-X)
-  pushQuad(qb, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], texKey, 0.84 * shade * tr, 0.84 * shade * tg, 0.84 * shade * tb);
-  // Top (+Y)
-  pushQuad(qb, [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], texKey, 1.04 * shade * tr, 1.04 * shade * tg, 1.04 * shade * tb);
-  // Bottom (-Y)
-  pushQuad(qb, [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], texKey, 0.62 * shade * tr, 0.62 * shade * tg, 0.62 * shade * tb);
-}
-
-function pushColorBox(
-  qb: QuadBuilder,
-  x0: number,
-  x1: number,
-  y0: number,
-  y1: number,
-  z0: number,
-  z1: number,
-  r: number,
-  g: number,
-  b: number
-): void {
-  const push = (
-    p0: [number, number, number],
-    p1: [number, number, number],
-    p2: [number, number, number],
-    p3: [number, number, number],
-    s: number
-  ) => {
-    const base = qb.positions.length / 3;
-    qb.positions.push(...p0, ...p1, ...p2, ...p3);
-    qb.uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
-    for (let i = 0; i < 4; i++) qb.colors.push(r * s, g * s, b * s);
-    qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  };
-  push([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], 1.0);
-  push([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], 0.9);
-  push([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], 0.92);
-  push([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], 0.92);
-  push([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], 1.0);
-  push([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], 0.78);
 }
 
 function clusterWarps(map: MapDef): GatePlacement[] {
@@ -332,7 +196,7 @@ function buildArchGateGroup(
   pushTriangle(qb, [rx1, yEave, rz1], [rx1, yEave, rz0], [rx1, yPeak, 0], 'planks', 0.94, 0.94, 0.94);
   pushBox(qb, -2.44, 2.44, 3.80, 3.96, -0.10, 0.10, 'log', 1.05);
 
-  const archMesh = new THREE.Mesh(buildGeometry(qb), atlasMaterial);
+  const archMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
   archMesh.matrixAutoUpdate = false;
   archMesh.updateMatrix();
   group.add(archMesh);
@@ -345,7 +209,7 @@ function buildArchGateGroup(
     metalness: 0.04,
     vertexColors: true,
   });
-  const roofMesh = new THREE.Mesh(buildGeometry(rqb), roofMat);
+  const roofMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(rqb), roofMat);
   roofMesh.matrixAutoUpdate = false;
   roofMesh.updateMatrix();
   group.add(roofMesh);
@@ -354,7 +218,7 @@ function buildArchGateGroup(
     vertexColors: true,
     toneMapped: false,
   });
-  const glowMesh = new THREE.Mesh(buildGeometry(glowQb), glowMat);
+  const glowMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(glowQb), glowMat);
   glowMesh.matrixAutoUpdate = false;
   glowMesh.updateMatrix();
   group.add(glowMesh);
@@ -410,13 +274,13 @@ function buildCavePortalGroup(
   pushColorBox(darkQb, 1.04, 1.25, -0.45, 2.82, -2.95, -0.15, 0.04, 0.03, 0.06);
   pushColorBox(darkQb, -1.25, 1.25, 2.66, 2.90, -2.95, -0.15, 0.03, 0.02, 0.05);
 
-  const rockMesh = new THREE.Mesh(buildGeometry(qb), atlasMaterial);
+  const rockMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
   rockMesh.matrixAutoUpdate = false;
   rockMesh.updateMatrix();
   group.add(rockMesh);
 
   const darkMat = new THREE.MeshBasicMaterial({ vertexColors: true });
-  const darkMesh = new THREE.Mesh(buildGeometry(darkQb), darkMat);
+  const darkMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(darkQb), darkMat);
   darkMesh.matrixAutoUpdate = false;
   darkMesh.updateMatrix();
   group.add(darkMesh);
@@ -425,7 +289,7 @@ function buildCavePortalGroup(
     vertexColors: true,
     toneMapped: false,
   });
-  const glowMesh = new THREE.Mesh(buildGeometry(glowQb), glowMat);
+  const glowMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(glowQb), glowMat);
   glowMesh.matrixAutoUpdate = false;
   glowMesh.updateMatrix();
   group.add(glowMesh);
