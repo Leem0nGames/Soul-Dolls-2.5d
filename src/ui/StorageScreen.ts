@@ -11,33 +11,31 @@ import {
 import type { CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import type { SummaryScreen } from './SummaryScreen.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 type SelectedSource =
   | { kind: 'party'; partyIndex: number }
   | { kind: 'box'; boxIndex: number; slotIndex: number }
   | null;
 
-export class StorageScreen {
-  readonly root: HTMLDivElement;
+export class StorageScreen extends ModalOverlay {
   private activeBox = 0;
   private selected: SelectedSource = null;
   private movingFrom: { boxIndex: number; slotIndex: number } | null = null;
   private renaming = false;
   private confirmRelease: { boxIndex: number; slotIndex: number } | null = null;
   private notice = '';
-  private unbindImages: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider,
     private readonly summary: SummaryScreen
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-2.5 sm:p-4 safe-pad';
-    parent.appendChild(this.root);
+    super(
+      parent,
+      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-2.5 sm:p-4 safe-pad'
+    );
   }
 
   open(save: SaveData, onClose: () => void): void {
@@ -63,10 +61,8 @@ export class StorageScreen {
       const boxTabs = save.storageBoxes
         .map(
           (b, idx) =>
-            `<button data-box="${idx}" class="min-h-[40px] px-2.5 rounded-lg text-xs font-bold border shrink-0 ${
-              idx === this.activeBox
-                ? 'border-bright-brass bg-resonant-gold text-crypt-ink'
-                : 'border-cold-stone/70 bg-ash-purple text-porcelain'
+            `<button data-box="${idx}" class="min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap ${
+              idx === this.activeBox ? 'px-btn-primary' : 'px-btn-secondary'
             }">${idx + 1}. ${b.name}</button>`
         )
         .join('');
@@ -76,7 +72,7 @@ export class StorageScreen {
           const isSel =
             this.selected?.kind === 'party' && this.selected.partyIndex === idx;
           return `
-            <button data-party="${idx}" class="w-full rounded-lg border ${
+            <button data-party="${idx}" class="px-card w-full ${
               isSel ? 'border-resonant-gold bg-ash-purple' : 'border-ash-purple bg-crypt-ink'
             } p-1.5 flex items-center gap-2 text-left min-h-[48px]">
               <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="" />
@@ -101,17 +97,17 @@ export class StorageScreen {
             this.movingFrom.slotIndex === idx;
           if (!c) {
             return `
-              <button data-slot="${idx}" class="aspect-square min-h-[52px] rounded-lg border ${
+              <button data-slot="${idx}" class="aspect-square min-h-[52px] rounded-none border-2 ${
                 this.movingFrom
-                  ? 'border-ki-cyan/70 bg-deep-abyss/50 hover:bg-oceanic-teal/50'
-                  : 'border-ash-purple/80 bg-crypt-ink/60'
+                  ? 'border-ki-cyan bg-deep-abyss hover:bg-oceanic-teal'
+                  : 'border-ash-purple bg-abyss-ink'
               } flex items-center justify-center text-[10px] text-cold-stone">·</button>
             `;
           }
           return `
-            <button data-slot="${idx}" class="aspect-square min-h-[52px] rounded-lg border ${
+            <button data-slot="${idx}" class="aspect-square min-h-[52px] rounded-none border-2 shadow-[2px_2px_0_#050505] ${
               isMoveSrc
-                ? 'border-ki-cyan bg-oceanic-teal/60'
+                ? 'border-ki-cyan bg-oceanic-teal'
                 : isSel
                   ? 'border-resonant-gold bg-ash-purple'
                   : 'border-ash-purple bg-crypt-ink'
@@ -126,23 +122,23 @@ export class StorageScreen {
       let actionBar = '';
       if (this.movingFrom) {
         actionBar = `
-          <div class="flex items-center justify-between gap-2 rounded-lg border border-ki-cyan/70 bg-deep-abyss/80 px-3 py-2 text-xs">
+          <div class="flex items-center justify-between gap-2 rounded-none border-2 border-ki-cyan bg-deep-abyss px-3 py-2 text-xs shadow-[2px_2px_0_#050505]">
             <span class="font-bold text-ice-cyan">${ES.storage.placeHere}</span>
-            <button data-cancel-move class="min-h-[40px] px-3 rounded-lg bg-ash-purple border border-cold-stone font-bold">${ES.storage.cancelMove}</button>
+            <button data-cancel-move class="px-btn-secondary min-h-[44px] px-3 font-bold whitespace-nowrap">${ES.storage.cancelMove}</button>
           </div>
         `;
       } else if (selCreature && this.selected) {
         const actions =
           this.selected.kind === 'party'
-            ? `<button data-act="deposit" class="min-h-[44px] px-3 rounded-lg bg-oceanic-teal hover:bg-vibrant-aqua text-warm-white text-xs font-bold">${ES.storage.deposit}</button>
-               <button data-act="summary" class="min-h-[44px] px-3 rounded-lg bg-ash-purple border border-cold-stone text-xs font-bold">${ES.storage.summary}</button>`
-            : `<button data-act="withdraw" class="min-h-[44px] px-3 rounded-lg bg-emerald-base hover:bg-moss text-warm-white text-xs font-bold">${ES.storage.withdraw}</button>
-               <button data-act="move" class="min-h-[44px] px-3 rounded-lg bg-oceanic-teal hover:bg-vibrant-aqua text-warm-white text-xs font-bold">${ES.storage.move}</button>
-               <button data-act="summary" class="min-h-[44px] px-3 rounded-lg bg-ash-purple border border-cold-stone text-xs font-bold">${ES.storage.summary}</button>
-               <button data-act="release" class="min-h-[44px] px-3 rounded-lg bg-rift-crimson hover:bg-ruby-glow text-warm-white text-xs font-bold">${ES.storage.release}</button>`;
+            ? `<button data-act="deposit" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.deposit}</button>
+               <button data-act="summary" class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.summary}</button>`
+            : `<button data-act="withdraw" class="px-btn-success min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.withdraw}</button>
+               <button data-act="move" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.move}</button>
+               <button data-act="summary" class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.summary}</button>
+               <button data-act="release" class="px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.release}</button>`;
 
         actionBar = `
-          <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+          <div class="px-card flex flex-wrap items-center justify-between gap-2 p-2.5">
             <div class="flex items-center gap-2 min-w-0">
               <img src="${this.assets.getCreatureDataUrl(selCreature.speciesId, 'front')}" data-souldoll-id="${selCreature.speciesId}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0" alt="" />
               <div class="min-w-0">
@@ -157,13 +153,13 @@ export class StorageScreen {
 
       const renameModal = this.renaming
         ? `
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-crypt-ink/85 p-4">
-            <div class="w-full max-w-xs rounded-xl border-2 border-resonant-gold bg-smoked-wood p-4 space-y-3">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-4">
+            <div class="px-panel w-full max-w-xs p-4 space-y-3">
               <div class="text-sm font-bold text-resonant-gold">${ES.storage.renamePrompt}</div>
-              <input data-rename-input type="text" maxlength="18" value="${box.name.replace(/"/g, '&quot;')}" class="w-full min-h-[44px] rounded-lg border border-cold-stone bg-crypt-ink px-3 text-sm text-porcelain" />
+              <input data-rename-input type="text" maxlength="18" value="${box.name.replace(/"/g, '&quot;')}" class="w-full min-h-[44px] rounded-none border-2 border-cold-stone bg-crypt-ink px-3 text-sm text-porcelain" />
               <div class="flex justify-end gap-2">
-                <button data-rename-cancel class="min-h-[44px] px-3 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold">${ES.storage.confirmNo}</button>
-                <button data-rename-save class="min-h-[44px] px-4 rounded-lg bg-resonant-gold text-crypt-ink text-xs font-bold">${ES.storage.saveName}</button>
+                <button data-rename-cancel class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.confirmNo}</button>
+                <button data-rename-save class="px-btn-primary min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.storage.saveName}</button>
               </div>
             </div>
           </div>
@@ -178,12 +174,12 @@ export class StorageScreen {
               ];
             const name = target ? getCreatureDisplayName(target) : '';
             return `
-              <div class="fixed inset-0 z-50 flex items-center justify-center bg-crypt-ink/85 p-4">
-                <div class="w-full max-w-xs rounded-xl border-2 border-rift-crimson bg-smoked-wood p-4 space-y-3">
+              <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-4">
+                <div class="px-panel-crimson w-full max-w-xs p-4 space-y-3">
                   <div class="text-sm font-bold text-coral-red">${ES.storage.releaseConfirm(name)}</div>
                   <div class="flex justify-end gap-2">
-                    <button data-rel-no class="min-h-[44px] px-3 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold">${ES.storage.confirmNo}</button>
-                    <button data-rel-yes class="min-h-[44px] px-4 rounded-lg bg-rift-crimson text-warm-white text-xs font-bold">${ES.storage.confirmYes}</button>
+                    <button data-rel-no class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.confirmNo}</button>
+                    <button data-rel-yes class="px-btn-danger min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.storage.confirmYes}</button>
                   </div>
                 </div>
               </div>
@@ -192,17 +188,17 @@ export class StorageScreen {
         : '';
 
       this.root.innerHTML = `
-        <div class="w-full max-w-4xl max-h-[calc(100dvh-1rem)] flex flex-col rounded-xl border-2 border-cold-stone bg-smoked-wood p-3 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-2 gap-2">
+        <div class="px-panel w-full max-w-4xl max-h-[calc(100dvh-1rem)] flex flex-col p-3 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2 gap-2">
             <div class="font-bold text-resonant-gold text-sm sm:text-base">${ES.storage.title}</div>
             <div class="flex items-center gap-2">
-              <button data-open-rename class="min-h-[40px] px-3 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold">${ES.storage.rename}</button>
-              <button data-close class="min-h-[40px] px-3.5 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold">${ES.storage.back}</button>
+              <button data-open-rename class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.rename}</button>
+              <button data-close class="px-btn-secondary min-h-[44px] px-3.5 text-xs font-bold whitespace-nowrap">${ES.storage.back}</button>
             </div>
           </div>
 
           <div class="flex gap-1.5 overflow-x-auto pb-2 mb-2">${boxTabs}</div>
-          ${this.notice ? `<div class="mb-2 rounded bg-ash-purple px-3 py-1.5 text-xs text-resonant-gold">${this.notice}</div>` : ''}
+          ${this.notice ? `<div class="mb-2 rounded-none border-2 border-resonant-gold bg-dark-oak px-3 py-1.5 text-xs font-bold text-resonant-gold">${this.notice}</div>` : ''}
 
           <div class="touch-scroll overflow-y-auto grid grid-cols-1 md:grid-cols-[190px_1fr] gap-3 flex-1">
             <div class="space-y-1.5">
@@ -372,23 +368,8 @@ export class StorageScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

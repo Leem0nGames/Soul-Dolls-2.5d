@@ -16,10 +16,6 @@ export function getFirstHealthyIndex(party: readonly CreatureInstance[]): number
   return party.findIndex((c) => c.currentHp > 0);
 }
 
-export function hasHealthyCreature(party: readonly CreatureInstance[]): boolean {
-  return getFirstHealthyIndex(party) !== -1;
-}
-
 export function swapPartySlots(
   party: CreatureInstance[],
   a: number,

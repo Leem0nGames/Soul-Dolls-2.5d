@@ -5,6 +5,7 @@ export type LogicalButton =
   | 'right'
   | 'a'
   | 'b'
+  | 'sprint'
   | 'start'
   | 'camLeft'
   | 'camRight';
@@ -16,6 +17,7 @@ const ALL_BUTTONS: readonly LogicalButton[] = [
   'right',
   'a',
   'b',
+  'sprint',
   'start',
   'camLeft',
   'camRight',
@@ -64,6 +66,9 @@ export class Input {
       case 'KeyX':
       case 'Backspace':
         return 'b';
+      case 'ShiftLeft':
+      case 'ShiftRight':
+        return 'sprint';
       case 'KeyM':
       case 'Escape':
         return 'start';

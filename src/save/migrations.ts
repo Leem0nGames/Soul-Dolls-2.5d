@@ -1,6 +1,7 @@
 import { SPECIES } from '../data/species.ts';
 import { resolveDeterministicAbility } from '../domain/Abilities.ts';
 import { ensureBodyParts, ensureSaveVesselState } from '../domain/BodyParts.ts';
+import { clampQuestIndex } from '../domain/Quests.ts';
 import { createDefaultStorageBoxes, normalizeStorageBoxes } from '../domain/Storage.ts';
 import type {
   BestiaryEntry,
@@ -11,14 +12,14 @@ import type {
   SaveData,
 } from '../domain/types.ts';
 
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 7;
 
 export function defaultOptions(): GameOptions {
   return {
     volume: 0.6,
     muted: false,
     batterySaver: false,
-    pixelEffect: true,
+    pixelEffect: false,
     textSpeed: 'normal',
   };
 }
@@ -48,6 +49,10 @@ export function createInitialSave(): SaveData {
     champion: false,
     defeatedTrainers: [],
     flags: {},
+    questIndex: 0,
+    activeSideQuests: [],
+    completedSideQuests: [],
+    blueprints: [],
     vessels: { cuerpo_aprendiz: 1 },
     bodyPartShards: {},
     soulReserve: [],
@@ -144,6 +149,16 @@ export function migrateSaveData(raw: unknown): SaveData | null {
       obj.flags && typeof obj.flags === 'object'
         ? (obj.flags as Record<string, boolean>)
         : {},
+    questIndex: clampQuestIndex(obj.questIndex),
+    activeSideQuests: Array.isArray(obj.activeSideQuests)
+      ? Array.from(new Set((obj.activeSideQuests as unknown[]).filter((x): x is string => typeof x === 'string')))
+      : [],
+    completedSideQuests: Array.isArray(obj.completedSideQuests)
+      ? Array.from(new Set((obj.completedSideQuests as unknown[]).filter((x): x is string => typeof x === 'string')))
+      : [],
+    blueprints: Array.isArray(obj.blueprints)
+      ? Array.from(new Set((obj.blueprints as unknown[]).filter((x): x is string => typeof x === 'string')))
+      : [],
     vessels,
     bodyPartShards,
     soulReserve,
@@ -276,7 +291,8 @@ export function migrateSaveData(raw: unknown): SaveData | null {
       volume: typeof opt.volume === 'number' ? opt.volume : 0.6,
       muted: typeof opt.muted === 'boolean' ? opt.muted : false,
       batterySaver: typeof opt.batterySaver === 'boolean' ? opt.batterySaver : false,
-      pixelEffect: typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : true,
+      pixelEffect:
+        version >= 6 && typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : false,
       textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
     };
   }

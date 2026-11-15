@@ -100,6 +100,17 @@ export const MAP_ARENA_CUMBRE: MapDef = {
       y: 31,
       dir: 'left',
       dialogKey: 'arena_guide',
+      patrol: {
+        waypoints: [
+          { x: 27, y: 31 },
+          { x: 27, y: 28 },
+          { x: 25, y: 28 },
+          { x: 25, y: 31 },
+        ],
+        speed: 1.4,
+        pauseSec: 1.5,
+      },
+      lookAtPlayerAfterTalk: true,
     },
     {
       id: 'npc_arena_discipulo',

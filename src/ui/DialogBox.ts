@@ -24,7 +24,7 @@ export class DialogBox {
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
     this.root.className =
-      'pointer-events-auto fixed inset-x-0 bottom-1.5 sm:bottom-3 z-30 mx-auto hidden w-[min(95vw,680px)] rounded-xl border-2 border-resonant-gold bg-smoked-wood px-3.5 py-2.5 sm:p-4 text-porcelain';
+      'pointer-events-auto fixed inset-x-0 bottom-1.5 sm:bottom-3 z-30 mx-auto hidden w-[min(95vw,680px)] px-panel px-3.5 py-2.5 sm:p-4';
     this.root.style.marginBottom = 'env(safe-area-inset-bottom, 0px)';
 
     this.textEl = document.createElement('div');
@@ -157,8 +157,8 @@ export class DialogBox {
       btn.textContent = choice.label;
       btn.className =
         idx === this.choiceIndex
-          ? 'min-h-[44px] px-4 py-2 rounded-lg border-2 border-bright-brass bg-resonant-gold text-crypt-ink font-bold text-sm'
-          : 'min-h-[44px] px-4 py-2 rounded-lg border-2 border-cold-stone bg-smoked-wood text-porcelain font-semibold text-sm hover:border-porcelain';
+          ? 'min-h-[44px] px-4 py-2 px-btn-primary font-bold text-sm'
+          : 'min-h-[44px] px-4 py-2 px-btn-secondary font-semibold text-sm';
       btn.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         this.close();

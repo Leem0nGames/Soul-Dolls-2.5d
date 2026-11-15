@@ -2,7 +2,6 @@ import { ABILITIES } from '../data/abilities.ts';
 import { ITEMS } from '../data/items.ts';
 import { getMove } from '../data/moves.ts';
 import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
 import {
   getBestiaryCounts,
   getBestiaryEntry,
@@ -13,7 +12,8 @@ import type { EvolutionRule, SaveData, StatName } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import { AnimatedSoulDollView } from './components/AnimatedSoulDollView.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
+import { renderTypeBadges } from './renderTypeBadge.ts';
 
 type BestiaryFilter = 'all' | 'caught' | 'seen' | 'unseen';
 
@@ -37,21 +37,16 @@ function formatEvoRule(rule: EvolutionRule): string {
   }
 }
 
-export class BestiaryScreen {
-  readonly root: HTMLDivElement;
+export class BestiaryScreen extends ModalOverlay {
   private filter: BestiaryFilter = 'all';
   private selectedId: number | null = null;
-  private unbindImages: (() => void) | null = null;
   private activeAnimView: AnimatedSoulDollView | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(save: SaveData, onClose: () => void): void {
@@ -78,10 +73,8 @@ export class BestiaryScreen {
       const filterBtns = filters
         .map(
           (f) =>
-            `<button data-filter="${f.id}" class="min-h-[44px] px-3 rounded-lg text-xs font-bold border ${
-              this.filter === f.id
-                ? 'border-bright-brass bg-resonant-gold text-crypt-ink'
-                : 'border-cold-stone/70 bg-ash-purple text-porcelain'
+            `<button data-filter="${f.id}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+              this.filter === f.id ? 'px-btn-primary' : 'px-btn-secondary'
             }">${f.label}</button>`
         )
         .join('');
@@ -111,26 +104,17 @@ export class BestiaryScreen {
           const imgSrc = seen
             ? this.assets.getCreatureDataUrl(id, 'front')
             : this.assets.getCreatureSilhouetteDataUrl(id);
-          const typesHtml = seen
-            ? spec.types
-                .map((t) => {
-                  const v = TYPE_VISUALS[t];
-                  return `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold" style="background:${v.bg};color:${v.color}">${ES.types[t]}</span>`;
-                })
-                .join(' ')
-            : '';
+          const typesHtml = seen ? renderTypeBadges(spec.types, 'sm') : '';
 
           return `
-            <button data-species="${id}" class="text-left rounded-lg border ${
+            <button data-species="${id}" class="px-card text-left ${
               caught
-                ? 'border-resonant-gold/80 bg-crypt-ink'
+                ? 'border-resonant-gold bg-crypt-ink'
                 : seen
                   ? 'border-cold-stone bg-crypt-ink'
-                  : 'border-ash-purple bg-crypt-ink/70'
+                  : 'border-ash-purple bg-abyss-ink'
             } hover:border-ki-cyan p-2 flex items-center gap-2.5 min-h-[64px]">
-              <img src="${imgSrc}" data-souldoll-id="${id}" data-souldoll-view="${seen ? 'front' : 'silhouette'}" class="souldoll-img w-12 h-12 object-contain shrink-0 ${
-                seen ? '' : 'opacity-70'
-              }" alt="${seen ? spec.name : ES.bestiary.unknown}" />
+              <img src="${imgSrc}" data-souldoll-id="${id}" data-souldoll-view="${seen ? 'front' : 'silhouette'}" class="souldoll-img w-12 h-12 object-contain shrink-0" alt="${seen ? spec.name : ES.bestiary.unknown}" />
               <div class="min-w-0 flex-1">
                 <div class="text-[11px] text-bone-gray tabular-nums">#${String(id).padStart(2, '0')} ${caught ? '<span class="text-resonant-gold">★</span>' : ''}</div>
                 <div class="font-bold text-sm truncate ${seen ? 'text-porcelain' : 'text-cold-stone'}">${seen ? spec.name : ES.bestiary.unknown}</div>
@@ -142,13 +126,13 @@ export class BestiaryScreen {
         .join('');
 
       this.root.innerHTML = `
-        <div class="w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] flex flex-col rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3 gap-2">
+        <div class="px-panel w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
             <div>
               <div class="font-bold text-resonant-gold">${ES.bestiary.title}</div>
               <div class="text-xs text-bone-gray tabular-nums">${ES.bestiary.seen}: ${counts.seen}/${counts.total} · ${ES.bestiary.caught}: ${counts.caught}/${counts.total}</div>
             </div>
-            <button data-close class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.bestiary.back}</button>
+            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
           </div>
           <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 mb-3">${filterBtns}</div>
           <div class="touch-scroll overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pr-1">
@@ -177,10 +161,8 @@ export class BestiaryScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
   }
 
@@ -192,13 +174,13 @@ export class BestiaryScreen {
 
     if (!seen) {
       this.root.innerHTML = `
-        <div class="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-cold-stone bg-smoked-wood p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-4">
+        <div class="px-panel w-full max-w-lg max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-4">
             <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.bestiary.unknown}</div>
-            <button data-back class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold">${ES.bestiary.back}</button>
+            <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
           </div>
           <div class="flex flex-col items-center py-6 gap-4 text-center">
-            <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain opacity-80" alt="${ES.bestiary.unknown}" />
+            <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain" alt="${ES.bestiary.unknown}" />
             <p class="text-sm text-bone-gray">${ES.bestiary.unseenDetail}</p>
           </div>
         </div>
@@ -207,12 +189,7 @@ export class BestiaryScreen {
       return;
     }
 
-    const typeBadges = spec.types
-      .map((t) => {
-        const v = TYPE_VISUALS[t];
-        return `<span class="px-2 py-0.5 rounded text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-      })
-      .join(' ');
+    const typeBadges = renderTypeBadges(spec.types, 'md');
 
     const statBars = STAT_ORDER.map((stat) => {
       const val = spec.baseStats[stat];
@@ -221,7 +198,7 @@ export class BestiaryScreen {
         <div class="flex items-center gap-2 text-xs tabular-nums">
           <span class="w-8 font-bold text-bone-gray">${ES.stats[stat]}</span>
           <span class="w-8 text-right font-bold">${val}</span>
-          <div class="flex-1 h-2 rounded bg-smoked-wood overflow-hidden">
+          <div class="flex-1 h-2.5 rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
             <div class="h-full bg-resonant-gold" style="width:${pct}%"></div>
           </div>
         </div>
@@ -232,7 +209,7 @@ export class BestiaryScreen {
       .map((abId) => {
         const ab = ABILITIES[abId];
         if (!ab) return '';
-        return `<div class="rounded border border-ash-purple bg-smoked-wood/80 px-2 py-1 text-xs"><span class="font-bold text-ki-cyan">${ab.name}:</span> <span class="text-porcelain">${ab.description}</span></div>`;
+        return `<div class="rounded-none border border-ash-purple bg-smoked-wood px-2 py-1 text-xs"><span class="font-bold text-ki-cyan">${ab.name}:</span> <span class="text-porcelain">${ab.description}</span></div>`;
       })
       .join('');
 
@@ -254,15 +231,15 @@ export class BestiaryScreen {
         : `<div class="text-xs text-bone-gray">${ES.bestiary.noEvolutions}</div>`;
 
     this.root.innerHTML = `
-      <div class="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-cold-stone bg-smoked-wood p-4 text-porcelain shadow-2xl">
-        <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3">
+      <div class="px-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 text-porcelain">
+        <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
           <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${spec.name} ${caught ? '★' : ''}</div>
-          <button data-back class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold">${ES.bestiary.back}</button>
+          <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="space-y-3">
-            <div class="flex items-center gap-3 rounded-lg border border-ash-purple bg-crypt-ink p-3">
+            <div class="px-card flex items-center gap-3 p-3">
               <div data-anim-portrait class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center"></div>
               <div>
                 <div class="text-lg font-bold">${spec.name}</div>
@@ -275,30 +252,30 @@ export class BestiaryScreen {
               </div>
             </div>
 
-            <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 text-xs text-porcelain leading-relaxed">
+            <div class="px-card p-3 text-xs text-porcelain leading-relaxed">
               ${spec.description}
             </div>
 
-            <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 space-y-1.5">
+            <div class="px-card p-3 space-y-1.5">
               <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.baseStats}</div>
               ${statBars}
             </div>
           </div>
 
           <div class="space-y-3">
-            <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 space-y-1.5">
+            <div class="px-card p-3 space-y-1.5">
               <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.abilities}</div>
               ${abilitiesHtml}
             </div>
 
-            <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 space-y-1 text-xs">
+            <div class="px-card p-3 space-y-1 text-xs">
               <div class="font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.habitats}</div>
               <div class="text-porcelain">${habitatsText}</div>
               <div class="pt-2 font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.locations}</div>
               <div class="text-porcelain">${locationsText}</div>
             </div>
 
-            <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 space-y-1">
+            <div class="px-card p-3 space-y-1">
               <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.evolutions}</div>
               ${evosHtml}
             </div>
@@ -314,20 +291,8 @@ export class BestiaryScreen {
     this.root.querySelector('[data-anim-portrait]')?.replaceChildren(this.activeAnimView.root);
   }
 
-  close(): void {
+  protected override onBeforeClose(): void {
     this.activeAnimView?.dispose();
     this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.activeAnimView?.dispose();
-    this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

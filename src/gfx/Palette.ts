@@ -75,7 +75,7 @@ export const PALETTE = {
   sandDesert: '#C2A77C',
   woodHighlight: '#9E7D5A',
 
-  // 8. Acentos de UI y Efectos Especiales (7)
+  // 8. Acentos de UI y Efectos Especiales (8)
   uiDanger: '#FF0000',
   uiWarning: '#FFAA00',
   uiSuccess: '#00E639',
@@ -83,9 +83,8 @@ export const PALETTE = {
   uiPoison: '#8F00FF',
   uiGold: '#FFD700',
   pureWhite: '#FFFFFF',
+  uiInk: '#050505',
 } as const;
-
-export type PaletteKey = keyof typeof PALETTE;
 
 export function hexToNumber(hex: string): number {
   return Number.parseInt(hex.replace('#', ''), 16);
@@ -95,21 +94,6 @@ export function hexToRgb01(hex: string): [number, number, number] {
   const n = hexToNumber(hex);
   return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
 }
-
-/**
- * Rampas ordenadas de sombra profunda -> base -> highlight para sombreado coherente.
- */
-export const COLOR_RAMPS = {
-  bronze: [PALETTE.darkOak, PALETTE.oldBronze, PALETTE.tarnishedGold, PALETTE.brightBrass, PALETTE.paleGold],
-  wood: [PALETTE.darkOak, PALETTE.dirtBrown, PALETTE.burntUmber, PALETTE.leatherBrown, PALETTE.woodHighlight],
-  crimson: [PALETTE.driedBlood, PALETTE.bloodMoon, PALETTE.rosewood, PALETTE.riftCrimson, PALETTE.rubyGlow, PALETTE.coralRed],
-  rose: [PALETTE.riftCrimson, PALETTE.porcelainPink, PALETTE.peachBlush, PALETTE.paleRose, PALETTE.cherryBlossom],
-  violet: [PALETTE.nightshade, PALETTE.deepAmethyst, PALETTE.royalPurple, PALETTE.arcaneLilac, PALETTE.soulViolet, PALETTE.etherealOrchid, PALETTE.ghostViolet, PALETTE.lavenderMist],
-  cyan: [PALETTE.darkSlate, PALETTE.deepAbyss, PALETTE.oceanicTeal, PALETTE.vibrantAqua, PALETTE.kiCyan, PALETTE.neonMint, PALETTE.iceCyan, PALETTE.frostedGlass],
-  nature: [PALETTE.pitchBlackGreen, PALETTE.forestGreen, PALETTE.emerald, PALETTE.oliveDrab, PALETTE.moss],
-  stone: [PALETTE.abyssInk, PALETTE.stoneShadow, PALETTE.stoneMid, PALETTE.stoneHighlight, PALETTE.boneGray],
-  neutral: [PALETTE.voidBlack, PALETTE.abyssInk, PALETTE.cryptInk, PALETTE.smokedWood, PALETTE.ashPurple, PALETTE.coldStone, PALETTE.boneGray, PALETTE.porcelain, PALETTE.warmWhite],
-} as const;
 
 export interface TypePalette {
   outline: string;

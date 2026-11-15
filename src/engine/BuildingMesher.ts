@@ -3,7 +3,15 @@ import { getTileWorldY } from '../domain/TerrainRules.ts';
 import type { BuildingKind, BuildingPlacement, MapDef } from '../domain/types.ts';
 import type { RoofTextureKind } from '../gfx/AssetProvider.ts';
 import type { TileAtlasKey } from '../gfx/ProceduralTiles.ts';
-import { getTileUv } from './AtlasBuilder.ts';
+import {
+  buildGeometryFromQuadBuilder,
+  createQuadBuilder,
+  pushQuad,
+  pushTiledQuad,
+  pushTiledQuadKey,
+  pushTriangle,
+  type QuadBuilder,
+} from './QuadGeometry.ts';
 
 function getBuildingPalette(kind: BuildingKind): {
   wall: TileAtlasKey;
@@ -23,40 +31,40 @@ function getBuildingPalette(kind: BuildingKind): {
       };
     case 'house_blue':
       return {
-        wall: 'wall_plaster',
-        roof: 'roof_blue',
-        roofKind: 'indigo',
+        wall: 'wall_brick',
+        roof: 'roof_slate',
+        roofKind: 'slate',
         wallHeight: 2.0,
         roofHeight: 1.2,
       };
     case 'lab':
       return {
-        wall: 'wall_brick',
-        roof: 'roof_orange',
+        wall: 'wall_vine_brick',
+        roof: 'roof_patina',
         roofKind: 'patina',
         wallHeight: 2.3,
         roofHeight: 1.3,
       };
     case 'center':
       return {
-        wall: 'wall_plaster',
-        roof: 'roof_pink',
-        roofKind: 'patina',
+        wall: 'palace_tile',
+        roof: 'roof_red',
+        roofKind: 'terracotta',
         wallHeight: 2.2,
         roofHeight: 1.1,
       };
     case 'shop':
       return {
-        wall: 'wall_plaster',
-        roof: 'roof_teal',
+        wall: 'wall_wood_gold',
+        roof: 'roof_wood',
         roofKind: 'wood',
         wallHeight: 2.1,
         roofHeight: 1.1,
       };
     case 'arena_hall':
       return {
-        wall: 'wall_brick',
-        roof: 'roof_purple',
+        wall: 'wall_castle',
+        roof: 'roof_blue',
         roofKind: 'indigo',
         wallHeight: 2.8,
         roofHeight: 1.4,
@@ -64,85 +72,9 @@ function getBuildingPalette(kind: BuildingKind): {
   }
 }
 
-interface QuadBuilder {
-  positions: number[];
-  uvs: number[];
-  colors: number[];
-  indices: number[];
-}
-
-function createQuadBuilder(): QuadBuilder {
-  return { positions: [], uvs: [], colors: [], indices: [] };
-}
-
-function buildGeometryFromQuadBuilder(qb: QuadBuilder): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(qb.positions), 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(qb.uvs), 2));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(qb.colors), 3));
-  geo.setIndex(new THREE.BufferAttribute(new Uint16Array(qb.indices), 1));
-  geo.computeBoundingSphere();
-  return geo;
-}
-
-function pushQuad(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  p3: [number, number, number],
-  texKey: TileAtlasKey,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2, ...p3);
-  const r = getTileUv(texKey);
-  qb.uvs.push(r.u0, r.v0, r.u1, r.v0, r.u1, r.v1, r.u0, r.v1);
-  for (let i = 0; i < 4; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function pushTiledQuad(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  p3: [number, number, number],
-  uRepeat: number,
-  vRepeat: number,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2, ...p3);
-  qb.uvs.push(0, 0, uRepeat, 0, uRepeat, vRepeat, 0, vRepeat);
-  for (let i = 0; i < 4; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function pushTriangle(
-  qb: QuadBuilder,
-  p0: [number, number, number],
-  p1: [number, number, number],
-  p2: [number, number, number],
-  texKey: TileAtlasKey,
-  shade: number
-): void {
-  const base = qb.positions.length / 3;
-  qb.positions.push(...p0, ...p1, ...p2);
-  const r = getTileUv(texKey);
-  qb.uvs.push(r.u0, r.v0, r.u1, r.v0, (r.u0 + r.u1) * 0.5, r.v1);
-  for (let i = 0; i < 3; i++) {
-    qb.colors.push(shade, shade, shade);
-  }
-  qb.indices.push(base, base + 1, base + 2);
-}
-
 function addBuildingGeometry(
   qb: QuadBuilder,
+  wallBuilders: Map<TileAtlasKey, QuadBuilder> | null,
   roofBuilders: Map<RoofTextureKind, QuadBuilder> | null,
   map: MapDef,
   b: BuildingPlacement
@@ -161,11 +93,27 @@ function addBuildingGeometry(
   const yTop = groundY + pal.wallHeight;
   const yPeak = yTop + pal.roofHeight;
 
+  const uWidth = Math.max(1, Math.round(x1 - x0));
+  const uDepth = Math.max(1, Math.round(z1 - z0));
+  const vHeight = Math.max(1, Math.round(yTop - yBot));
+
   // Front (+Z), Back (-Z), Right (+X), Left (-X) walls
-  pushQuad(qb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], pal.wall, 0.98);
-  pushQuad(qb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], pal.wall, 0.78);
-  pushQuad(qb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], pal.wall, 0.88);
-  pushQuad(qb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], pal.wall, 0.84);
+  if (wallBuilders) {
+    let wqb = wallBuilders.get(pal.wall);
+    if (!wqb) {
+      wqb = createQuadBuilder();
+      wallBuilders.set(pal.wall, wqb);
+    }
+    pushTiledQuad(wqb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], uWidth, vHeight, 1.0);
+    pushTiledQuad(wqb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], uWidth, vHeight, 0.88);
+    pushTiledQuad(wqb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], uDepth, vHeight, 0.94);
+    pushTiledQuad(wqb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], uDepth, vHeight, 0.90);
+  } else {
+    pushTiledQuadKey(qb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], pal.wall, uWidth, vHeight, 1.0);
+    pushTiledQuadKey(qb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], pal.wall, uWidth, vHeight, 0.88);
+    pushTiledQuadKey(qb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], pal.wall, uDepth, vHeight, 0.94);
+    pushTiledQuadKey(qb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], pal.wall, uDepth, vHeight, 0.90);
+  }
 
   // Door & windows on front (+Z) face
   const doorW = 0.85;
@@ -224,43 +172,72 @@ function addBuildingGeometry(
     // Front roof slope
     pushTiledQuad(rqb, [rx0, yTop, rz1], [rx1, yTop, rz1], [rx1, yPeak, rMidZ], [rx0, yPeak, rMidZ], uRepeat, 1, 1.0);
     // Back roof slope
-    pushTiledQuad(rqb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], uRepeat, 1, 0.8);
+    pushTiledQuad(rqb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], uRepeat, 1, 0.88);
   } else {
     // Front roof slope
     pushQuad(qb, [rx0, yTop, rz1], [rx1, yTop, rz1], [rx1, yPeak, rMidZ], [rx0, yPeak, rMidZ], pal.roof, 1.0);
     // Back roof slope
-    pushQuad(qb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], pal.roof, 0.82);
+    pushQuad(qb, [rx1, yTop, rz0], [rx0, yTop, rz0], [rx0, yPeak, rMidZ], [rx1, yPeak, rMidZ], pal.roof, 0.88);
   }
 
   // Gable end triangles
-  pushTriangle(qb, [rx0, yTop, rz0], [rx0, yTop, rz1], [rx0, yPeak, rMidZ], pal.wall, 0.85);
-  pushTriangle(qb, [rx1, yTop, rz1], [rx1, yTop, rz0], [rx1, yPeak, rMidZ], pal.wall, 0.9);
+  pushTriangle(qb, [rx0, yTop, rz0], [rx0, yTop, rz1], [rx0, yPeak, rMidZ], pal.wall, 0.90);
+  pushTriangle(qb, [rx1, yTop, rz1], [rx1, yTop, rz0], [rx1, yPeak, rMidZ], pal.wall, 0.95);
 }
 
 export function buildBuildingsMesh(
   map: MapDef,
-  atlasMaterial: THREE.MeshBasicMaterial,
-  getRoofTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture
+  atlasMaterial: THREE.Material,
+  getRoofTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture,
+  getRoofNormalTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture,
+  getWallTexture?: (key: TileAtlasKey) => THREE.CanvasTexture,
+  getWallNormalTexture?: (key: TileAtlasKey) => THREE.CanvasTexture
 ): THREE.Group | null {
   if (map.buildings.length === 0) return null;
 
   const qb = createQuadBuilder();
+  const wallBuilders = getWallTexture ? new Map<TileAtlasKey, QuadBuilder>() : null;
   const roofBuilders = getRoofTexture ? new Map<RoofTextureKind, QuadBuilder>() : null;
   for (const b of map.buildings) {
-    addBuildingGeometry(qb, roofBuilders, map, b);
+    addBuildingGeometry(qb, wallBuilders, roofBuilders, map, b);
   }
 
   const group = new THREE.Group();
-  const wallMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
-  wallMesh.matrixAutoUpdate = false;
-  wallMesh.updateMatrix();
-  group.add(wallMesh);
+
+  if (wallBuilders && getWallTexture) {
+    for (const [wallKey, wqb] of wallBuilders.entries()) {
+      if (wqb.indices.length === 0) continue;
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: getWallTexture(wallKey),
+        normalMap: getWallNormalTexture ? getWallNormalTexture(wallKey) : null,
+        normalScale: new THREE.Vector2(1.05, 1.05),
+        roughness: 0.85,
+        metalness: 0.05,
+        vertexColors: true,
+      });
+      const wallMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(wqb), wallMat);
+      wallMesh.matrixAutoUpdate = false;
+      wallMesh.updateMatrix();
+      group.add(wallMesh);
+    }
+  }
+
+  if (qb.indices.length > 0) {
+    const miscMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
+    miscMesh.matrixAutoUpdate = false;
+    miscMesh.updateMatrix();
+    group.add(miscMesh);
+  }
 
   if (roofBuilders && getRoofTexture) {
     for (const [kind, rqb] of roofBuilders.entries()) {
       if (rqb.indices.length === 0) continue;
-      const roofMat = new THREE.MeshBasicMaterial({
+      const roofMat = new THREE.MeshStandardMaterial({
         map: getRoofTexture(kind),
+        normalMap: getRoofNormalTexture ? getRoofNormalTexture(kind) : null,
+        normalScale: new THREE.Vector2(1.05, 1.05),
+        roughness: 0.9,
+        metalness: 0.04,
         vertexColors: true,
       });
       const roofMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(rqb), roofMat);

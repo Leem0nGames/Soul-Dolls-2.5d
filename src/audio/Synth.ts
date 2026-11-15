@@ -149,6 +149,28 @@ export class Synth {
       case 'bump':
         this.tone(130, 0.06, 'triangle', now, 0.4);
         break;
+      case 'quest_journal':
+        // Crisp parchment/codex open chime
+        this.tone(587, 0.05, 'triangle', now, 0.35);
+        this.tone(784, 0.06, 'square', now + 0.04, 0.32);
+        this.tone(988, 0.09, 'triangle', now + 0.08, 0.36);
+        break;
+      case 'quest_accept':
+        // Uplifting chiptune quest-start motif
+        this.tone(440, 0.07, 'square', now, 0.38);
+        this.tone(587, 0.07, 'square', now + 0.06, 0.4);
+        this.tone(659, 0.07, 'square', now + 0.12, 0.42);
+        this.tone(880, 0.18, 'square', now + 0.18, 0.48);
+        break;
+      case 'quest_reward':
+        // Celebratory Gold & Blueprint reward fanfare
+        this.tone(523, 0.08, 'square', now, 0.42);
+        this.tone(659, 0.08, 'square', now + 0.07, 0.44);
+        this.tone(784, 0.08, 'square', now + 0.14, 0.46);
+        this.tone(1046, 0.11, 'square', now + 0.21, 0.5);
+        this.tone(1318, 0.24, 'square', now + 0.3, 0.52);
+        this.tone(523, 0.24, 'triangle', now + 0.3, 0.38);
+        break;
     }
   }
 

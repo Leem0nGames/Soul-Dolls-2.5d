@@ -53,8 +53,8 @@ const _sun = new THREE.Vector3(0.45, 0.82, 0.35).normalize();
 
 export function buildTerrainChunks(
   map: MapDef,
-  material: THREE.MeshBasicMaterial,
-  grassMaterial?: THREE.MeshBasicMaterial
+  material: THREE.Material,
+  grassMaterial?: THREE.Material
 ): TerrainChunk[] {
   const height = map.grid.length;
   const width = map.grid[0]?.length ?? 0;
@@ -103,6 +103,15 @@ export function buildTerrainChunks(
 
           const isTallGrass = legend.tile === 'tall_grass';
           let tileKey: TileAtlasKey = legend.tile;
+          if (tileKey === 'stone') {
+            if (legend.solid) {
+              tileKey = 'cliff_rock';
+            } else if (map.biome === 'forest') {
+              tileKey = 'mossy_stone';
+            } else if (map.id === 'cueva_eco') {
+              tileKey = 'cracked_stone';
+            }
+          }
           if (
             tileKey !== 'water' &&
             tileKey !== 'bridge' &&
@@ -111,7 +120,10 @@ export function buildTerrainChunks(
             tileKey !== 'arena_floor'
           ) {
             if (slopeDelta >= 1.35) {
-              tileKey = tileLevel <= 2 && map.id !== 'cueva_eco' ? 'dirt' : 'stone';
+              tileKey =
+                tileLevel >= 3 || map.id === 'cueva_eco' || slopeDelta >= 1.7
+                  ? 'cliff_rock'
+                  : 'dirt';
             } else if (
               map.snowLine !== undefined &&
               tileLevel >= map.snowLine &&
@@ -164,8 +176,8 @@ export function buildTerrainChunks(
           _norm.crossVectors(_e1, _e2).normalize();
           const sunDot = Math.max(0, _norm.dot(_sun));
           const checker = (x + z) % 2 === 0 ? 1.0 : 0.96;
-          const heightTint = 0.88 + Math.min(0.18, tileLevel * 0.02);
-          const shade = Math.min(1.08, (0.58 + sunDot * 0.48) * checker * heightTint);
+          const heightTint = 0.9 + Math.min(0.14, tileLevel * 0.015);
+          const shade = Math.min(1.06, (0.76 + sunDot * 0.28) * checker * heightTint);
 
           for (let k = 0; k < 4; k++) {
             colors[cPtr++] = shade;
@@ -191,7 +203,7 @@ export function buildTerrainChunks(
       geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-      const mats: THREE.MeshBasicMaterial[] = [material];
+      const mats: THREE.Material[] = [material];
       const indices: number[] = [...atlasIndices];
       if (grassMaterial && grassIndices.length > 0) {
         const idx = mats.length;
@@ -204,6 +216,7 @@ export function buildTerrainChunks(
         geo.setIndex(indices);
       }
 
+      geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, mats.length === 1 ? mats[0] : mats);
       geo.computeBoundingSphere();
       mesh.matrixAutoUpdate = false;
@@ -276,8 +289,8 @@ function buildSteppedAxisCoords(count: number): { coords: number[]; innerStart: 
  */
 export function buildTerrainBorderApron(
   map: MapDef,
-  material: THREE.MeshBasicMaterial,
-  grassMaterial?: THREE.MeshBasicMaterial
+  material: THREE.Material,
+  grassMaterial?: THREE.Material
 ): THREE.Mesh | null {
   const height = map.grid.length;
   const width = map.grid[0]?.length ?? 0;
@@ -349,8 +362,28 @@ export function buildTerrainBorderApron(
       const tileLevel = getTileHeightLevel(map, sampleX, sampleZ);
 
       let tileKey: TileAtlasKey = legend.tile;
-      if (outDist > 5.5 && (tileKey === 'cobble' || tileKey === 'dirt' || (tileKey === 'stone' && !legend.solid))) {
-        tileKey = map.id === 'cueva_eco' ? 'stone' : map.biome === 'mountain' ? 'dirt' : 'grass';
+      if (tileKey === 'stone') {
+        if (legend.solid) {
+          tileKey = 'cliff_rock';
+        } else if (map.biome === 'forest') {
+          tileKey = 'mossy_stone';
+        } else if (map.id === 'cueva_eco') {
+          tileKey = 'cracked_stone';
+        }
+      }
+      if (
+        outDist > 5.5 &&
+        (tileKey === 'cobble' ||
+          tileKey === 'dirt' ||
+          ((tileKey === 'stone' || tileKey === 'mossy_stone' || tileKey === 'cracked_stone') &&
+            !legend.solid))
+      ) {
+        tileKey =
+          map.id === 'cueva_eco'
+            ? 'cracked_stone'
+            : map.biome === 'mountain'
+              ? 'dirt'
+              : 'grass';
       } else if (tileKey === 'tall_grass') {
         tileKey = 'grass';
       } else if (tileKey === 'stairs') {
@@ -402,8 +435,8 @@ export function buildTerrainBorderApron(
       _norm.crossVectors(_e1, _e2).normalize();
       const sunDot = Math.max(0, _norm.dot(_sun));
       const checker = (ix + iz) % 2 === 0 ? 1.0 : 0.96;
-      const heightTint = 0.88 + Math.min(0.18, tileLevel * 0.02);
-      const shade = Math.min(1.08, (0.58 + sunDot * 0.48) * checker * heightTint);
+      const heightTint = 0.9 + Math.min(0.14, tileLevel * 0.015);
+      const shade = Math.min(1.06, (0.76 + sunDot * 0.28) * checker * heightTint);
 
       for (let k = 0; k < 4; k++) {
         colors[cPtr++] = shade;
@@ -429,7 +462,7 @@ export function buildTerrainBorderApron(
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  const mats: THREE.MeshBasicMaterial[] = [material];
+  const mats: THREE.Material[] = [material];
   const indices: number[] = [...atlasIndices];
   if (grassMaterial && grassIndices.length > 0) {
     const idx = mats.length;
@@ -442,6 +475,7 @@ export function buildTerrainBorderApron(
     geo.setIndex(indices);
   }
 
+  geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, mats.length === 1 ? mats[0] : mats);
   geo.computeBoundingSphere();
   mesh.matrixAutoUpdate = false;

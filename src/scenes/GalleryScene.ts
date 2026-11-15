@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import type { Game } from '../core/Game.ts';
 import type { Scene } from '../core/SceneStack.ts';
 import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
 import { bindSoulDollImageUpdates } from '../ui/bindSoulDollImages.ts';
+import { renderTypeBadges } from '../ui/renderTypeBadge.ts';
 
 export class GalleryScene implements Scene {
   readonly name = 'gallery';
@@ -17,7 +17,7 @@ export class GalleryScene implements Scene {
     this.emptyScene.background = new THREE.Color(hexToNumber(PALETTE.cryptInk));
     this.overlay = document.createElement('div');
     this.overlay.className =
-      'pointer-events-auto fixed inset-0 z-30 overflow-y-auto bg-crypt-ink/95 text-porcelain safe-pad p-4';
+      'pointer-events-auto fixed inset-0 z-30 overflow-y-auto bg-crypt-ink text-porcelain safe-pad p-4';
   }
 
   onEnter(): void {
@@ -46,20 +46,15 @@ export class GalleryScene implements Scene {
         s.baseStats.spe;
       const frontUrl = this.game.assets.getCreatureDataUrl(id, 'front');
       const backUrl = this.game.assets.getCreatureDataUrl(id, 'back');
-      const badges = s.types
-        .map((t) => {
-          const v = TYPE_VISUALS[t];
-          return `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style="background:${v.bg};color:${v.color}">${ES.types[t]}</span>`;
-        })
-        .join(' ');
+      const badges = renderTypeBadges(s.types, 'smUpper');
 
       return `
-        <div class="rounded-xl border border-cold-stone bg-smoked-wood/90 p-2.5 flex flex-col gap-1.5">
+        <div class="px-card border-cold-stone bg-smoked-wood p-2.5 flex flex-col gap-1.5">
           <div class="flex items-center justify-between text-xs font-bold">
-            <span class="text-bone-gray">#${String(id).padStart(2, '0')}</span>
+            <span class="text-bone-gray tabular-nums">#${String(id).padStart(2, '0')}</span>
             <span class="text-resonant-gold truncate">${s.name}</span>
           </div>
-          <div class="grid grid-cols-2 gap-1.5 bg-crypt-ink/80 rounded-lg p-1.5">
+          <div class="grid grid-cols-2 gap-1.5 bg-crypt-ink border border-ash-purple rounded-none p-1.5">
             <div class="flex flex-col items-center">
               <img src="${frontUrl}" data-souldoll-id="${id}" data-souldoll-view="front" alt="${s.name} ${ES.gallery.front}" class="souldoll-img w-20 h-20 object-contain" />
               <span class="text-[9px] text-bone-gray">${ES.gallery.front}</span>
@@ -71,18 +66,18 @@ export class GalleryScene implements Scene {
           </div>
           <div class="flex items-center justify-between gap-1">
             <div class="flex gap-1">${badges}</div>
-            <span class="text-[10px] text-bone-gray">${ES.gallery.bst}: ${bst}</span>
+            <span class="text-[10px] text-bone-gray tabular-nums">${ES.gallery.bst}: ${bst}</span>
           </div>
-          <div class="text-[10px] text-bone-gray/80">${s.archetype} · E${s.stage}</div>
+          <div class="text-[10px] text-bone-gray">${s.archetype} · E${s.stage}</div>
         </div>
       `;
     }).join('');
 
     this.overlay.innerHTML = `
       <div class="max-w-6xl mx-auto">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h1 class="text-base sm:text-lg font-extrabold text-resonant-gold">${ES.gallery.title}</h1>
-          <button data-exit class="min-h-[40px] px-4 rounded-lg border border-ki-cyan bg-oceanic-teal hover:bg-vibrant-aqua text-xs font-bold text-warm-white">${ES.gallery.backToTitle}</button>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 border-b-2 border-ash-purple pb-3">
+          <h1 class="text-base sm:text-lg font-extrabold text-resonant-gold px-text-shadow">${ES.gallery.title}</h1>
+          <button data-exit class="px-btn-arcane min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.gallery.backToTitle}</button>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pb-6">
           ${cards}

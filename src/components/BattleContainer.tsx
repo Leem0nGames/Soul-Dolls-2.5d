@@ -2,6 +2,7 @@ import React from 'react';
 import { BODY_PART_ORDER, ensureBodyParts } from '../domain/BodyParts.ts';
 import type { BodyPartHp, BodyPartName, BodyPartsHp, CreatureInstance } from '../domain/types.ts';
 import { PALETTE } from '../gfx/Palette.ts';
+import { DamageIndicator } from './DamageIndicator.tsx';
 
 export interface BattleContainerProps {
   creature?: CreatureInstance;
@@ -9,6 +10,10 @@ export interface BattleContainerProps {
   variant?: 'player' | 'enemy' | 'summary';
   damagedPart?: BodyPartName | null;
   damageTick?: number;
+  damageAmount?: number;
+  damageCrit?: boolean;
+  damageEffectiveness?: number;
+  damageBroken?: boolean;
   labels?: Partial<Record<BodyPartName, string>>;
   statusLabels?: {
     ok?: string;
@@ -44,7 +49,7 @@ function resolveLimbTone(part: BodyPartHp): LimbVisualTone {
       fillHex: PALETTE.ashPurple,
       hiHex: PALETTE.coldStone,
       barCls: 'bg-dried-blood',
-      barSheenCls: 'bg-rift-crimson/50',
+      barSheenCls: 'bg-rift-crimson',
       valueCls: 'text-coral-red font-bold',
       statusCls: 'text-coral-red',
       statusTag: 'broken',
@@ -309,6 +314,10 @@ export const BattleContainer: React.FC<BattleContainerProps> = ({
   variant = 'player',
   damagedPart = null,
   damageTick = 0,
+  damageAmount,
+  damageCrit = false,
+  damageEffectiveness,
+  damageBroken = false,
   labels,
   statusLabels,
   showSilhouette = true,
@@ -348,12 +357,22 @@ export const BattleContainer: React.FC<BattleContainerProps> = ({
       data-battle-container
     >
       {showSilhouette && (
-        <PixelMarionetteSilhouette
-          parts={parts}
-          scale={isCompact ? 2 : 3}
-          damagedPart={damagedPart}
-          damageTick={damageTick}
-        />
+        <div className="relative inline-flex shrink-0" data-marionette-stage>
+          <PixelMarionetteSilhouette
+            parts={parts}
+            scale={isCompact ? 2 : 3}
+            damagedPart={damagedPart}
+            damageTick={damageTick}
+          />
+          <DamageIndicator
+            part={damagedPart}
+            tick={damageTick}
+            amount={damageAmount}
+            crit={damageCrit}
+            effectiveness={damageEffectiveness}
+            broken={damageBroken}
+          />
+        </div>
       )}
 
       <div
@@ -417,7 +436,7 @@ export const BattleContainer: React.FC<BattleContainerProps> = ({
                       className={`${
                         isCompact ? 'h-1' : 'h-1.5'
                       } flex-1 relative overflow-hidden ${
-                        active ? tone.barCls : 'bg-smoked-wood/50'
+                        active ? tone.barCls : 'bg-smoked-wood'
                       }`}
                     >
                       {active && (

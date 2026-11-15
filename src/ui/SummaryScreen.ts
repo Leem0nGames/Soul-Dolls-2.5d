@@ -2,7 +2,6 @@ import { getBodyContainer, getSpeciesDollProfile } from '../data/containers.ts';
 import { getItem } from '../data/items.ts';
 import { getMove } from '../data/moves.ts';
 import { getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
 import { getCreatureAbilityDef } from '../domain/Abilities.ts';
 import {
   formatCardBonuses,
@@ -18,9 +17,10 @@ import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import { renderDollIntegrityHtml } from './DollIntegrityView.ts';
 import { AnimatedSoulDollView } from './components/AnimatedSoulDollView.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import { CARD_RARITY_STYLES } from './cardRarityStyles.ts';
 import { playCardSocketFx } from './cardSocketFx.ts';
+import { renderTypeBadge, renderTypeBadges } from './renderTypeBadge.ts';
 
 export interface SummaryHeldConfig {
   bag: BagSlot[];
@@ -32,19 +32,17 @@ export interface SummaryCardConfig {
   onChanged?: () => void;
 }
 
-export class SummaryScreen {
-  readonly root: HTMLDivElement;
-  private unbindImages: (() => void) | null = null;
+export class SummaryScreen extends ModalOverlay {
   private activeAnimView: AnimatedSoulDollView | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(
+      parent,
+      'pointer-events-auto fixed inset-0 z-50 hidden items-center justify-center bg-abyss-ink p-3 safe-pad'
+    );
   }
 
   open(
@@ -89,22 +87,16 @@ export class SummaryScreen {
               )
             );
 
-      const typeBadges = spec.types
-        .map((t) => {
-          const v = TYPE_VISUALS[t];
-          return `<span class="px-2 py-0.5 rounded text-xs font-bold border" style="background:${v.bg};color:${v.color};border-color:${v.border}">${ES.types[t]}</span>`;
-        })
-        .join(' ');
+      const typeBadges = renderTypeBadges(spec.types, 'md');
 
       const movesHtml = creature.moves
         .map((slot) => {
           const m = getMove(slot.moveId);
-          const v = TYPE_VISUALS[m.type];
           return `
-            <div class="rounded-lg border border-ash-purple bg-crypt-ink p-2">
+            <div class="px-card p-2">
               <div class="flex items-center justify-between gap-2">
                 <span class="font-bold text-sm text-porcelain">${m.name}</span>
-                <span class="px-1.5 py-0.5 rounded text-[11px] font-bold" style="background:${v.bg};color:${v.color}">${ES.types[m.type]}</span>
+                ${renderTypeBadge(m.type, 'move')}
               </div>
               <div class="mt-1 flex justify-between text-xs text-bone-gray tabular-nums">
                 <span>${ES.summary.power}: ${m.power || '—'} · ${ES.summary.acc}: ${m.accuracy}%</span>
@@ -118,10 +110,10 @@ export class SummaryScreen {
 
       const heldActionsHtml = heldConfig
         ? `<div class="flex gap-1.5 mt-2">
-             <button data-equip-open class="min-h-[40px] px-3 rounded-lg bg-oceanic-teal hover:bg-vibrant-aqua text-warm-white text-xs font-bold">${ES.summary.equipItem}</button>
+             <button data-equip-open class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.equipItem}</button>
              ${
                heldItem
-                 ? `<button data-unequip class="min-h-[40px] px-3 rounded-lg bg-rosewood hover:bg-rift-crimson text-warm-white text-xs font-bold">${ES.summary.removeItem}</button>`
+                 ? `<button data-unequip class="px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.removeItem}</button>`
                  : ''
              }
            </div>`
@@ -140,7 +132,7 @@ export class SummaryScreen {
                       .map((s) => {
                         const def = getItem(s.itemId);
                         return `
-                          <button data-pick-held="${def.id}" class="w-full min-h-[48px] rounded-lg border border-ash-purple bg-crypt-ink hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
+                          <button data-pick-held="${def.id}" class="px-card w-full min-h-[48px] hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
                             <img src="${this.assets.getItemIconDataUrl(def.id)}" class="pixel-canvas w-7 h-7 object-contain shrink-0" alt="" />
                             <div class="min-w-0 flex-1">
                               <div class="font-bold text-xs text-porcelain">${def.name} <span class="text-resonant-gold">×${s.quantity}</span></div>
@@ -151,11 +143,11 @@ export class SummaryScreen {
                       })
                       .join('');
               return `
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-crypt-ink/85 p-3">
-                  <div class="w-full max-w-md max-h-[80dvh] flex flex-col rounded-xl border-2 border-resonant-gold bg-smoked-wood p-3.5 text-porcelain shadow-2xl">
-                    <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-2">
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-3">
+                  <div class="px-panel w-full max-w-md max-h-[80dvh] flex flex-col p-3.5 text-porcelain">
+                    <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2">
                       <span class="font-bold text-sm text-resonant-gold">${ES.summary.equipItem}</span>
-                      <button data-pick-cancel class="min-h-[40px] px-3 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold">${ES.summary.back}</button>
+                      <button data-pick-cancel class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.back}</button>
                     </div>
                     <div class="touch-scroll overflow-y-auto space-y-1.5">${list}</div>
                   </div>
@@ -166,10 +158,10 @@ export class SummaryScreen {
 
       const cardActionsHtml = cardConfig
         ? `<div class="flex gap-1.5 mt-2">
-             <button data-card-open class="min-h-[40px] px-3 rounded-lg bg-oceanic-teal hover:bg-vibrant-aqua text-warm-white text-xs font-bold">${ES.summary.socketCard}</button>
+             <button data-card-open class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.socketCard}</button>
              ${
                socketedCard
-                 ? `<button data-card-remove class="min-h-[40px] px-3 rounded-lg bg-rosewood hover:bg-rift-crimson text-warm-white text-xs font-bold">${ES.summary.removeCard}</button>`
+                 ? `<button data-card-remove class="px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.removeCard}</button>`
                  : ''
              }
            </div>`
@@ -196,9 +188,9 @@ export class SummaryScreen {
                         const isCur = creature.socketedCardId === e.speciesId;
                         const rStyle = CARD_RARITY_STYLES[cDef.rarity];
                         return `
-                          <button data-pick-card="${cDef.speciesId}" class="w-full min-h-[56px] rounded-lg border-2 ${rStyle.border} ${rStyle.frameBg} ${rStyle.glow} ${
-                            isCur ? 'ring-1 ring-warm-white/60' : ''
-                          } ${rStyle.hoverBorder} p-2 flex items-center gap-2.5 text-left transition-colors">
+                          <button data-pick-card="${cDef.speciesId}" class="w-full min-h-[56px] rounded-none border-2 ${
+                            isCur ? 'border-warm-white' : rStyle.border
+                          } ${rStyle.frameBg} ${rStyle.glow} ${rStyle.hoverBorder} p-2 flex items-center gap-2.5 text-left">
                             <img src="${this.assets.getCreatureDataUrl(cDef.speciesId, 'front')}" data-souldoll-id="${cDef.speciesId}" data-souldoll-view="front" class="souldoll-img w-11 h-11 object-contain shrink-0" alt="${cDef.name}" />
                             <div class="min-w-0 flex-1">
                               <div class="flex items-center justify-between gap-1">
@@ -213,11 +205,11 @@ export class SummaryScreen {
                       })
                       .join('');
               return `
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-crypt-ink/85 p-3">
-                  <div class="w-full max-w-md max-h-[80dvh] flex flex-col rounded-xl border-2 border-ki-cyan bg-smoked-wood p-3.5 text-porcelain shadow-2xl">
-                    <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-2">
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-3">
+                  <div class="px-panel w-full max-w-md max-h-[80dvh] flex flex-col border-ki-cyan p-3.5 text-porcelain">
+                    <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2">
                       <span class="font-bold text-sm text-ki-cyan">${ES.summary.socketCard}</span>
-                      <button data-card-cancel class="min-h-[40px] px-3 rounded-lg border border-cold-stone bg-ash-purple text-xs font-bold">${ES.summary.back}</button>
+                      <button data-card-cancel class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.back}</button>
                     </div>
                     <div class="touch-scroll overflow-y-auto space-y-1.5">${list}</div>
                   </div>
@@ -227,15 +219,15 @@ export class SummaryScreen {
           : '';
 
       this.root.innerHTML = `
-        <div class="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3">
+        <div class="px-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
             <div class="text-base font-bold text-resonant-gold">${ES.summary.title}</div>
-            <button data-close class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.summary.back}</button>
+            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.summary.back}</button>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="flex flex-col gap-3">
-              <div class="flex items-center gap-3 rounded-lg border border-ash-purple bg-crypt-ink p-3">
+              <div class="px-card flex items-center gap-3 p-3">
                 <div data-anim-portrait class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center"></div>
                 <div>
                   <div class="text-lg font-bold">${getCreatureDisplayName(creature)}</div>
@@ -246,7 +238,7 @@ export class SummaryScreen {
                 </div>
               </div>
 
-              <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 text-xs space-y-2">
+              <div class="px-card p-3 text-xs space-y-2">
                 <div>
                   <div class="font-bold uppercase tracking-wider text-bone-gray">Cuerpo Contenedor</div>
                   <div class="mt-0.5 font-bold text-resonant-gold">${containerDef.name}</div>
@@ -288,7 +280,7 @@ export class SummaryScreen {
                     socketedCard
                       ? (() => {
                           const rStyle = CARD_RARITY_STYLES[socketedCard.rarity];
-                          return `<div data-card-slot class="mt-1.5 rounded-lg border-2 ${rStyle.border} ${rStyle.frameBg} ${rStyle.glow} p-2 flex items-center gap-2.5 card-socket-active">
+                          return `<div data-card-slot class="mt-1.5 rounded-none border-2 ${rStyle.border} ${rStyle.frameBg} ${rStyle.glow} p-2 flex items-center gap-2.5 card-socket-active">
                            <img src="${this.assets.getCreatureDataUrl(socketedCard.speciesId, 'front')}" data-souldoll-id="${socketedCard.speciesId}" data-souldoll-view="front" class="souldoll-img w-9 h-9 object-contain shrink-0" alt="${socketedCard.name}" />
                            <div class="min-w-0">
                              <div class="font-bold text-porcelain">${socketedCard.name} · <span class="text-[11px] font-bold ${rStyle.accent}">${ES.cards.rarity[socketedCard.rarity]}</span></div>
@@ -296,29 +288,29 @@ export class SummaryScreen {
                            </div>
                          </div>`;
                         })()
-                      : `<div data-card-slot class="mt-1 rounded-lg border border-dashed border-cold-stone/60 bg-smoked-wood/40 px-2.5 py-2 text-bone-gray">${ES.summary.noCard}</div>`
+                      : `<div data-card-slot class="mt-1 rounded-none border-2 border-dashed border-cold-stone bg-smoked-wood px-2.5 py-2 text-bone-gray">${ES.summary.noCard}</div>`
                   }
                   ${cardActionsHtml}
                 </div>
               </div>
 
-              <div class="rounded-lg border border-ash-purple bg-crypt-ink p-3 text-xs space-y-1.5 tabular-nums">
+              <div class="px-card p-3 text-xs space-y-1.5 tabular-nums">
                 <div class="flex justify-between"><span>${ES.party.hp} Total</span><span>${creature.currentHp} / ${creature.stats.hp}${socketedCard?.bonuses.hp ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.hp})</em>` : ''}</span></div>
                 <div class="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 border-t border-ash-purple">
-                  <div class="flex justify-between"><span>${ES.stats.atk}</span><span>${creature.stats.atk}${socketedCard?.bonuses.atk ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.atk})</em>` : ''} <em class="text-bone-gray/75">(IV ${creature.ivs.atk})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.def}</span><span>${creature.stats.def}${socketedCard?.bonuses.def ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.def})</em>` : ''} <em class="text-bone-gray/75">(IV ${creature.ivs.def})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.spa}</span><span>${creature.stats.spa}${socketedCard?.bonuses.spa ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spa})</em>` : ''} <em class="text-bone-gray/75">(IV ${creature.ivs.spa})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.spd}</span><span>${creature.stats.spd}${socketedCard?.bonuses.spd ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spd})</em>` : ''} <em class="text-bone-gray/75">(IV ${creature.ivs.spd})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.spe}</span><span>${creature.stats.spe}${socketedCard?.bonuses.spe ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spe})</em>` : ''} <em class="text-bone-gray/75">(IV ${creature.ivs.spe})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.atk}</span><span>${creature.stats.atk}${socketedCard?.bonuses.atk ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.atk})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.atk})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.def}</span><span>${creature.stats.def}${socketedCard?.bonuses.def ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.def})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.def})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.spa}</span><span>${creature.stats.spa}${socketedCard?.bonuses.spa ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spa})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.spa})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.spd}</span><span>${creature.stats.spd}${socketedCard?.bonuses.spd ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spd})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.spd})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.spe}</span><span>${creature.stats.spe}${socketedCard?.bonuses.spe ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spe})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.spe})</em></span></div>
                 </div>
                 <div class="pt-1 border-t border-ash-purple">
                   <div class="flex justify-between mb-1"><span>${ES.summary.xp}</span><span>${creature.xp} / ${nextLvXp}</span></div>
-                  <div class="h-2 w-full rounded bg-smoked-wood overflow-hidden">
+                  <div class="h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
                     <div class="h-full bg-ki-cyan" style="width:${expPct}%"></div>
                   </div>
                 </div>
               </div>
-              <div class="text-xs text-porcelain/90 leading-snug">${spec.description}</div>
+              <div class="text-xs text-porcelain leading-snug">${spec.description}</div>
             </div>
 
             <div class="flex flex-col gap-2">
@@ -412,27 +404,13 @@ export class SummaryScreen {
       this.root.querySelector('[data-anim-portrait]')?.replaceChildren(this.activeAnimView.root);
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
   }
 
-  close(): void {
+  protected override onBeforeClose(): void {
     this.activeAnimView?.dispose();
     this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.activeAnimView?.dispose();
-    this.activeAnimView = null;
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

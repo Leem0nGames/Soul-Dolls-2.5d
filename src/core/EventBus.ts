@@ -16,7 +16,10 @@ export type EventMap = {
       | 'capture'
       | 'faint'
       | 'heal'
-      | 'bump';
+      | 'bump'
+      | 'quest_journal'
+      | 'quest_accept'
+      | 'quest_reward';
   };
   'audio:music': {
     track:

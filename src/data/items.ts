@@ -374,5 +374,3 @@ export function getItem(id: string): ItemDef {
   if (!item) throw new Error(`Unknown item: ${id}`);
   return item;
 }
-
-export const ALL_ITEM_IDS = Object.keys(ITEMS);

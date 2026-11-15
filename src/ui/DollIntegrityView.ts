@@ -5,7 +5,7 @@ import {
   computeBodyPartRatios,
   ensureBodyParts,
 } from '../domain/BodyParts.ts';
-import type { BodyPartName, CreatureInstance } from '../domain/types.ts';
+import type { CreatureInstance } from '../domain/types.ts';
 import { PALETTE } from '../gfx/Palette.ts';
 
 export interface PartTone {
@@ -21,7 +21,7 @@ export function getBodyPartTone(current: number, max: number): PartTone {
     return {
       fill: PALETTE.ashPurple,
       hi: PALETTE.coldStone,
-      barCls: 'bg-ash-purple/60',
+      barCls: 'bg-ash-purple',
       textCls: 'text-coral-red font-bold',
       broken: true,
     };
@@ -64,13 +64,13 @@ function renderPixelSegments(pct: number, tone: PartTone): string {
   for (let i = 0; i < totalPips; i++) {
     const active = i < filledPips;
     html += `<span class="h-1.5 flex-1 ${
-      active ? tone.barCls : 'bg-abyss-ink border border-ash-purple/80'
+      active ? tone.barCls : 'bg-abyss-ink border border-ash-purple'
     }"></span>`;
   }
   return html;
 }
 
-export function renderDollSilhouetteSvg(
+function renderDollSilhouetteSvg(
   creature: CreatureInstance,
   scale: 2 | 3 = 2
 ): string {
@@ -206,7 +206,7 @@ export function renderDollIntegrityHtml(
         : `${p.current}/${p.max}`;
 
     const labelText = isSummary
-      ? `${BODY_PART_LABELS[key]} <span class="text-bone-gray/75">(${ratios![key]}%)</span>`
+      ? `${BODY_PART_LABELS[key]} <span class="text-cold-stone">(${ratios![key]}%)</span>`
       : BODY_PART_SHORT[key];
 
     return `
@@ -226,19 +226,4 @@ export function renderDollIntegrityHtml(
       </div>
     </div>
   `;
-}
-
-export function triggerBodyPartHitFlash(container: HTMLElement | null, part: BodyPartName): void {
-  if (!container) return;
-  const targets = [
-    container.querySelector<HTMLElement>(`[data-part="${part}"]`),
-    container.querySelector<HTMLElement>(`[data-part-row="${part}"]`),
-  ];
-  for (const el of targets) {
-    if (!el) continue;
-    el.classList.remove('battle-part-hit');
-    // Force reflow so rapid multi-hit moves retrigger the pixel impact pulse cleanly
-    void el.getBoundingClientRect();
-    el.classList.add('battle-part-hit');
-  }
 }

@@ -35,6 +35,7 @@ import {
   PLAYER_STATION_POS,
 } from '../engine/BattleStage.ts';
 import { createBottomPivotPlaneGeometry } from '../engine/BillboardBatch.ts';
+import { computeVfxScaleMetrics } from '../engine/AbilityVfxSystem.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { FxSystem } from '../engine/FxSystem.ts';
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
@@ -270,17 +271,23 @@ export class BattleScene implements Scene {
     this.game.markSpeciesSeen(enemy.speciesId, enemy.level);
 
     this.game.bus.emit('audio:sfx', { sfx: 'rustle' });
-    _toPos.set(ENEMY_STATION_POS.x, ENEMY_STATION_POS.y + 0.5, ENEMY_STATION_POS.z);
+    const enemyFx = computeVfxScaleMetrics(this.enemyScale).silhouette;
+    _toPos.set(
+      ENEMY_STATION_POS.x,
+      ENEMY_STATION_POS.y + this.enemyScale * 0.45,
+      ENEMY_STATION_POS.z
+    );
     this.fx.burst(_toPos, {
       count: 20,
-      speedMin: 1.2,
-      speedMax: 3.1,
+      speedMin: 1.2 * enemyFx,
+      speedMax: 3.1 * enemyFx,
       lifeMin: 0.35,
       lifeMax: 0.65,
-      sizeStart: 0.25,
-      sizeEnd: 0.06,
+      sizeStart: 0.25 * enemyFx,
+      sizeEnd: 0.06 * enemyFx,
       colorHex: hexToNumber(PALETTE.emerald),
-      gravity: -3.8,
+      gravity: -3.8 * enemyFx,
+      spreadScale: enemyFx,
     });
 
     this.enemyAnimating = true;
@@ -429,17 +436,19 @@ export class BattleScene implements Scene {
         this.capsuleMesh.visible = false;
         this.capsuleMesh.rotation.z = 0;
 
-        _toPos.set(station.x, station.y + 0.55, station.z);
+        const fxScale = computeVfxScaleMetrics(baseScale).silhouette;
+        _toPos.set(station.x, station.y + baseScale * 0.45, station.z);
         this.fx.burst(_toPos, {
           count: 24,
-          speedMin: 1.4,
-          speedMax: 3.4,
+          speedMin: 1.4 * fxScale,
+          speedMax: 3.4 * fxScale,
           lifeMin: 0.25,
           lifeMax: 0.45,
-          sizeStart: 0.28,
-          sizeEnd: 0.04,
+          sizeStart: 0.28 * fxScale,
+          sizeEnd: 0.04 * fxScale,
           colorHex: hexToNumber(isPlayer ? PALETTE.kiCyan : PALETTE.resonantGold),
-          gravity: -1.5,
+          gravity: -1.5 * fxScale,
+          spreadScale: fxScale,
         });
 
         if (isPlayer) this.playerAnimating = true;
@@ -634,6 +643,9 @@ export class BattleScene implements Scene {
           done();
         };
 
+        const fromFx = computeVfxScaleMetrics(baseScale).silhouette;
+        const toFx = computeVfxScaleMetrics(targetScale).silhouette;
+
         if (move.category === 'physical') {
           let fxFired = false;
           actorRig.injectImpulse(isPlayer ? 0.32 : -0.32, 0.4, 0.14);
@@ -658,17 +670,20 @@ export class BattleScene implements Scene {
                   power: move.power,
                   fromGroundY: home.y,
                   toGroundY: target.y,
+                  fromScale: baseScale,
+                  toScale: targetScale,
                 });
                 this.fx.burst(_toPos, {
                   count: 10,
-                  speedMin: 2.2,
-                  speedMax: 4.5,
+                  speedMin: 2.2 * toFx,
+                  speedMax: 4.5 * toFx,
                   lifeMin: 0.16,
                   lifeMax: 0.3,
-                  sizeStart: 0.28,
-                  sizeEnd: 0.04,
+                  sizeStart: 0.28 * toFx,
+                  sizeEnd: 0.04 * toFx,
                   colorHex: hexToNumber(PALETTE.warmWhite),
                   gravity: 0,
+                  spreadScale: toFx,
                 });
               }
             },
@@ -681,13 +696,13 @@ export class BattleScene implements Scene {
           const bz = (home.z - target.z) * 0.08;
           this.fx.ring(_fromPos, {
             count: 14,
-            radius: 0.45,
-            speed: -1.1,
+            radius: 0.45 * fromFx,
+            speed: -1.1 * fromFx,
             life: 0.26,
-            sizeStart: 0.22,
-            sizeEnd: 0.04,
+            sizeStart: 0.22 * fromFx,
+            sizeEnd: 0.04 * fromFx,
             colorHex: hexToNumber(PALETTE.warmWhite),
-            vy: 0.2,
+            vy: 0.2 * fromFx,
           });
           this.tweens.start(
             0.42,
@@ -703,6 +718,8 @@ export class BattleScene implements Scene {
                   power: move.power,
                   fromGroundY: home.y,
                   toGroundY: target.y,
+                  fromScale: baseScale,
+                  toScale: targetScale,
                 });
               }
             },
@@ -714,6 +731,8 @@ export class BattleScene implements Scene {
             power: move.power,
             fromGroundY: home.y,
             toGroundY: target.y,
+            fromScale: baseScale,
+            toScale: targetScale,
           });
           this.tweens.start(
             0.36,
@@ -730,7 +749,12 @@ export class BattleScene implements Scene {
       case 'damage': {
         this.refreshHud();
         if (ev.damagedPart) {
-          this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart);
+          this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart, {
+            amount: ev.amount,
+            crit: ev.crit,
+            effectiveness: ev.effectiveness,
+            broken: Boolean(ev.partBroken),
+          });
         }
         const isPlayer = ev.target === 'player';
         const mesh = isPlayer ? this.playerMesh : this.enemyMesh;
@@ -822,17 +846,19 @@ export class BattleScene implements Scene {
         this.refreshHud();
         this.game.bus.emit('audio:sfx', { sfx: 'heal' });
         const home = ev.target === 'player' ? PLAYER_STATION_POS : ENEMY_STATION_POS;
-        _toPos.set(home.x, home.y + 0.6, home.z);
-        this.fx.abilityVfx.playHealOrBuff(_toPos, home.y, true);
+        const targetScale = ev.target === 'player' ? this.playerScale : this.enemyScale;
+        const fxScale = computeVfxScaleMetrics(targetScale).silhouette;
+        _toPos.set(home.x, home.y + targetScale * 0.48, home.z);
+        this.fx.abilityVfx.playHealOrBuff(_toPos, home.y, true, targetScale);
         this.fx.ring(_toPos, {
           count: 16,
-          radius: 0.45,
-          speed: 0.7,
+          radius: 0.45 * fxScale,
+          speed: 0.7 * fxScale,
           life: 0.48,
-          sizeStart: 0.22,
-          sizeEnd: 0.04,
+          sizeStart: 0.22 * fxScale,
+          sizeEnd: 0.04 * fxScale,
           colorHex: hexToNumber(PALETTE.emerald),
-          vy: 1.2,
+          vy: 1.2 * fxScale,
         });
         this.spawnFloatingDamage(ev.target, `+${ev.amount}`, 'heal');
         done();
@@ -845,20 +871,22 @@ export class BattleScene implements Scene {
         this.refreshHud();
         const side = ev.target;
         const home = side === 'player' ? PLAYER_STATION_POS : ENEMY_STATION_POS;
-        _toPos.set(home.x, home.y + 0.65, home.z);
+        const targetScale = side === 'player' ? this.playerScale : this.enemyScale;
+        const fxScale = computeVfxScaleMetrics(targetScale).silhouette;
+        _toPos.set(home.x, home.y + targetScale * 0.48, home.z);
         const isPos = ev.type === 'status_clear' || (ev.type === 'stat_change' && ev.delta > 0);
-        this.fx.abilityVfx.playHealOrBuff(_toPos, home.y, isPos);
+        this.fx.abilityVfx.playHealOrBuff(_toPos, home.y, isPos, targetScale);
         this.fx.ring(_toPos, {
           count: 14,
-          radius: 0.4,
-          speed: 1.2,
+          radius: 0.4 * fxScale,
+          speed: 1.2 * fxScale,
           life: 0.4,
-          sizeStart: 0.2,
-          sizeEnd: 0.04,
+          sizeStart: 0.2 * fxScale,
+          sizeEnd: 0.04 * fxScale,
           colorHex: hexToNumber(
             ev.type === 'stat_change' && ev.delta > 0 ? PALETTE.resonantGold : PALETTE.soulViolet
           ),
-          vy: 0.8,
+          vy: 0.8 * fxScale,
         });
         done();
         break;
@@ -1040,24 +1068,31 @@ export class BattleScene implements Scene {
               },
               () => {
                 this.capsuleMesh.rotation.z = 0;
+                const enemyFx = computeVfxScaleMetrics(this.enemyScale).silhouette;
                 _toPos.set(
                   ENEMY_STATION_POS.x,
-                  ENEMY_STATION_POS.y + 0.55,
+                  ENEMY_STATION_POS.y + this.enemyScale * 0.45,
                   ENEMY_STATION_POS.z
                 );
                 if (ev.caught) {
                   this.game.bus.emit('audio:sfx', { sfx: 'capture' });
-                  this.fx.abilityVfx.playCaptureBurst(_toPos, ENEMY_STATION_POS.y, true);
+                  this.fx.abilityVfx.playCaptureBurst(
+                    _toPos,
+                    ENEMY_STATION_POS.y,
+                    true,
+                    this.enemyScale
+                  );
                   this.fx.burst(_toPos, {
                     count: 34,
-                    speedMin: 1.8,
-                    speedMax: 4.5,
+                    speedMin: 1.8 * enemyFx,
+                    speedMax: 4.5 * enemyFx,
                     lifeMin: 0.4,
                     lifeMax: 0.75,
-                    sizeStart: 0.3,
-                    sizeEnd: 0.05,
+                    sizeStart: 0.3 * enemyFx,
+                    sizeEnd: 0.05 * enemyFx,
                     colorHex: hexToNumber(PALETTE.uiGold),
-                    gravity: -2.5,
+                    gravity: -2.5 * enemyFx,
+                    spreadScale: enemyFx,
                   });
                   const wild = this.engine.getActive('enemy');
                   ensureSaveVesselState(this.game.saveData);
@@ -1105,14 +1140,15 @@ export class BattleScene implements Scene {
                 } else {
                   this.fx.burst(_toPos, {
                     count: 18,
-                    speedMin: 1.4,
-                    speedMax: 3.0,
+                    speedMin: 1.4 * enemyFx,
+                    speedMax: 3.0 * enemyFx,
                     lifeMin: 0.25,
                     lifeMax: 0.45,
-                    sizeStart: 0.24,
-                    sizeEnd: 0.04,
+                    sizeStart: 0.24 * enemyFx,
+                    sizeEnd: 0.04 * enemyFx,
                     colorHex: hexToNumber(PALETTE.warmWhite),
-                    gravity: -1.5,
+                    gravity: -1.5 * enemyFx,
+                    spreadScale: enemyFx,
                   });
                   this.capsuleMesh.visible = false;
                   this.enemyMesh.visible = true;
@@ -1128,20 +1164,21 @@ export class BattleScene implements Scene {
 
       case 'level_up': {
         this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
+        const playerFx = computeVfxScaleMetrics(this.playerScale).silhouette;
         _fromPos.set(
           PLAYER_STATION_POS.x,
-          PLAYER_STATION_POS.y + 0.65,
+          PLAYER_STATION_POS.y + this.playerScale * 0.48,
           PLAYER_STATION_POS.z
         );
         this.fx.ring(_fromPos, {
           count: 20,
-          radius: 0.55,
-          speed: 1.4,
+          radius: 0.55 * playerFx,
+          speed: 1.4 * playerFx,
           life: 0.55,
-          sizeStart: 0.26,
-          sizeEnd: 0.04,
+          sizeStart: 0.26 * playerFx,
+          sizeEnd: 0.04 * playerFx,
           colorHex: hexToNumber(PALETTE.kiCyan),
-          vy: 1.5,
+          vy: 1.5 * playerFx,
         });
         this.refreshHud();
         done();
@@ -1187,17 +1224,23 @@ export class BattleScene implements Scene {
         const rarityStyle = CARD_RARITY_STYLES[card.rarity];
         const rarityTag = ES.cards.rarity[card.rarity];
         this.game.bus.emit('audio:sfx', { sfx: 'capture' });
-        _toPos.set(ENEMY_STATION_POS.x, ENEMY_STATION_POS.y + 0.7, ENEMY_STATION_POS.z);
+        const enemyFx = computeVfxScaleMetrics(this.enemyScale).silhouette;
+        _toPos.set(
+          ENEMY_STATION_POS.x,
+          ENEMY_STATION_POS.y + this.enemyScale * 0.45,
+          ENEMY_STATION_POS.z
+        );
         this.fx.burst(_toPos, {
           count: 24,
-          speedMin: 1.5,
-          speedMax: 3.8,
+          speedMin: 1.5 * enemyFx,
+          speedMax: 3.8 * enemyFx,
           lifeMin: 0.35,
           lifeMax: 0.7,
-          sizeStart: 0.28,
-          sizeEnd: 0.04,
+          sizeStart: 0.28 * enemyFx,
+          sizeEnd: 0.04 * enemyFx,
           colorHex: hexToNumber(rarityStyle.fxColor || PALETTE.resonantGold),
-          gravity: -1.8,
+          gravity: -1.8 * enemyFx,
+          spreadScale: enemyFx,
         });
         this.game.battleHud.showBanner(
           isNew

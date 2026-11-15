@@ -2,6 +2,7 @@ import { getItem } from '../data/items.ts';
 import type { BagSlot, ItemCategory } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 
 const OVERWORLD_CATEGORIES: readonly ItemCategory[] = [
   'medicine',
@@ -12,18 +13,14 @@ const OVERWORLD_CATEGORIES: readonly ItemCategory[] = [
 ];
 const BATTLE_CATEGORIES: readonly ItemCategory[] = ['medicine', 'capsule', 'battle'];
 
-export class BagScreen {
-  readonly root: HTMLDivElement;
+export class BagScreen extends ModalOverlay {
   private activeCat: ItemCategory = 'medicine';
 
   constructor(
     parent: HTMLElement,
     private readonly assets?: AssetProvider
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(
@@ -41,10 +38,8 @@ export class BagScreen {
       const tabs = visibleCats
         .map((cat) => {
           const active = cat === this.activeCat;
-          return `<button data-cat="${cat}" class="min-h-[44px] px-3 rounded-lg text-xs font-bold border ${
-            active
-              ? 'border-bright-brass bg-resonant-gold text-crypt-ink'
-              : 'border-cold-stone/70 bg-ash-purple text-porcelain'
+          return `<button data-cat="${cat}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+            active ? 'px-btn-primary' : 'px-btn-secondary'
           }">${ES.bag.categories[cat]}</button>`;
         })
         .join('');
@@ -69,7 +64,7 @@ export class BagScreen {
                   ? `<img src="${this.assets.getItemIconDataUrl(def.id)}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />`
                   : '';
                 return `
-                  <div class="flex items-center justify-between gap-3 rounded-lg border border-ash-purple bg-crypt-ink p-2.5">
+                  <div class="px-card flex items-center justify-between gap-3 p-2.5">
                     <div class="flex items-center gap-2.5 min-w-0">
                       ${iconHtml}
                       <div class="min-w-0">
@@ -77,10 +72,10 @@ export class BagScreen {
                         <div class="text-xs text-bone-gray">${def.description}</div>
                       </div>
                     </div>
-                    <button data-use="${def.id}" ${usable ? '' : 'disabled'} class="min-h-[44px] px-3.5 rounded-lg text-xs font-bold shrink-0 ${
+                    <button data-use="${def.id}" ${usable ? '' : 'disabled'} class="min-h-[44px] px-3.5 text-xs font-bold shrink-0 whitespace-nowrap ${
                       usable
-                        ? 'bg-emerald-base text-warm-white hover:bg-oceanic-teal'
-                        : 'bg-ash-purple text-cold-stone cursor-not-allowed'
+                        ? 'px-btn-success'
+                        : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
                     }">${btnLabel}</button>
                   </div>
                 `;
@@ -88,10 +83,10 @@ export class BagScreen {
               .join('');
 
       this.root.innerHTML = `
-        <div class="w-full max-w-xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3">
+        <div class="px-panel w-full max-w-xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
             <div class="text-base font-bold text-resonant-gold">${ES.bag.title}</div>
-            <button data-close class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.bag.back}</button>
+            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bag.back}</button>
           </div>
           <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 mb-3">${tabs}</div>
           <div class="space-y-2">${listHtml}</div>
@@ -119,17 +114,7 @@ export class BagScreen {
       });
     };
 
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.root.remove();
   }
 }

@@ -4,27 +4,21 @@ import { swapPartySlots } from '../domain/Party.ts';
 import type { BagSlot, CreatureInstance, SaveData } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { ModalOverlay } from './ModalOverlay.ts';
 import type { SummaryScreen } from './SummaryScreen.ts';
-import { bindSoulDollImageUpdates } from './bindSoulDollImages.ts';
 
 export type PartyMode =
   | { kind: 'manage'; bag?: BagSlot[]; save?: SaveData }
   | { kind: 'switch'; activeIndex: number; allowCancel: boolean; onPick: (index: number) => void }
   | { kind: 'item_target'; onPick: (index: number) => void; onCancel: () => void };
 
-export class PartyScreen {
-  readonly root: HTMLDivElement;
-  private unbindImages: (() => void) | null = null;
-
+export class PartyScreen extends ModalOverlay {
   constructor(
     parent: HTMLElement,
     private readonly assets: AssetProvider,
     private readonly summary: SummaryScreen
   ) {
-    this.root = document.createElement('div');
-    this.root.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-crypt-ink/90 p-3 safe-pad';
-    parent.appendChild(this.root);
+    super(parent);
   }
 
   open(party: CreatureInstance[], mode: PartyMode, onClose: () => void): void {
@@ -40,14 +34,14 @@ export class PartyScreen {
                 const barColor = pct > 50 ? 'bg-ui-success' : pct > 20 ? 'bg-ui-warning' : 'bg-ui-danger';
                 const statusBadge =
                   c.status !== 'none'
-                    ? `<span class="px-1.5 py-0.5 rounded bg-royal-purple text-warm-white text-[10px] font-bold">${ES.statusShort[c.status]}</span>`
+                    ? `<span class="px-1.5 py-0.5 rounded-none border border-soul-violet bg-royal-purple text-warm-white text-[10px] font-bold">${ES.statusShort[c.status]}</span>`
                     : '';
                 const heldBadge = c.heldItemId
                   ? `<img src="${this.assets.getItemIconDataUrl(c.heldItemId)}" class="pixel-canvas w-4 h-4 object-contain shrink-0" alt="" />`
                   : '';
                 const isFainted = c.currentHp <= 0;
                 return `
-                  <div class="rounded-xl border-2 ${isFainted ? 'border-blood-moon opacity-75' : 'border-cold-stone'} bg-crypt-ink p-2.5 flex items-center gap-2.5">
+                  <div class="px-card ${isFainted ? 'border-rift-crimson bg-dried-blood' : 'border-cold-stone bg-crypt-ink'} p-2.5 flex items-center gap-2.5">
                     <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-14 h-14 object-contain shrink-0" alt="${spec.name}" />
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center justify-between gap-1">
@@ -57,7 +51,7 @@ export class PartyScreen {
                         </div>
                         <span class="text-xs text-resonant-gold tabular-nums shrink-0">${ES.party.lv}${c.level}</span>
                       </div>
-                      <div class="mt-1 h-2 w-full rounded bg-smoked-wood overflow-hidden">
+                      <div class="mt-1 h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
                         <div class="h-full ${barColor}" style="width:${pct}%"></div>
                       </div>
                       <div class="mt-1 flex items-center justify-between text-xs text-bone-gray tabular-nums">
@@ -67,11 +61,11 @@ export class PartyScreen {
                       <div class="mt-2 flex flex-wrap gap-1.5">
                         ${
                           mode.kind === 'manage'
-                            ? `<button data-summary="${idx}" class="min-h-[44px] px-3 rounded-lg bg-ash-purple border border-cold-stone text-xs font-semibold hover:bg-cold-stone/40">${ES.party.summary}</button>` +
+                            ? `<button data-summary="${idx}" class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.party.summary}</button>` +
                               (idx > 0
-                                ? `<button data-lead="${idx}" class="min-h-[44px] px-3 rounded-lg bg-oceanic-teal text-warm-white text-xs font-semibold hover:bg-vibrant-aqua">${ES.party.makeLead}</button>`
+                                ? `<button data-lead="${idx}" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.party.makeLead}</button>`
                                 : '')
-                            : `<button data-pick="${idx}" class="min-h-[44px] px-3.5 rounded-lg bg-emerald-base text-warm-white text-xs font-bold hover:bg-moss">${ES.party.useItem}</button>`
+                            : `<button data-pick="${idx}" class="px-btn-success min-h-[44px] px-3.5 text-xs font-bold whitespace-nowrap">${ES.party.useItem}</button>`
                         }
                       </div>
                     </div>
@@ -81,14 +75,14 @@ export class PartyScreen {
               .join('');
 
       this.root.innerHTML = `
-        <div class="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto rounded-xl border-2 border-cold-stone bg-smoked-wood p-3.5 sm:p-4 text-porcelain shadow-2xl">
-          <div class="flex items-center justify-between border-b border-ash-purple pb-2 mb-3">
+        <div class="px-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
             <div class="text-base font-bold text-resonant-gold">${
               mode.kind === 'switch' ? ES.party.chooseSwitch : ES.party.title
             }</div>
             ${
               canCancel
-                ? `<button data-close class="min-h-[44px] px-4 rounded-lg border border-cold-stone bg-ash-purple text-sm font-bold hover:bg-cold-stone/40">${ES.party.back}</button>`
+                ? `<button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.party.back}</button>`
                 : ''
             }
           </div>
@@ -150,23 +144,8 @@ export class PartyScreen {
       });
     };
 
-    this.unbindImages?.();
-    this.unbindImages = bindSoulDollImageUpdates(this.root, this.assets);
-    this.root.classList.remove('hidden');
-    this.root.classList.add('flex');
+    this.bindSoulDolls(this.assets);
+    this.showOverlay();
     render();
-  }
-
-  close(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.classList.add('hidden');
-    this.root.classList.remove('flex');
-  }
-
-  dispose(): void {
-    this.unbindImages?.();
-    this.unbindImages = null;
-    this.root.remove();
   }
 }

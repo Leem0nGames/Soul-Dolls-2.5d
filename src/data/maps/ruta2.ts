@@ -119,6 +119,15 @@ export const MAP_RUTA_2: MapDef = {
       dialogKey: 'trainer',
       trainerId: 'ruta2_guarda',
       sightRange: 4,
+      patrol: {
+        waypoints: [
+          { x: 15, y: 23 },
+          { x: 15, y: 26 },
+        ],
+        speed: 1.35,
+        pauseSec: 1.5,
+      },
+      lookAtPlayerAfterTalk: true,
     },
     {
       id: 'npc_ruta2_chispero',
@@ -130,6 +139,15 @@ export const MAP_RUTA_2: MapDef = {
       dialogKey: 'trainer',
       trainerId: 'ruta2_chispero',
       sightRange: 4,
+      patrol: {
+        waypoints: [
+          { x: 35, y: 19 },
+          { x: 35, y: 21 },
+        ],
+        speed: 1.35,
+        pauseSec: 1.5,
+      },
+      lookAtPlayerAfterTalk: true,
     },
   ],
   signs: [{ x: 4, y: 23, textKey: 'sign_ruta2' }],

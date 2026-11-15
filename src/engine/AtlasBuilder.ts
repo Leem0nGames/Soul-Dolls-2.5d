@@ -17,7 +17,7 @@ export function getTileUv(key: TileAtlasKey): UvRect {
   const col = idx % ATLAS_GRID;
   const row = Math.floor(idx / ATLAS_GRID);
   const step = 1 / ATLAS_GRID;
-  const eps = 0.0015;
+  const eps = 0.001;
 
   const u0 = col * step + eps;
   const u1 = (col + 1) * step - eps;

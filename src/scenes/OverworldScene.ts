@@ -27,6 +27,43 @@ import {
 } from '../domain/Inventory.ts';
 import { addToParty, healPartyFull } from '../domain/Party.ts';
 import {
+  createNpcBehaviorState,
+  engageNpcLook,
+  hasTrainerLineOfSight,
+  stepNpcBehavior,
+  type NpcBehaviorState,
+} from '../domain/NpcBehavior.ts';
+import {
+  expandGridWaypoints,
+  VILLA_GUIDE_NPC_ID,
+  VILLA_GUIDE_REST_AFTER_STARTER,
+  VILLA_GUIDE_REST_BEFORE_STARTER,
+  VILLA_TOUR_LAB_GUIDE_WAYPOINTS,
+  VILLA_TOUR_LAB_PLAYER_WAYPOINTS,
+  VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS,
+  VILLA_TOUR_PLAZA_GUIDE_WAYPOINTS,
+  VILLA_TOUR_PLAZA_PLAYER_WAYPOINTS,
+  type GridStep,
+} from '../domain/Tutorial.ts';
+import {
+  clampQuestIndex,
+  evaluateQuestProgress,
+  getActiveQuest,
+} from '../domain/Quests.ts';
+import {
+  acceptSideQuest,
+  completeSideQuest,
+  ensureSaveSideQuestState,
+  getSideQuestForNpc,
+  getSideQuestStatus,
+  SIDE_QUESTS,
+} from '../domain/SideQuests.ts';
+import {
+  createStaminaState,
+  stepStamina,
+  type StaminaState,
+} from '../domain/Stamina.ts';
+import {
   cameraRelativeMove,
   getTileHeightLevel,
   getTileWorldY,
@@ -68,6 +105,7 @@ import {
   type TerrainChunk,
 } from '../engine/TerrainMesher.ts';
 import { ES } from '../i18n/es.ts';
+import { OverworldHud } from '../ui/OverworldHud.ts';
 
 interface RuntimeNpc {
   def: NpcDef;
@@ -75,6 +113,80 @@ interface RuntimeNpc {
   mat: THREE.MeshBasicMaterial;
   visible: boolean;
   isPedestal: boolean;
+  behavior: NpcBehaviorState;
+  lastRelDir?: Direction;
+  lastWalkFrame?: CharacterFrame;
+  markerMesh?: THREE.Mesh;
+  markerMat?: THREE.MeshBasicMaterial;
+}
+
+interface EscortActorMove {
+  steps: GridStep[];
+  stepIndex: number;
+  activeStep: GridStep | null;
+  progress: number;
+  walkAnimTimer: number;
+  finalDir?: Direction;
+}
+
+interface VillageEscortCutscene {
+  guide: RuntimeNpc;
+  guideMove: EscortActorMove | null;
+  playerMove: EscortActorMove | null;
+  speed: number;
+  onDone: () => void;
+}
+
+function createQuestMarkerTexture(symbol: '!' | '?'): THREE.CanvasTexture {
+  const size = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, size, size);
+
+  const isExcl = symbol === '!';
+  const borderColor = '#050505';
+  const trimColor = isExcl ? '#E8B84A' : '#5FE3D2';
+  const fillColor = isExcl ? '#24123B' : '#123F3C';
+  const glyphColor = isExcl ? '#FFD700' : '#D9FBF7';
+  const glyphHi = isExcl ? '#FCEDB8' : '#7BF2E2';
+
+  // Badge frame (diamond-trimmed square badge)
+  ctx.fillStyle = borderColor;
+  ctx.fillRect(2, 1, 12, 14);
+  ctx.fillRect(1, 2, 14, 12);
+
+  ctx.fillStyle = trimColor;
+  ctx.fillRect(2, 2, 12, 12);
+
+  ctx.fillStyle = fillColor;
+  ctx.fillRect(3, 3, 10, 10);
+
+  if (isExcl) {
+    ctx.fillStyle = glyphColor;
+    ctx.fillRect(7, 4, 2, 5);
+    ctx.fillRect(7, 10, 2, 2);
+    ctx.fillStyle = glyphHi;
+    ctx.fillRect(7, 4, 1, 4);
+  } else {
+    ctx.fillStyle = glyphColor;
+    ctx.fillRect(6, 4, 4, 2);
+    ctx.fillRect(5, 5, 2, 2);
+    ctx.fillRect(9, 5, 2, 3);
+    ctx.fillRect(7, 7, 2, 2);
+    ctx.fillRect(7, 10, 2, 2);
+    ctx.fillStyle = glyphHi;
+    ctx.fillRect(6, 4, 3, 1);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 interface RuntimePickup {
@@ -116,6 +228,9 @@ export class OverworldScene implements Scene {
   private playerMesh: THREE.Mesh;
   private playerMat: THREE.MeshBasicMaterial;
   private charGeo: THREE.PlaneGeometry;
+  private markerGeo: THREE.PlaneGeometry;
+  private questExclamationTex: THREE.CanvasTexture;
+  private questQuestionTex: THREE.CanvasTexture;
 
   private gridX = 24;
   private gridY = 26;
@@ -130,13 +245,10 @@ export class OverworldScene implements Scene {
   private walkAnimTimer = 0;
   private waterTimer = 0;
   private waterFrame: 0 | 1 = 0;
-  private lastSpriteYawStep = -1;
   private sceneTime = 0;
 
-  private hudBadge: HTMLDivElement;
-  private warpCurtain: HTMLDivElement;
-  private zoneBanner: HTMLDivElement;
-  private zoneBannerTimer = 0;
+  private stamina: StaminaState = createStaminaState();
+  private hud: OverworldHud;
 
   private pendingWarp: {
     targetMap: string;
@@ -146,13 +258,20 @@ export class OverworldScene implements Scene {
   } | null = null;
   private warpPhase: 'idle' | 'out' | 'in' = 'idle';
   private warpTimer = 0;
+  private escortCutscene: VillageEscortCutscene | null = null;
 
   private readonly sampleTerrain = (wx: number, wz: number): number =>
     sampleInterpolatedHeight(this.currentMap, wx, wz);
 
   constructor(private readonly game: Game) {
     this.charGeo = createBottomPivotPlaneGeometry(0.95, 1.4);
+    this.markerGeo = new THREE.PlaneGeometry(0.46, 0.46);
+    this.questExclamationTex = createQuestMarkerTexture('!');
+    this.questQuestionTex = createQuestMarkerTexture('?');
     this.persistentDisposables.track(this.charGeo);
+    this.persistentDisposables.track(this.markerGeo);
+    this.persistentDisposables.track(this.questExclamationTex);
+    this.persistentDisposables.track(this.questQuestionTex);
 
     this.playerMat = new THREE.MeshBasicMaterial({
       map: game.assets.getCharacterTexture('player', 'up', 0),
@@ -164,27 +283,19 @@ export class OverworldScene implements Scene {
     this.playerMesh = new THREE.Mesh(this.charGeo, this.playerMat);
     this.scene.add(this.playerMesh);
 
-    this.hudBadge = document.createElement('div');
-    this.hudBadge.className =
-      'pointer-events-none fixed top-2.5 left-3 z-20 rounded-lg border border-cold-stone bg-crypt-ink/85 px-3 py-1.5 text-xs font-bold text-porcelain shadow';
-    this.hudBadge.style.top = 'calc(0.625rem + env(safe-area-inset-top, 0px))';
-    this.hudBadge.style.left = 'calc(0.75rem + env(safe-area-inset-left, 0px))';
-
-    this.warpCurtain = document.createElement('div');
-    this.warpCurtain.className =
-      'pointer-events-none fixed inset-0 z-30 bg-[#0b080e] opacity-0';
-
-    this.zoneBanner = document.createElement('div');
-    this.zoneBanner.className =
-      'pointer-events-none fixed left-1/2 -translate-x-1/2 z-20 rounded-lg border border-resonant-gold/70 bg-crypt-ink/90 px-4 py-1.5 text-center shadow-lg opacity-0 transition-opacity duration-300';
-    this.zoneBanner.style.top = 'calc(3.1rem + env(safe-area-inset-top, 0px))';
+    this.hud = new OverworldHud({
+      onToggleQuest: () => {
+        this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      },
+      onOpenJournal: () => {
+        this.openQuestJournal();
+      },
+    });
+    this.hud.updateStamina(this.stamina);
   }
 
   onEnter(): void {
-    this.game.uiLayer.appendChild(this.hudBadge);
-    this.game.uiLayer.appendChild(this.zoneBanner);
-    this.game.uiLayer.appendChild(this.warpCurtain);
-    this.game.uiLayers.register('overworldHud', this.hudBadge, this.zoneBanner);
+    this.hud.mount(this.game.uiLayer, this.game.uiLayers);
     this.game.uiLayers.applySceneVisibility({
       overworldHud: true,
       touchControls: true,
@@ -197,14 +308,265 @@ export class OverworldScene implements Scene {
 
     const save = this.game.saveData;
     ensureSaveVesselState(save);
+    ensureSaveSideQuestState(save);
     this.loadMap(save.mapId, save.playerX, save.playerY, save.playerDir, false);
 
-    if (!save.flags.isekai_intro_seen) {
+    if (
+      save.mapId === 'villa_origen' &&
+      !save.flags.village_tour_done &&
+      !save.flags.starter_chosen
+    ) {
+      save.flags.isekai_intro_seen = true;
+      const guideNpc = this.findNpcById(VILLA_GUIDE_NPC_ID);
+      this.game.dialog.show(ES.dialogs.isekai_intro_1, () => {
+        if (guideNpc) {
+          this.promptVillageGuideTour(guideNpc);
+        } else {
+          save.flags.village_tour_done = true;
+          this.game.dialog.show(ES.dialogs.isekai_intro_2);
+        }
+      });
+    } else if (!save.flags.isekai_intro_seen) {
       save.flags.isekai_intro_seen = true;
       this.game.saveManager.save(save);
       this.game.dialog.show(ES.dialogs.isekai_intro_1, () => {
         this.game.dialog.show(ES.dialogs.isekai_intro_2);
       });
+    }
+  }
+
+  private findNpcById(id: string): RuntimeNpc | undefined {
+    return this.npcs.find((n) => n.def.id === id && n.visible);
+  }
+
+  private createEscortMove(
+    steps: GridStep[],
+    finalDir?: Direction
+  ): EscortActorMove | null {
+    if (steps.length === 0) return null;
+    return {
+      steps,
+      stepIndex: 0,
+      activeStep: null,
+      progress: 0,
+      walkAnimTimer: 0,
+      finalDir,
+    };
+  }
+
+  private promptVillageGuideTour(guideNpc: RuntimeNpc): void {
+    this.game.dialog.show(ES.dialogs.guide_welcome, undefined, [
+      {
+        label: '¡Sí, guíame!',
+        onSelect: () => this.startVillageEscortTour(guideNpc),
+      },
+      {
+        label: 'Iré por mi cuenta',
+        onSelect: () => {
+          this.game.saveData.flags.village_tour_done = true;
+          this.game.saveManager.save(this.game.saveData);
+          const steps = expandGridWaypoints(
+            guideNpc.behavior.gridX,
+            guideNpc.behavior.gridY,
+            [VILLA_GUIDE_REST_BEFORE_STARTER]
+          );
+          this.escortCutscene = {
+            guide: guideNpc,
+            guideMove: this.createEscortMove(steps, VILLA_GUIDE_REST_BEFORE_STARTER.dir),
+            playerMove: null,
+            speed: 3.6,
+            onDone: () => {
+              this.game.dialog.show(ES.dialogs.guide_skip_tour);
+            },
+          };
+        },
+      },
+    ]);
+  }
+
+  private startVillageEscortTour(guideNpc: RuntimeNpc): void {
+    const plazaGuideSteps = expandGridWaypoints(
+      guideNpc.behavior.gridX,
+      guideNpc.behavior.gridY,
+      VILLA_TOUR_PLAZA_GUIDE_WAYPOINTS
+    );
+    const plazaPlayerSteps = expandGridWaypoints(
+      this.gridX,
+      this.gridY,
+      VILLA_TOUR_PLAZA_PLAYER_WAYPOINTS
+    );
+
+    this.escortCutscene = {
+      guide: guideNpc,
+      guideMove: this.createEscortMove(plazaGuideSteps, 'right'),
+      playerMove: this.createEscortMove(plazaPlayerSteps, 'left'),
+      speed: 3.3,
+      onDone: () => {
+        this.game.dialog.show(ES.dialogs.guide_tour_plaza, () => {
+          const labGuideSteps = expandGridWaypoints(
+            guideNpc.behavior.gridX,
+            guideNpc.behavior.gridY,
+            VILLA_TOUR_LAB_GUIDE_WAYPOINTS
+          );
+          const labPlayerSteps = expandGridWaypoints(
+            this.gridX,
+            this.gridY,
+            VILLA_TOUR_LAB_PLAYER_WAYPOINTS
+          );
+          this.escortCutscene = {
+            guide: guideNpc,
+            guideMove: this.createEscortMove(labGuideSteps, 'left'),
+            playerMove: this.createEscortMove(labPlayerSteps, 'up'),
+            speed: 3.4,
+            onDone: () => {
+              this.game.dialog.show(ES.dialogs.guide_tour_professor, () => {
+                const profNpc = this.findNpcById('prof_robledo');
+                if (profNpc) {
+                  engageNpcLook(profNpc.behavior, this.gridX, this.gridY, true);
+                  this.syncBillboardYaw(0);
+                }
+                this.game.saveData.flags.prof_intro_talked = true;
+                this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+                this.game.dialog.show(ES.dialogs.prof_welcome, () => {
+                  const pedSteps = expandGridWaypoints(
+                    guideNpc.behavior.gridX,
+                    guideNpc.behavior.gridY,
+                    VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS
+                  );
+                  this.escortCutscene = {
+                    guide: guideNpc,
+                    guideMove: this.createEscortMove(pedSteps, 'right'),
+                    playerMove: null,
+                    speed: 3.6,
+                    onDone: () => {
+                      this.game.saveData.flags.village_tour_done = true;
+                      this.game.saveManager.save(this.game.saveData);
+                      this.game.dialog.show(ES.dialogs.guide_choose_starter);
+                    },
+                  };
+                });
+              });
+            },
+          };
+        });
+      },
+    };
+  }
+
+  private stepEscortCutscene(dt: number): void {
+    const cutscene = this.escortCutscene;
+    if (!cutscene) return;
+
+    const { guide, speed } = cutscene;
+
+    if (cutscene.guideMove) {
+      const gm = cutscene.guideMove;
+      const b = guide.behavior;
+      if (!gm.activeStep) {
+        if (gm.stepIndex < gm.steps.length) {
+          const next = gm.steps[gm.stepIndex++];
+          gm.activeStep = next;
+          gm.progress = 0;
+          b.dir = next.dir;
+          b.moving = true;
+          b.moveFromX = b.gridX;
+          b.moveFromY = b.gridY;
+          b.moveToX = next.x;
+          b.moveToY = next.y;
+          b.moveProgress = 0;
+        }
+      }
+
+      if (gm.activeStep) {
+        gm.progress += dt * speed;
+        gm.walkAnimTimer += dt * speed;
+        if (gm.walkAnimTimer >= 0.25) {
+          gm.walkAnimTimer -= 0.25;
+          b.walkFrame = ((b.walkFrame + 1) % 4) as CharacterFrame;
+        }
+        b.moveProgress = Math.min(1, gm.progress);
+        if (gm.progress >= 1) {
+          b.moving = false;
+          b.moveProgress = 0;
+          b.walkFrame = 0;
+          b.gridX = gm.activeStep.x;
+          b.gridY = gm.activeStep.y;
+          b.moveFromX = b.gridX;
+          b.moveFromY = b.gridY;
+          b.moveToX = b.gridX;
+          b.moveToY = b.gridY;
+          gm.activeStep = null;
+          if (gm.stepIndex >= gm.steps.length) {
+            if (gm.finalDir) b.dir = gm.finalDir;
+            cutscene.guideMove = null;
+          }
+        }
+      }
+    }
+
+    if (cutscene.playerMove) {
+      const pm = cutscene.playerMove;
+      if (!pm.activeStep) {
+        if (pm.stepIndex < pm.steps.length) {
+          const next = pm.steps[pm.stepIndex++];
+          pm.activeStep = next;
+          pm.progress = 0;
+          this.dir = next.dir;
+          this.game.saveData.playerDir = next.dir;
+          this.moving = true;
+          this.moveFromX = this.gridX;
+          this.moveFromY = this.gridY;
+          this.moveToX = next.x;
+          this.moveToY = next.y;
+          this.moveProgress = 0;
+        }
+      }
+
+      if (pm.activeStep) {
+        pm.progress += dt * speed;
+        pm.walkAnimTimer += dt * speed;
+        if (pm.walkAnimTimer >= 0.25) {
+          pm.walkAnimTimer -= 0.25;
+          this.walkFrame = ((this.walkFrame + 1) % 4) as CharacterFrame;
+        }
+        this.moveProgress = Math.min(1, pm.progress);
+        if (pm.progress >= 1) {
+          this.moving = false;
+          this.moveProgress = 0;
+          this.walkFrame = 0;
+          this.gridX = pm.activeStep.x;
+          this.gridY = pm.activeStep.y;
+          this.game.saveData.playerX = this.gridX;
+          this.game.saveData.playerY = this.gridY;
+          this.game.saveData.stats.steps += 1;
+          updateVisibleTerrainChunks(this.chunks, this.gridX, this.gridY);
+          this.checkQuestCoordinates();
+          pm.activeStep = null;
+          if (pm.stepIndex >= pm.steps.length) {
+            if (pm.finalDir) {
+              this.dir = pm.finalDir;
+              this.game.saveData.playerDir = pm.finalDir;
+            }
+            cutscene.playerMove = null;
+          }
+        }
+      }
+    }
+
+    this.syncPlayerVisual();
+    this.syncBillboardYaw(dt);
+    this.game.cameraRig.follow(
+      this.playerMesh.position.x,
+      this.playerMesh.position.y,
+      this.playerMesh.position.z,
+      dt,
+      this.sampleTerrain
+    );
+
+    if (!cutscene.guideMove && !cutscene.playerMove) {
+      const done = cutscene.onDone;
+      this.escortCutscene = null;
+      done();
     }
   }
 
@@ -227,15 +589,56 @@ export class OverworldScene implements Scene {
     this.game.bus.emit('audio:music', { track: this.currentMap.music });
     this.refreshNpcVisibility();
     this.updateBadge();
+    this.updateStaminaHud();
+    this.refreshQuestHud(true);
+    this.refreshSideQuestMarkers();
+  }
+
+  private refreshQuestHud(force = false): void {
+    if (!this.currentMap) return;
+    this.hud.refreshQuestTracker(
+      this.game.saveData.questIndex,
+      this.currentMap,
+      this.playerMesh.position.x,
+      this.playerMesh.position.z,
+      this.game.cameraRig.getCurrentYaw(),
+      force
+    );
+  }
+
+  private checkQuestCoordinates(): void {
+    const idx = clampQuestIndex(this.game.saveData.questIndex);
+    const res = evaluateQuestProgress(idx, this.currentMap.id, this.gridX, this.gridY);
+    if (!res.updated || !res.completedQuest) {
+      this.refreshQuestHud(false);
+      return;
+    }
+
+    this.game.saveData.questIndex = res.nextIndex;
+    this.refreshQuestHud(true);
+    this.game.saveManager.save(this.game.saveData);
+    this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+
+    const nextQuest = getActiveQuest(res.nextIndex);
+    if (nextQuest) {
+      this.game.showToast(
+        `Misión completada: ${res.completedQuest.title} · Siguiente: ${nextQuest.title}`
+      );
+    } else {
+      this.game.showToast('¡Has completado todas las misiones de exploración!');
+    }
   }
 
   private updateBadge(): void {
-    const mapLabel = ES.maps[this.currentMap.id] ?? this.currentMap.id;
-    const repel =
-      this.game.saveData.repelSteps > 0
-        ? ` · 🛡️${this.game.saveData.repelSteps}`
-        : '';
-    this.hudBadge.textContent = `${mapLabel} · ${this.game.saveData.money} ◈${repel}`;
+    this.hud.updateBadge(
+      this.currentMap.id,
+      this.game.saveData.money,
+      this.game.saveData.repelSteps
+    );
+  }
+
+  private updateStaminaHud(): void {
+    this.hud.updateStamina(this.stamina);
   }
 
   private collectPropPlacements(map: MapDef): PropInstancePlacement[] {
@@ -266,6 +669,22 @@ export class OverworldScene implements Scene {
       for (let dz = -1; dz <= 1; dz++) {
         for (let dx = -1; dx <= 1; dx++) {
           occupied.add(`${npc.x + dx},${npc.y + dz}`);
+        }
+      }
+      if (npc.patrol?.waypoints) {
+        const wps = npc.patrol.waypoints;
+        for (let i = 0; i < wps.length; i++) {
+          const a = wps[i];
+          const b = wps[(i + 1) % wps.length];
+          const minX = Math.min(a.x, b.x);
+          const maxX = Math.max(a.x, b.x);
+          const minY = Math.min(a.y, b.y);
+          const maxY = Math.max(a.y, b.y);
+          for (let py = minY; py <= maxY; py++) {
+            for (let px = minX; px <= maxX; px++) {
+              occupied.add(`${px},${py}`);
+            }
+          }
         }
       }
     }
@@ -507,7 +926,6 @@ export class OverworldScene implements Scene {
     this.npcs = [];
     this.pickups = [];
     this.blockedTiles.clear();
-    this.lastSpriteYawStep = -1;
 
     const toRemove: THREE.Object3D[] = [];
     for (const child of this.scene.children) {
@@ -545,12 +963,39 @@ export class OverworldScene implements Scene {
     this.scene.background = skyTex;
     this.scene.fog = new THREE.Fog(horizonColor, 20, 48);
 
-    const atlasMat = new THREE.MeshBasicMaterial({
+    const isCave = map.music === 'cave';
+    const hemiSkyColor = isCave ? 0xd9c8ff : 0xfff8eb;
+    const hemiGroundColor = isCave ? 0x6f5894 : 0xa39c8e;
+    const hemiLight = new THREE.HemisphereLight(
+      hemiSkyColor,
+      hemiGroundColor,
+      isCave ? 1.85 : 2.05
+    );
+    this.scene.add(hemiLight);
+    this.mapDisposables.track(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(
+      isCave ? 0xffe0b8 : 0xfff7e6,
+      isCave ? 1.35 : 1.55
+    );
+    sunLight.position.set(4.5, 8.2, 3.5);
+    this.scene.add(sunLight);
+    this.mapDisposables.track(sunLight);
+
+    const atlasMat = new THREE.MeshStandardMaterial({
       map: this.game.assets.getTileAtlasTexture(),
+      normalMap: this.game.assets.getTileAtlasNormalTexture(),
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughness: 0.92,
+      metalness: 0.03,
       vertexColors: true,
     });
-    const grassMat = new THREE.MeshBasicMaterial({
+    const grassMat = new THREE.MeshStandardMaterial({
       map: this.game.assets.getGrassTexture(),
+      normalMap: this.game.assets.getGrassNormalTexture(),
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughness: 0.95,
+      metalness: 0.0,
       vertexColors: true,
     });
     this.mapDisposables.track(atlasMat);
@@ -569,8 +1014,13 @@ export class OverworldScene implements Scene {
     }
 
     // 2. Low-poly 3D buildings & 3D map-to-map route gates / cave portals
-    const buildingsGroup = buildBuildingsMesh(map, atlasMat, (kind) =>
-      this.game.assets.getRoofTexture(kind)
+    const buildingsGroup = buildBuildingsMesh(
+      map,
+      atlasMat,
+      (kind) => this.game.assets.getRoofTexture(kind),
+      (kind) => this.game.assets.getRoofNormalTexture(kind),
+      (key) => this.game.assets.getWallTexture(key),
+      (key) => this.game.assets.getWallNormalTexture(key)
     );
     if (buildingsGroup) {
       for (const child of buildingsGroup.children) {
@@ -583,8 +1033,13 @@ export class OverworldScene implements Scene {
       this.scene.add(buildingsGroup);
     }
 
-    const gatesGroup = buildMapGatesGroup(map, atlasMat, (kind) =>
-      this.game.assets.getRoofTexture(kind)
+    const gatesGroup = buildMapGatesGroup(
+      map,
+      atlasMat,
+      (kind) => this.game.assets.getRoofTexture(kind),
+      (kind) => this.game.assets.getRoofNormalTexture(kind),
+      (key) => this.game.assets.getWallTexture(key),
+      (key) => this.game.assets.getWallNormalTexture(key)
     );
     if (gatesGroup) {
       gatesGroup.traverse((obj) => {
@@ -625,11 +1080,16 @@ export class OverworldScene implements Scene {
     }
 
     // 5. NPC billboards placed at interpolated terrain height
-    const pedestalGeo = createBottomPivotPlaneGeometry(0.95, 0.95);
-    this.mapDisposables.track(pedestalGeo);
+    const capsulePedestalGeo = createBottomPivotPlaneGeometry(0.78, 1.04);
+    const healMachineGeo = createBottomPivotPlaneGeometry(0.92, 1.37);
+    const crystalPickupGeo = createBottomPivotPlaneGeometry(0.62, 1.06);
+    this.mapDisposables.track(capsulePedestalGeo);
+    this.mapDisposables.track(healMachineGeo);
+    this.mapDisposables.track(crystalPickupGeo);
 
     const yawStep = this.game.cameraRig.getYawStep();
-    for (const npcDef of map.npcs) {
+    for (let idx = 0; idx < map.npcs.length; idx++) {
+      const npcDef = map.npcs[idx];
       const isStarter = npcDef.starterIndex !== undefined;
       const isHealMachine = npcDef.id === 'arena_heal';
       const isPedestal = isStarter || isHealMachine;
@@ -653,12 +1113,68 @@ export class OverworldScene implements Scene {
       });
       this.mapDisposables.track(mat);
 
-      const mesh = new THREE.Mesh(isPedestal ? pedestalGeo : this.charGeo, mat);
+      const npcGeo = isStarter
+        ? capsulePedestalGeo
+        : isHealMachine
+          ? healMachineGeo
+          : this.charGeo;
+      const mesh = new THREE.Mesh(npcGeo, mat);
       const ny = getTileWorldY(map, npcDef.x, npcDef.y);
       mesh.position.set(npcDef.x, ny, npcDef.y);
       this.scene.add(mesh);
 
-      this.npcs.push({ def: npcDef, mesh, mat, visible: true, isPedestal });
+      let markerMesh: THREE.Mesh | undefined;
+      let markerMat: THREE.MeshBasicMaterial | undefined;
+      if (!isPedestal) {
+        markerMat = new THREE.MeshBasicMaterial({
+          map: this.questExclamationTex,
+          alphaTest: 0.5,
+          side: THREE.DoubleSide,
+        });
+        this.mapDisposables.track(markerMat);
+        markerMesh = new THREE.Mesh(this.markerGeo, markerMat);
+        markerMesh.position.set(npcDef.x, ny + 1.65, npcDef.y);
+        markerMesh.visible = false;
+        this.scene.add(markerMesh);
+      }
+
+      let npcInitX = npcDef.x;
+      let npcInitY = npcDef.y;
+      let npcInitDir = npcDef.dir;
+      if (npcDef.id === VILLA_GUIDE_NPC_ID) {
+        if (this.game.saveData.flags.starter_chosen) {
+          npcInitX = VILLA_GUIDE_REST_AFTER_STARTER.x;
+          npcInitY = VILLA_GUIDE_REST_AFTER_STARTER.y;
+          npcInitDir = VILLA_GUIDE_REST_AFTER_STARTER.dir;
+        } else if (this.game.saveData.flags.village_tour_done) {
+          npcInitX = VILLA_GUIDE_REST_BEFORE_STARTER.x;
+          npcInitY = VILLA_GUIDE_REST_BEFORE_STARTER.y;
+          npcInitDir = VILLA_GUIDE_REST_BEFORE_STARTER.dir;
+        }
+        const restY = getTileWorldY(map, npcInitX, npcInitY);
+        mesh.position.set(npcInitX, restY, npcInitY);
+        if (markerMesh) markerMesh.position.set(npcInitX, restY + 1.65, npcInitY);
+      }
+
+      const behavior = createNpcBehaviorState(
+        npcInitX,
+        npcInitY,
+        npcInitDir,
+        0.5 + (idx % 4) * 0.35
+      );
+
+      this.npcs.push({
+        def: npcDef,
+        mesh,
+        mat,
+        visible: true,
+        isPedestal,
+        behavior,
+        lastRelDir: relDir,
+        lastWalkFrame: 0,
+        markerMesh,
+        markerMat,
+      });
     }
 
     // 6. Ground pickups not yet collected
@@ -666,8 +1182,9 @@ export class OverworldScene implements Scene {
       if (this.game.saveData.collectedPickups.includes(pk.id)) continue;
       let mesh: THREE.Mesh | null = null;
       if (!pk.hidden) {
+        const isCrystal = pk.itemId === 'fragmento_alma';
         const tex = this.game.assets.getPropTexture(
-          pk.itemId === 'fragmento_alma' ? 'crystal' : 'capsule_pedestal'
+          isCrystal ? 'crystal' : 'capsule_pedestal'
         );
         const pkMat = new THREE.MeshBasicMaterial({
           map: tex,
@@ -675,7 +1192,7 @@ export class OverworldScene implements Scene {
           side: THREE.DoubleSide,
         });
         this.mapDisposables.track(pkMat);
-        mesh = new THREE.Mesh(pedestalGeo, pkMat);
+        mesh = new THREE.Mesh(isCrystal ? crystalPickupGeo : capsulePedestalGeo, pkMat);
         const py = getTileWorldY(map, pk.x, pk.y);
         mesh.position.set(pk.x, py, pk.y);
         this.scene.add(mesh);
@@ -700,6 +1217,8 @@ export class OverworldScene implements Scene {
     updateVisibleTerrainChunks(this.chunks, x, y);
     this.game.bus.emit('audio:music', { track: map.music });
     this.updateBadge();
+    this.checkQuestCoordinates();
+    this.refreshQuestHud(true);
 
     if (autoSave) {
       this.game.saveManager.save(this.game.saveData);
@@ -715,6 +1234,60 @@ export class OverworldScene implements Scene {
       npc.visible = show;
       npc.mesh.visible = show;
     }
+    this.refreshSideQuestMarkers();
+  }
+
+  private refreshSideQuestMarkers(): void {
+    const save = this.game.saveData;
+    ensureSaveSideQuestState(save);
+    for (const npc of this.npcs) {
+      if (!npc.markerMesh || !npc.markerMat) continue;
+      if (!npc.visible) {
+        npc.markerMesh.visible = false;
+        continue;
+      }
+      const state = getSideQuestForNpc(npc.def.id, save);
+      if (!state || !state.marker) {
+        npc.markerMesh.visible = false;
+        continue;
+      }
+      const targetTex =
+        state.marker === '?' ? this.questQuestionTex : this.questExclamationTex;
+      if (npc.markerMat.map !== targetTex) {
+        npc.markerMat.map = targetTex;
+        npc.markerMat.needsUpdate = true;
+      }
+      npc.markerMesh.visible = true;
+    }
+
+    let readyCount = 0;
+    let availableCount = 0;
+    let activeCount = 0;
+    let completedCount = 0;
+    for (const q of SIDE_QUESTS) {
+      const st = getSideQuestStatus(q, save);
+      if (st === 'completed') completedCount += 1;
+      else if (st === 'available') availableCount += 1;
+      else if (st === 'active') {
+        activeCount += 1;
+        if (q.evaluateProgress(save).ready) readyCount += 1;
+      }
+    }
+
+    this.hud.updateSideQuestBadge(
+      readyCount,
+      availableCount,
+      activeCount,
+      completedCount
+    );
+  }
+
+  private openQuestJournal(): void {
+    if (this.warpPhase !== 'idle' || this.isBlockingUiOpen()) return;
+    this.game.bus.emit('audio:sfx', { sfx: 'quest_journal' });
+    this.game.questJournal.open(this.game.saveData, () => {
+      this.refreshSideQuestMarkers();
+    });
   }
 
   private syncPlayerVisual(): void {
@@ -736,6 +1309,61 @@ export class OverworldScene implements Scene {
     }
   }
 
+  private isNpcStepBlocked(
+    self: RuntimeNpc,
+    fromX: number,
+    fromY: number,
+    nx: number,
+    ny: number
+  ): boolean {
+    if (!isTileWalkable(this.currentMap, fromX, fromY, nx, ny, this.blockedTiles)) {
+      return true;
+    }
+    if (nx === this.gridX && ny === this.gridY) return true;
+    if (this.moving && nx === this.moveToX && ny === this.moveToY) return true;
+
+    for (const w of this.currentMap.warps) {
+      if (w.x === nx && w.y === ny) return true;
+    }
+    for (const s of this.currentMap.signs) {
+      if (s.x === nx && s.y === ny) return true;
+    }
+    for (let i = 0; i < this.pickups.length; i++) {
+      const p = this.pickups[i];
+      if (!p.hidden && p.mesh?.visible && p.x === nx && p.y === ny) return true;
+    }
+    for (let i = 0; i < this.npcs.length; i++) {
+      const other = this.npcs[i];
+      if (other === self || !other.visible) continue;
+      if (other.behavior.gridX === nx && other.behavior.gridY === ny) return true;
+      if (
+        other.behavior.moving &&
+        other.behavior.moveToX === nx &&
+        other.behavior.moveToY === ny
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private updateNpcs(dt: number): void {
+    const paused = this.isBlockingUiOpen() || this.warpPhase !== 'idle';
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      if (!npc.visible || npc.isPedestal) continue;
+      stepNpcBehavior(npc.behavior, {
+        dt,
+        patrol: npc.def.patrol,
+        lookAtPlayerAfterTalk: npc.def.lookAtPlayerAfterTalk,
+        playerX: this.gridX,
+        playerY: this.gridY,
+        paused,
+        canStepTo: (fx, fy, tx, ty) => !this.isNpcStepBlocked(npc, fx, fy, tx, ty),
+      });
+    }
+  }
+
   private syncBillboardYaw(dt: number): void {
     this.sceneTime += dt;
     const yaw = this.game.cameraRig.getCurrentYaw();
@@ -745,21 +1373,44 @@ export class OverworldScene implements Scene {
     for (let i = 0; i < this.npcs.length; i++) {
       const npc = this.npcs[i];
       npc.mesh.rotation.y = yaw;
-      if (yawStep !== this.lastSpriteYawStep && !npc.isPedestal) {
-        const relDir = relativeSpriteDir(npc.def.dir, yawStep);
-        const tex = this.game.assets.getCharacterTexture(
-          npc.def.role as CharacterRole,
-          relDir,
-          0,
-          npc.def.trainerId ?? npc.def.id
-        );
-        if (npc.mat.map !== tex) {
-          npc.mat.map = tex;
-          npc.mat.needsUpdate = true;
+
+      if (!npc.isPedestal) {
+        const b = npc.behavior;
+        const nx = b.moving
+          ? THREE.MathUtils.lerp(b.moveFromX, b.moveToX, b.moveProgress)
+          : b.gridX;
+        const nz = b.moving
+          ? THREE.MathUtils.lerp(b.moveFromY, b.moveToY, b.moveProgress)
+          : b.gridY;
+        const ny = sampleInterpolatedHeight(this.currentMap, nx, nz);
+        npc.mesh.position.set(nx, ny, nz);
+
+        if (npc.markerMesh && npc.markerMesh.visible) {
+          npc.markerMesh.rotation.y = yaw;
+          npc.markerMesh.position.set(
+            nx,
+            ny + 1.65 + Math.sin(this.sceneTime * 4.5 + i) * 0.05,
+            nz
+          );
+        }
+
+        const relDir = relativeSpriteDir(b.dir, yawStep);
+        if (relDir !== npc.lastRelDir || b.walkFrame !== npc.lastWalkFrame) {
+          npc.lastRelDir = relDir;
+          npc.lastWalkFrame = b.walkFrame;
+          const tex = this.game.assets.getCharacterTexture(
+            npc.def.role as CharacterRole,
+            relDir,
+            b.walkFrame,
+            npc.def.trainerId ?? npc.def.id
+          );
+          if (npc.mat.map !== tex) {
+            npc.mat.map = tex;
+            npc.mat.needsUpdate = true;
+          }
         }
       }
     }
-    this.lastSpriteYawStep = yawStep;
 
     for (let i = 0; i < this.pickups.length; i++) {
       const m = this.pickups[i].mesh;
@@ -773,6 +1424,17 @@ export class OverworldScene implements Scene {
     if (this.clouds.length > 0) {
       updateCloudBillboards(this.clouds, yaw, dt);
     }
+
+    if (this.currentMap) {
+      this.hud.updateQuestArrow(
+        this.game.saveData.questIndex,
+        this.currentMap,
+        playerX,
+        playerZ,
+        yaw,
+        false
+      );
+    }
   }
 
   private isTileBlocked(nx: number, ny: number): boolean {
@@ -781,7 +1443,11 @@ export class OverworldScene implements Scene {
     }
     for (let i = 0; i < this.npcs.length; i++) {
       const n = this.npcs[i];
-      if (n.visible && n.def.x === nx && n.def.y === ny) return true;
+      if (!n.visible) continue;
+      if (n.behavior.gridX === nx && n.behavior.gridY === ny) return true;
+      if (n.behavior.moving && n.behavior.moveToX === nx && n.behavior.moveToY === ny) {
+        return true;
+      }
     }
     for (let i = 0; i < this.pickups.length; i++) {
       const p = this.pickups[i];
@@ -794,14 +1460,16 @@ export class OverworldScene implements Scene {
     return (
       this.game.dialog.isOpen() ||
       this.game.menu.isOpen() ||
-      this.game.partyScreen.root.classList.contains('flex') ||
-      this.game.bagScreen.root.classList.contains('flex') ||
-      this.game.bestiaryScreen.root.classList.contains('flex') ||
-      this.game.storageScreen.root.classList.contains('flex') ||
-      this.game.summary.root.classList.contains('flex') ||
-      this.game.endingModal.root.classList.contains('flex') ||
-      this.game.arGachaModal.root.classList.contains('flex') ||
-      this.game.vesselScreen.root.classList.contains('flex')
+      this.game.partyScreen.isOpen() ||
+      this.game.bagScreen.isOpen() ||
+      this.game.bestiaryScreen.isOpen() ||
+      this.game.cardAlbumScreen.isOpen() ||
+      this.game.storageScreen.isOpen() ||
+      this.game.summary.isOpen() ||
+      this.game.endingModal.isOpen() ||
+      this.game.arGachaModal.isOpen() ||
+      this.game.vesselScreen.isOpen() ||
+      this.game.questJournal.isOpen()
     );
   }
 
@@ -818,43 +1486,51 @@ export class OverworldScene implements Scene {
 
     this.game.dialog.update(dt, this.game.input);
 
-    if (this.zoneBannerTimer > 0) {
-      this.zoneBannerTimer -= dt;
-      if (this.zoneBannerTimer <= 0) {
-        this.zoneBanner.style.opacity = '0';
-      }
-    }
+    this.hud.stepZoneBanner(dt);
 
     if (this.warpPhase !== 'idle') {
       this.warpTimer += dt;
       const fadeDuration = 0.18;
       if (this.warpPhase === 'out') {
         const alpha = Math.min(1, this.warpTimer / fadeDuration);
-        this.warpCurtain.style.opacity = alpha.toFixed(3);
+        this.hud.setWarpAlpha(alpha);
         if (this.warpTimer >= fadeDuration && this.pendingWarp) {
           const w = this.pendingWarp;
           this.pendingWarp = null;
           this.loadMap(w.targetMap, w.targetX, w.targetY, w.dir, true);
-          this.showZoneBanner(w.targetMap);
+          this.hud.showZoneBanner(w.targetMap);
           this.warpPhase = 'in';
           this.warpTimer = 0;
         }
       } else {
         const alpha = Math.max(0, 1 - this.warpTimer / fadeDuration);
-        this.warpCurtain.style.opacity = alpha.toFixed(3);
+        this.hud.setWarpAlpha(alpha);
         if (this.warpTimer >= fadeDuration) {
           this.warpPhase = 'idle';
-          this.warpCurtain.style.opacity = '0';
+          this.hud.setWarpAlpha(0);
         }
       }
       this.syncBillboardYaw(dt);
+      stepStamina(this.stamina, { dt, moving: false, sprintHeld: false });
+      this.updateStaminaHud();
+      return;
+    }
+
+    if (this.escortCutscene) {
+      this.stepEscortCutscene(dt);
+      stepStamina(this.stamina, { dt, moving: false, sprintHeld: false });
+      this.updateStaminaHud();
       return;
     }
 
     if (this.isBlockingUiOpen()) {
       this.syncBillboardYaw(dt);
+      stepStamina(this.stamina, { dt, moving: false, sprintHeld: false });
+      this.updateStaminaHud();
       return;
     }
+
+    this.updateNpcs(dt);
 
     if (this.game.input.justPressed('start')) {
       this.openPauseMenu();
@@ -870,8 +1546,17 @@ export class OverworldScene implements Scene {
       this.game.bus.emit('audio:sfx', { sfx: 'menu' });
     }
 
+    const sprintHeld =
+      this.game.input.isHeld('sprint') || this.game.input.isHeld('b');
+
     if (this.moving) {
-      const speed = this.game.input.isHeld('b') ? 7.4 : 4.4;
+      const staminaStep = stepStamina(this.stamina, {
+        dt,
+        moving: true,
+        sprintHeld,
+      });
+      this.updateStaminaHud();
+      const speed = staminaStep.speed;
       this.moveProgress += dt * speed;
       this.walkAnimTimer += dt * speed;
       if (this.walkAnimTimer >= 0.25) {
@@ -907,6 +1592,9 @@ export class OverworldScene implements Scene {
       );
       return;
     }
+
+    stepStamina(this.stamina, { dt, moving: false, sprintHeld });
+    this.updateStaminaHud();
 
     this.walkFrame = 0;
     this.syncPlayerVisual();
@@ -950,6 +1638,9 @@ export class OverworldScene implements Scene {
   }
 
   private onStepCompleted(): void {
+    // 0. Evaluate coordinate-triggered quest objective
+    this.checkQuestCoordinates();
+
     // 1. Check warps
     const warp = this.currentMap.warps.find(
       (w) => w.x === this.gridX && w.y === this.gridY
@@ -1004,17 +1695,39 @@ export class OverworldScene implements Scene {
     }
   }
 
-  private findSpottingTrainer(): NpcDef | null {
+  private isSightStepClear(observer: RuntimeNpc, fx: number, fy: number, nx: number, ny: number): boolean {
+    if (!isTileWalkable(this.currentMap, fx, fy, nx, ny, this.blockedTiles)) {
+      return false;
+    }
+    for (const s of this.currentMap.signs) {
+      if (s.x === nx && s.y === ny) return false;
+    }
+    for (let i = 0; i < this.pickups.length; i++) {
+      const p = this.pickups[i];
+      if (!p.hidden && p.mesh?.visible && p.x === nx && p.y === ny) return false;
+    }
+    for (let i = 0; i < this.npcs.length; i++) {
+      const other = this.npcs[i];
+      if (other === observer || !other.visible) continue;
+      if (other.behavior.gridX === nx && other.behavior.gridY === ny) return false;
+    }
+    return true;
+  }
+
+  private findSpottingTrainer(): RuntimeNpc | null {
     for (const npc of this.npcs) {
       if (!npc.visible || !npc.def.trainerId || !npc.def.sightRange) continue;
       if (this.game.saveData.defeatedTrainers.includes(npc.def.trainerId)) continue;
-      const range = npc.def.sightRange;
-      const dx = this.gridX - npc.def.x;
-      const dy = this.gridY - npc.def.y;
-      if (npc.def.dir === 'up' && dx === 0 && dy < 0 && -dy <= range) return npc.def;
-      if (npc.def.dir === 'down' && dx === 0 && dy > 0 && dy <= range) return npc.def;
-      if (npc.def.dir === 'left' && dy === 0 && dx < 0 && -dx <= range) return npc.def;
-      if (npc.def.dir === 'right' && dy === 0 && dx > 0 && dx <= range) return npc.def;
+      const spotted = hasTrainerLineOfSight(
+        npc.behavior.gridX,
+        npc.behavior.gridY,
+        npc.behavior.dir,
+        npc.def.sightRange,
+        this.gridX,
+        this.gridY,
+        (fx, fy, nx, ny) => this.isSightStepClear(npc, fx, fy, nx, ny)
+      );
+      if (spotted) return npc;
     }
     return null;
   }
@@ -1044,13 +1757,23 @@ export class OverworldScene implements Scene {
       onDone: (outcome) => {
         if (outcome === 'lose') {
           this.handleBlackout();
+        } else {
+          this.refreshSideQuestMarkers();
         }
       },
     });
   }
 
-  private triggerTrainerBattle(npc: NpcDef): void {
+  private triggerTrainerBattle(runtimeNpc: RuntimeNpc): void {
+    const npc = runtimeNpc.def;
     if (!npc.trainerId) return;
+    engageNpcLook(
+      runtimeNpc.behavior,
+      this.gridX,
+      this.gridY,
+      Boolean(npc.lookAtPlayerAfterTalk)
+    );
+    this.syncBillboardYaw(0);
     const trainer = getTrainer(npc.trainerId);
     const enemyParty = trainer.party.map((spec) =>
       createCreature(spec.speciesId, spec.level, this.game.rng)
@@ -1134,9 +1857,14 @@ export class OverworldScene implements Scene {
       return;
     }
 
-    const npc = this.npcs.find((n) => n.visible && n.def.x === tx && n.def.y === ty);
+    const npc = this.npcs.find(
+      (n) =>
+        n.visible &&
+        ((n.behavior.gridX === tx && n.behavior.gridY === ty) ||
+          (n.behavior.moving && n.behavior.moveToX === tx && n.behavior.moveToY === ty))
+    );
     if (!npc) return;
-    this.interactNpc(npc.def);
+    this.interactNpc(npc);
   }
 
   private collectPickup(pickup: RuntimePickup): void {
@@ -1171,8 +1899,19 @@ export class OverworldScene implements Scene {
     return `Botín: +2 piezas de ${def.name} (${res.currentShards}/${SHARDS_PER_CONTAINER})`;
   }
 
-  private interactNpc(npc: NpcDef): void {
+  private interactNpc(runtimeNpc: RuntimeNpc): void {
+    const npc = runtimeNpc.def;
     this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+
+    if (!runtimeNpc.isPedestal) {
+      engageNpcLook(
+        runtimeNpc.behavior,
+        this.gridX,
+        this.gridY,
+        Boolean(npc.lookAtPlayerAfterTalk)
+      );
+      this.syncBillboardYaw(0);
+    }
 
     if (npc.starterIndex !== undefined) {
       if (this.game.saveData.flags.starter_chosen) {
@@ -1215,7 +1954,7 @@ export class OverworldScene implements Scene {
       } else if (this.game.saveData.party.length === 0) {
         this.game.dialog.show(ES.dialogs.prof_welcome);
       } else {
-        this.triggerTrainerBattle(npc);
+        this.triggerTrainerBattle(runtimeNpc);
       }
       return;
     }
@@ -1232,6 +1971,7 @@ export class OverworldScene implements Scene {
     if (npc.healOnTalk) {
       if (npc.id === 'prof_robledo') {
         if (!this.game.saveData.flags.starter_chosen) {
+          this.game.saveData.flags.prof_intro_talked = true;
           this.game.dialog.show(ES.dialogs.prof_welcome);
           return;
         }
@@ -1288,6 +2028,62 @@ export class OverworldScene implements Scene {
       return;
     }
 
+    const sideState = getSideQuestForNpc(npc.id, this.game.saveData);
+    if (sideState) {
+      const { quest, status, progress } = sideState;
+      if (status === 'active' && progress.ready) {
+        const reward = completeSideQuest(this.game.saveData, quest.id);
+        if (reward) {
+          this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
+          this.updateBadge();
+          this.refreshSideQuestMarkers();
+          this.game.saveManager.save(this.game.saveData);
+          this.game.dialog.show(quest.completeDialogue, () => {
+            this.game.showToast(
+              `Recompensa: +${reward.rewardGold} Oro y ${reward.blueprint.name}`
+            );
+          });
+          return;
+        }
+      }
+      if (status === 'available') {
+        this.game.dialog.show(quest.offerDialogue, undefined, [
+          {
+            label: '¡Aceptar misión!',
+            onSelect: () => {
+              if (acceptSideQuest(this.game.saveData, quest.id)) {
+                this.game.bus.emit('audio:sfx', { sfx: 'quest_accept' });
+                this.refreshSideQuestMarkers();
+                this.game.saveManager.save(this.game.saveData);
+                this.game.showToast(`Misión aceptada: ${quest.title}`);
+              }
+            },
+          },
+          { label: 'Más tarde', onSelect: () => {} },
+        ]);
+        return;
+      }
+      if (status === 'active') {
+        this.game.dialog.show(`${quest.progressDialogue} (${progress.label})`);
+        return;
+      }
+      if (status === 'completed') {
+        this.game.dialog.show(quest.afterDialogue);
+        return;
+      }
+    }
+
+    if (npc.id === VILLA_GUIDE_NPC_ID) {
+      if (this.game.saveData.flags.starter_chosen) {
+        this.game.dialog.show(ES.dialogs.guide_after_starter);
+      } else if (this.game.saveData.flags.prof_intro_talked) {
+        this.game.dialog.show(ES.dialogs.guide_remind_starter);
+      } else {
+        this.game.dialog.show(ES.dialogs.guide_remind_prof);
+      }
+      return;
+    }
+
     const dialogText = (ES.dialogs as Record<string, unknown>)[npc.dialogKey];
     if (typeof dialogText === 'string') {
       this.game.dialog.show(dialogText);
@@ -1317,7 +2113,10 @@ export class OverworldScene implements Scene {
             this.updateBadge();
             this.game.saveManager.save(this.game.saveData);
           },
-          () => {}
+          () => {},
+          () => {
+            this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+          }
         );
       },
       onBestiary: () => {
@@ -1332,6 +2131,9 @@ export class OverworldScene implements Scene {
             this.game.saveManager.save(this.game.saveData);
           }
         );
+      },
+      onQuests: () => {
+        this.openQuestJournal();
       },
       onSave: () => {
         const ok = this.game.saveManager.save(this.game.saveData);
@@ -1428,22 +2230,12 @@ export class OverworldScene implements Scene {
     );
   }
 
-  private showZoneBanner(mapId: string): void {
-    const label = ES.maps[mapId] ?? mapId;
-    this.zoneBanner.innerHTML = `<div class="text-[11px] font-bold tracking-widest uppercase text-resonant-gold">${label}</div>`;
-    this.zoneBanner.style.opacity = '1';
-    this.zoneBannerTimer = 2.2;
-  }
-
   render(): void {
     this.game.renderer.render(this.scene, this.game.cameraRig.camera);
   }
 
   onExit(): void {
-    this.game.uiLayers.unregister('overworldHud');
-    this.hudBadge.remove();
-    this.zoneBanner.remove();
-    this.warpCurtain.remove();
+    this.hud.unmount(this.game.uiLayers);
     this.mapDisposables.disposeAll();
     this.persistentDisposables.disposeAll();
   }

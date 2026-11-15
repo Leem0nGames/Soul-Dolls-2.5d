@@ -132,6 +132,7 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
       dir: 'down',
       dialogKey: 'healer_clara',
       healOnTalk: true,
+      lookAtPlayerAfterTalk: true,
     },
     {
       id: 'merchant_mateo',
@@ -141,6 +142,7 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
       y: 22,
       dir: 'down',
       dialogKey: 'merchant_mateo',
+      lookAtPlayerAfterTalk: true,
       shopStock: [
         'pocion',
         'superpocion',
@@ -168,6 +170,18 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
       y: 12,
       dir: 'down',
       dialogKey: 'villager_bruma_1',
+      patrol: {
+        waypoints: [
+          { x: 24, y: 12 },
+          { x: 22, y: 12 },
+          { x: 22, y: 13 },
+          { x: 25, y: 13 },
+          { x: 25, y: 12 },
+        ],
+        speed: 1.35,
+        pauseSec: 1.6,
+      },
+      lookAtPlayerAfterTalk: true,
     },
     {
       id: 'bruma_npc_2',
@@ -177,6 +191,17 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
       y: 22,
       dir: 'left',
       dialogKey: 'villager_bruma_2',
+      patrol: {
+        waypoints: [
+          { x: 39, y: 22 },
+          { x: 42, y: 22 },
+          { x: 42, y: 24 },
+          { x: 39, y: 24 },
+        ],
+        speed: 1.45,
+        pauseSec: 1.4,
+      },
+      lookAtPlayerAfterTalk: true,
     },
   ],
   signs: [{ x: 21, y: 31, textKey: 'sign_bruma' }],
