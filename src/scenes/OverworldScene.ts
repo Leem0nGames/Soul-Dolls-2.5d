@@ -34,6 +34,18 @@ import {
   type NpcBehaviorState,
 } from '../domain/NpcBehavior.ts';
 import {
+  expandGridWaypoints,
+  VILLA_GUIDE_NPC_ID,
+  VILLA_GUIDE_REST_AFTER_STARTER,
+  VILLA_GUIDE_REST_BEFORE_STARTER,
+  VILLA_TOUR_LAB_GUIDE_WAYPOINTS,
+  VILLA_TOUR_LAB_PLAYER_WAYPOINTS,
+  VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS,
+  VILLA_TOUR_PLAZA_GUIDE_WAYPOINTS,
+  VILLA_TOUR_PLAZA_PLAYER_WAYPOINTS,
+  type GridStep,
+} from '../domain/Tutorial.ts';
+import {
   clampQuestIndex,
   evaluateQuestProgress,
   getActiveQuest,
@@ -106,6 +118,23 @@ interface RuntimeNpc {
   lastWalkFrame?: CharacterFrame;
   markerMesh?: THREE.Mesh;
   markerMat?: THREE.MeshBasicMaterial;
+}
+
+interface EscortActorMove {
+  steps: GridStep[];
+  stepIndex: number;
+  activeStep: GridStep | null;
+  progress: number;
+  walkAnimTimer: number;
+  finalDir?: Direction;
+}
+
+interface VillageEscortCutscene {
+  guide: RuntimeNpc;
+  guideMove: EscortActorMove | null;
+  playerMove: EscortActorMove | null;
+  speed: number;
+  onDone: () => void;
 }
 
 function createQuestMarkerTexture(symbol: '!' | '?'): THREE.CanvasTexture {
@@ -229,6 +258,7 @@ export class OverworldScene implements Scene {
   } | null = null;
   private warpPhase: 'idle' | 'out' | 'in' = 'idle';
   private warpTimer = 0;
+  private escortCutscene: VillageEscortCutscene | null = null;
 
   private readonly sampleTerrain = (wx: number, wz: number): number =>
     sampleInterpolatedHeight(this.currentMap, wx, wz);
@@ -281,12 +311,262 @@ export class OverworldScene implements Scene {
     ensureSaveSideQuestState(save);
     this.loadMap(save.mapId, save.playerX, save.playerY, save.playerDir, false);
 
-    if (!save.flags.isekai_intro_seen) {
+    if (
+      save.mapId === 'villa_origen' &&
+      !save.flags.village_tour_done &&
+      !save.flags.starter_chosen
+    ) {
+      save.flags.isekai_intro_seen = true;
+      const guideNpc = this.findNpcById(VILLA_GUIDE_NPC_ID);
+      this.game.dialog.show(ES.dialogs.isekai_intro_1, () => {
+        if (guideNpc) {
+          this.promptVillageGuideTour(guideNpc);
+        } else {
+          save.flags.village_tour_done = true;
+          this.game.dialog.show(ES.dialogs.isekai_intro_2);
+        }
+      });
+    } else if (!save.flags.isekai_intro_seen) {
       save.flags.isekai_intro_seen = true;
       this.game.saveManager.save(save);
       this.game.dialog.show(ES.dialogs.isekai_intro_1, () => {
         this.game.dialog.show(ES.dialogs.isekai_intro_2);
       });
+    }
+  }
+
+  private findNpcById(id: string): RuntimeNpc | undefined {
+    return this.npcs.find((n) => n.def.id === id && n.visible);
+  }
+
+  private createEscortMove(
+    steps: GridStep[],
+    finalDir?: Direction
+  ): EscortActorMove | null {
+    if (steps.length === 0) return null;
+    return {
+      steps,
+      stepIndex: 0,
+      activeStep: null,
+      progress: 0,
+      walkAnimTimer: 0,
+      finalDir,
+    };
+  }
+
+  private promptVillageGuideTour(guideNpc: RuntimeNpc): void {
+    this.game.dialog.show(ES.dialogs.guide_welcome, undefined, [
+      {
+        label: '¡Sí, guíame!',
+        onSelect: () => this.startVillageEscortTour(guideNpc),
+      },
+      {
+        label: 'Iré por mi cuenta',
+        onSelect: () => {
+          this.game.saveData.flags.village_tour_done = true;
+          this.game.saveManager.save(this.game.saveData);
+          const steps = expandGridWaypoints(
+            guideNpc.behavior.gridX,
+            guideNpc.behavior.gridY,
+            [VILLA_GUIDE_REST_BEFORE_STARTER]
+          );
+          this.escortCutscene = {
+            guide: guideNpc,
+            guideMove: this.createEscortMove(steps, VILLA_GUIDE_REST_BEFORE_STARTER.dir),
+            playerMove: null,
+            speed: 3.6,
+            onDone: () => {
+              this.game.dialog.show(ES.dialogs.guide_skip_tour);
+            },
+          };
+        },
+      },
+    ]);
+  }
+
+  private startVillageEscortTour(guideNpc: RuntimeNpc): void {
+    const plazaGuideSteps = expandGridWaypoints(
+      guideNpc.behavior.gridX,
+      guideNpc.behavior.gridY,
+      VILLA_TOUR_PLAZA_GUIDE_WAYPOINTS
+    );
+    const plazaPlayerSteps = expandGridWaypoints(
+      this.gridX,
+      this.gridY,
+      VILLA_TOUR_PLAZA_PLAYER_WAYPOINTS
+    );
+
+    this.escortCutscene = {
+      guide: guideNpc,
+      guideMove: this.createEscortMove(plazaGuideSteps, 'right'),
+      playerMove: this.createEscortMove(plazaPlayerSteps, 'left'),
+      speed: 3.3,
+      onDone: () => {
+        this.game.dialog.show(ES.dialogs.guide_tour_plaza, () => {
+          const labGuideSteps = expandGridWaypoints(
+            guideNpc.behavior.gridX,
+            guideNpc.behavior.gridY,
+            VILLA_TOUR_LAB_GUIDE_WAYPOINTS
+          );
+          const labPlayerSteps = expandGridWaypoints(
+            this.gridX,
+            this.gridY,
+            VILLA_TOUR_LAB_PLAYER_WAYPOINTS
+          );
+          this.escortCutscene = {
+            guide: guideNpc,
+            guideMove: this.createEscortMove(labGuideSteps, 'left'),
+            playerMove: this.createEscortMove(labPlayerSteps, 'up'),
+            speed: 3.4,
+            onDone: () => {
+              this.game.dialog.show(ES.dialogs.guide_tour_professor, () => {
+                const profNpc = this.findNpcById('prof_robledo');
+                if (profNpc) {
+                  engageNpcLook(profNpc.behavior, this.gridX, this.gridY, true);
+                  this.syncBillboardYaw(0);
+                }
+                this.game.saveData.flags.prof_intro_talked = true;
+                this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+                this.game.dialog.show(ES.dialogs.prof_welcome, () => {
+                  const pedSteps = expandGridWaypoints(
+                    guideNpc.behavior.gridX,
+                    guideNpc.behavior.gridY,
+                    VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS
+                  );
+                  this.escortCutscene = {
+                    guide: guideNpc,
+                    guideMove: this.createEscortMove(pedSteps, 'right'),
+                    playerMove: null,
+                    speed: 3.6,
+                    onDone: () => {
+                      this.game.saveData.flags.village_tour_done = true;
+                      this.game.saveManager.save(this.game.saveData);
+                      this.game.dialog.show(ES.dialogs.guide_choose_starter);
+                    },
+                  };
+                });
+              });
+            },
+          };
+        });
+      },
+    };
+  }
+
+  private stepEscortCutscene(dt: number): void {
+    const cutscene = this.escortCutscene;
+    if (!cutscene) return;
+
+    const { guide, speed } = cutscene;
+
+    if (cutscene.guideMove) {
+      const gm = cutscene.guideMove;
+      const b = guide.behavior;
+      if (!gm.activeStep) {
+        if (gm.stepIndex < gm.steps.length) {
+          const next = gm.steps[gm.stepIndex++];
+          gm.activeStep = next;
+          gm.progress = 0;
+          b.dir = next.dir;
+          b.moving = true;
+          b.moveFromX = b.gridX;
+          b.moveFromY = b.gridY;
+          b.moveToX = next.x;
+          b.moveToY = next.y;
+          b.moveProgress = 0;
+        }
+      }
+
+      if (gm.activeStep) {
+        gm.progress += dt * speed;
+        gm.walkAnimTimer += dt * speed;
+        if (gm.walkAnimTimer >= 0.25) {
+          gm.walkAnimTimer -= 0.25;
+          b.walkFrame = ((b.walkFrame + 1) % 4) as CharacterFrame;
+        }
+        b.moveProgress = Math.min(1, gm.progress);
+        if (gm.progress >= 1) {
+          b.moving = false;
+          b.moveProgress = 0;
+          b.walkFrame = 0;
+          b.gridX = gm.activeStep.x;
+          b.gridY = gm.activeStep.y;
+          b.moveFromX = b.gridX;
+          b.moveFromY = b.gridY;
+          b.moveToX = b.gridX;
+          b.moveToY = b.gridY;
+          gm.activeStep = null;
+          if (gm.stepIndex >= gm.steps.length) {
+            if (gm.finalDir) b.dir = gm.finalDir;
+            cutscene.guideMove = null;
+          }
+        }
+      }
+    }
+
+    if (cutscene.playerMove) {
+      const pm = cutscene.playerMove;
+      if (!pm.activeStep) {
+        if (pm.stepIndex < pm.steps.length) {
+          const next = pm.steps[pm.stepIndex++];
+          pm.activeStep = next;
+          pm.progress = 0;
+          this.dir = next.dir;
+          this.game.saveData.playerDir = next.dir;
+          this.moving = true;
+          this.moveFromX = this.gridX;
+          this.moveFromY = this.gridY;
+          this.moveToX = next.x;
+          this.moveToY = next.y;
+          this.moveProgress = 0;
+        }
+      }
+
+      if (pm.activeStep) {
+        pm.progress += dt * speed;
+        pm.walkAnimTimer += dt * speed;
+        if (pm.walkAnimTimer >= 0.25) {
+          pm.walkAnimTimer -= 0.25;
+          this.walkFrame = ((this.walkFrame + 1) % 4) as CharacterFrame;
+        }
+        this.moveProgress = Math.min(1, pm.progress);
+        if (pm.progress >= 1) {
+          this.moving = false;
+          this.moveProgress = 0;
+          this.walkFrame = 0;
+          this.gridX = pm.activeStep.x;
+          this.gridY = pm.activeStep.y;
+          this.game.saveData.playerX = this.gridX;
+          this.game.saveData.playerY = this.gridY;
+          this.game.saveData.stats.steps += 1;
+          updateVisibleTerrainChunks(this.chunks, this.gridX, this.gridY);
+          this.checkQuestCoordinates();
+          pm.activeStep = null;
+          if (pm.stepIndex >= pm.steps.length) {
+            if (pm.finalDir) {
+              this.dir = pm.finalDir;
+              this.game.saveData.playerDir = pm.finalDir;
+            }
+            cutscene.playerMove = null;
+          }
+        }
+      }
+    }
+
+    this.syncPlayerVisual();
+    this.syncBillboardYaw(dt);
+    this.game.cameraRig.follow(
+      this.playerMesh.position.x,
+      this.playerMesh.position.y,
+      this.playerMesh.position.z,
+      dt,
+      this.sampleTerrain
+    );
+
+    if (!cutscene.guideMove && !cutscene.playerMove) {
+      const done = cutscene.onDone;
+      this.escortCutscene = null;
+      done();
     }
   }
 
@@ -738,7 +1018,9 @@ export class OverworldScene implements Scene {
       map,
       atlasMat,
       (kind) => this.game.assets.getRoofTexture(kind),
-      (kind) => this.game.assets.getRoofNormalTexture(kind)
+      (kind) => this.game.assets.getRoofNormalTexture(kind),
+      (key) => this.game.assets.getWallTexture(key),
+      (key) => this.game.assets.getWallNormalTexture(key)
     );
     if (buildingsGroup) {
       for (const child of buildingsGroup.children) {
@@ -755,7 +1037,9 @@ export class OverworldScene implements Scene {
       map,
       atlasMat,
       (kind) => this.game.assets.getRoofTexture(kind),
-      (kind) => this.game.assets.getRoofNormalTexture(kind)
+      (kind) => this.game.assets.getRoofNormalTexture(kind),
+      (key) => this.game.assets.getWallTexture(key),
+      (key) => this.game.assets.getWallNormalTexture(key)
     );
     if (gatesGroup) {
       gatesGroup.traverse((obj) => {
@@ -854,10 +1138,28 @@ export class OverworldScene implements Scene {
         this.scene.add(markerMesh);
       }
 
+      let npcInitX = npcDef.x;
+      let npcInitY = npcDef.y;
+      let npcInitDir = npcDef.dir;
+      if (npcDef.id === VILLA_GUIDE_NPC_ID) {
+        if (this.game.saveData.flags.starter_chosen) {
+          npcInitX = VILLA_GUIDE_REST_AFTER_STARTER.x;
+          npcInitY = VILLA_GUIDE_REST_AFTER_STARTER.y;
+          npcInitDir = VILLA_GUIDE_REST_AFTER_STARTER.dir;
+        } else if (this.game.saveData.flags.village_tour_done) {
+          npcInitX = VILLA_GUIDE_REST_BEFORE_STARTER.x;
+          npcInitY = VILLA_GUIDE_REST_BEFORE_STARTER.y;
+          npcInitDir = VILLA_GUIDE_REST_BEFORE_STARTER.dir;
+        }
+        const restY = getTileWorldY(map, npcInitX, npcInitY);
+        mesh.position.set(npcInitX, restY, npcInitY);
+        if (markerMesh) markerMesh.position.set(npcInitX, restY + 1.65, npcInitY);
+      }
+
       const behavior = createNpcBehaviorState(
-        npcDef.x,
-        npcDef.y,
-        npcDef.dir,
+        npcInitX,
+        npcInitY,
+        npcInitDir,
         0.5 + (idx % 4) * 0.35
       );
 
@@ -1209,6 +1511,13 @@ export class OverworldScene implements Scene {
         }
       }
       this.syncBillboardYaw(dt);
+      stepStamina(this.stamina, { dt, moving: false, sprintHeld: false });
+      this.updateStaminaHud();
+      return;
+    }
+
+    if (this.escortCutscene) {
+      this.stepEscortCutscene(dt);
       stepStamina(this.stamina, { dt, moving: false, sprintHeld: false });
       this.updateStaminaHud();
       return;
@@ -1662,6 +1971,7 @@ export class OverworldScene implements Scene {
     if (npc.healOnTalk) {
       if (npc.id === 'prof_robledo') {
         if (!this.game.saveData.flags.starter_chosen) {
+          this.game.saveData.flags.prof_intro_talked = true;
           this.game.dialog.show(ES.dialogs.prof_welcome);
           return;
         }
@@ -1761,6 +2071,17 @@ export class OverworldScene implements Scene {
         this.game.dialog.show(quest.afterDialogue);
         return;
       }
+    }
+
+    if (npc.id === VILLA_GUIDE_NPC_ID) {
+      if (this.game.saveData.flags.starter_chosen) {
+        this.game.dialog.show(ES.dialogs.guide_after_starter);
+      } else if (this.game.saveData.flags.prof_intro_talked) {
+        this.game.dialog.show(ES.dialogs.guide_remind_starter);
+      } else {
+        this.game.dialog.show(ES.dialogs.guide_remind_prof);
+      }
+      return;
     }
 
     const dialogText = (ES.dialogs as Record<string, unknown>)[npc.dialogKey];

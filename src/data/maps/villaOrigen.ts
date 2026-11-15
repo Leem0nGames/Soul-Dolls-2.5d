@@ -73,7 +73,7 @@ export const MAP_VILLA_ORIGEN: MapDef = {
   props: [
     { kind: 'well', x: 20, z: 24 },
     { kind: 'lamp_wood', x: 22, z: 20 },
-    { kind: 'lamp_wood', x: 26, z: 20 },
+    { kind: 'lamp_wood', x: 28, z: 19 },
     { kind: 'lamp_post', x: 22, z: 30 },
     { kind: 'lamp_post', x: 26, z: 30 },
     { kind: 'lamp_stone', x: 30, z: 29 },
@@ -116,6 +116,16 @@ export const MAP_VILLA_ORIGEN: MapDef = {
       dir: 'down',
       dialogKey: 'prof_welcome',
       healOnTalk: true,
+      lookAtPlayerAfterTalk: true,
+    },
+    {
+      id: 'guia_villa',
+      name: 'Guía Lía',
+      role: 'trainer',
+      x: 24,
+      y: 24,
+      dir: 'down',
+      dialogKey: 'guide_remind_starter',
       lookAtPlayerAfterTalk: true,
     },
     {

@@ -76,7 +76,7 @@ export class PixelRenderer {
       alpha: false,
     });
     this.webgl.outputColorSpace = THREE.SRGBColorSpace;
-    this.webgl.setPixelRatio(1);
+    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.webgl.shadowMap.enabled = false;
 
     this.canvas = this.webgl.domElement;

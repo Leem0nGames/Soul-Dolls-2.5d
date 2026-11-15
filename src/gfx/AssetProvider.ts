@@ -5,6 +5,10 @@ import { generateCreatureSpriteCanvas } from './CreatureSpriteGen.ts';
 import { generateItemIconCanvas } from './ItemIconGen.ts';
 import { PALETTE } from './Palette.ts';
 import {
+  ATLAS_GRID,
+  TILE_ATLAS_INDEX,
+  EXTRA_TILE_MAPPING,
+  SHEET_TILE_MAPPING,
   buildTileAtlasCanvas,
   buildTileNormalAtlasCanvas,
   SHEET_CELL_SIZE,
@@ -12,6 +16,7 @@ import {
   stampTileSheetOntoAlbedoAtlas,
   stampTileSheetOntoNormalAtlas,
   TILE_SIZE,
+  type TileAtlasKey,
 } from './ProceduralTiles.ts';
 import { generatePropCanvas } from './PropSprites.ts';
 import {
@@ -35,6 +40,8 @@ export interface AssetProvider {
   getGrassNormalTexture(): THREE.CanvasTexture;
   getRoofTexture(kind: RoofTextureKind): THREE.CanvasTexture;
   getRoofNormalTexture(kind: RoofTextureKind): THREE.CanvasTexture;
+  getWallTexture(key: TileAtlasKey): THREE.CanvasTexture;
+  getWallNormalTexture(key: TileAtlasKey): THREE.CanvasTexture;
   getCreatureTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
   getCreatureSilhouetteTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
   getCreatureDataUrl(speciesId: number, view?: 'front' | 'back'): string;
@@ -95,8 +102,8 @@ function makeFlatNormalCanvas(width = TILE_SIZE, height = TILE_SIZE): HTMLCanvas
 function makeSoulDollTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
@@ -410,6 +417,8 @@ export class ProceduralAssetProvider implements AssetProvider {
   private propCache = new Map<PropKind, THREE.CanvasTexture>();
   private roofCache = new Map<RoofTextureKind, THREE.CanvasTexture>();
   private roofNormalCache = new Map<RoofTextureKind, THREE.CanvasTexture>();
+  private wallCache = new Map<TileAtlasKey, THREE.CanvasTexture>();
+  private wallNormalCache = new Map<TileAtlasKey, THREE.CanvasTexture>();
   private battleIconUrls = new Map<BattleIconKind, string>();
 
   private propImages = new Map<PropKind, HTMLImageElement>();
@@ -1038,6 +1047,68 @@ export class ProceduralAssetProvider implements AssetProvider {
     return tex;
   }
 
+  getWallTexture(key: TileAtlasKey): THREE.CanvasTexture {
+    let tex = this.wallCache.get(key);
+    if (!tex) {
+      const canvas = document.createElement('canvas');
+      canvas.width = TILE_SIZE;
+      canvas.height = TILE_SIZE;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.needsUpdate = true;
+      this.wallCache.set(key, tex);
+
+      const cell = SHEET_TILE_MAPPING[key] || EXTRA_TILE_MAPPING[key];
+      if (cell) {
+        if (this.tileSheetAlbedoImg && SHEET_TILE_MAPPING[key]) {
+          this.stampSheetCellToTexture(tex, this.tileSheetAlbedoImg, cell.row, cell.col, 1);
+        } else if (this.tileExtraAlbedoImg && EXTRA_TILE_MAPPING[key]) {
+          this.stampSheetCellToTexture(tex, this.tileExtraAlbedoImg, cell.row, cell.col, 1);
+        }
+      } else if (this.tileAtlas) {
+        const idx = TILE_ATLAS_INDEX[key] ?? 0;
+        const ox = (idx % ATLAS_GRID) * TILE_SIZE;
+        const oy = Math.floor(idx / ATLAS_GRID) * TILE_SIZE;
+        const atlasCanvas = this.tileAtlas.image as HTMLCanvasElement;
+        if (atlasCanvas && atlasCanvas.getContext) {
+          const actx = atlasCanvas.getContext('2d');
+          if (actx) {
+            const imgData = actx.getImageData(ox, oy, TILE_SIZE, TILE_SIZE);
+            ctx.putImageData(imgData, 0, 0);
+            tex.needsUpdate = true;
+          }
+        }
+      }
+    }
+    return tex;
+  }
+
+  getWallNormalTexture(key: TileAtlasKey): THREE.CanvasTexture {
+    let tex = this.wallNormalCache.get(key);
+    if (!tex) {
+      tex = makeNormalTexture(makeFlatNormalCanvas(TILE_SIZE, TILE_SIZE), true);
+      this.wallNormalCache.set(key, tex);
+
+      const cell = SHEET_TILE_MAPPING[key] || EXTRA_TILE_MAPPING[key];
+      if (cell) {
+        if (this.tileSheetNormalImg && SHEET_TILE_MAPPING[key]) {
+          this.stampSheetCellToTexture(tex, this.tileSheetNormalImg, cell.row, cell.col, 1);
+        } else if (this.tileExtraNormalImg && EXTRA_TILE_MAPPING[key]) {
+          this.stampSheetCellToTexture(tex, this.tileExtraNormalImg, cell.row, cell.col, 1);
+        }
+      }
+    }
+    return tex;
+  }
+
   onCreatureLoaded(listener: (speciesId: number) => void): () => void {
     this.creatureListeners.add(listener);
     return () => {
@@ -1222,6 +1293,10 @@ export class ProceduralAssetProvider implements AssetProvider {
     this.roofCache.clear();
     for (const t of this.roofNormalCache.values()) t.dispose();
     this.roofNormalCache.clear();
+    for (const t of this.wallCache.values()) t.dispose();
+    this.wallCache.clear();
+    for (const t of this.wallNormalCache.values()) t.dispose();
+    this.wallNormalCache.clear();
     this.tileSheetAlbedoImg = null;
     this.tileSheetNormalImg = null;
     this.tileExtraAlbedoImg = null;

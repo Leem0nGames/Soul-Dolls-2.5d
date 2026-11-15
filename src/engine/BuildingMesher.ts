@@ -8,6 +8,7 @@ import {
   createQuadBuilder,
   pushQuad,
   pushTiledQuad,
+  pushTiledQuadKey,
   pushTriangle,
   type QuadBuilder,
 } from './QuadGeometry.ts';
@@ -73,6 +74,7 @@ function getBuildingPalette(kind: BuildingKind): {
 
 function addBuildingGeometry(
   qb: QuadBuilder,
+  wallBuilders: Map<TileAtlasKey, QuadBuilder> | null,
   roofBuilders: Map<RoofTextureKind, QuadBuilder> | null,
   map: MapDef,
   b: BuildingPlacement
@@ -91,11 +93,27 @@ function addBuildingGeometry(
   const yTop = groundY + pal.wallHeight;
   const yPeak = yTop + pal.roofHeight;
 
+  const uWidth = Math.max(1, Math.round(x1 - x0));
+  const uDepth = Math.max(1, Math.round(z1 - z0));
+  const vHeight = Math.max(1, Math.round(yTop - yBot));
+
   // Front (+Z), Back (-Z), Right (+X), Left (-X) walls
-  pushQuad(qb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], pal.wall, 1.0);
-  pushQuad(qb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], pal.wall, 0.88);
-  pushQuad(qb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], pal.wall, 0.94);
-  pushQuad(qb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], pal.wall, 0.90);
+  if (wallBuilders) {
+    let wqb = wallBuilders.get(pal.wall);
+    if (!wqb) {
+      wqb = createQuadBuilder();
+      wallBuilders.set(pal.wall, wqb);
+    }
+    pushTiledQuad(wqb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], uWidth, vHeight, 1.0);
+    pushTiledQuad(wqb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], uWidth, vHeight, 0.88);
+    pushTiledQuad(wqb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], uDepth, vHeight, 0.94);
+    pushTiledQuad(wqb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], uDepth, vHeight, 0.90);
+  } else {
+    pushTiledQuadKey(qb, [x0, yBot, z1], [x1, yBot, z1], [x1, yTop, z1], [x0, yTop, z1], pal.wall, uWidth, vHeight, 1.0);
+    pushTiledQuadKey(qb, [x1, yBot, z0], [x0, yBot, z0], [x0, yTop, z0], [x1, yTop, z0], pal.wall, uWidth, vHeight, 0.88);
+    pushTiledQuadKey(qb, [x1, yBot, z1], [x1, yBot, z0], [x1, yTop, z0], [x1, yTop, z1], pal.wall, uDepth, vHeight, 0.94);
+    pushTiledQuadKey(qb, [x0, yBot, z0], [x0, yBot, z1], [x0, yTop, z1], [x0, yTop, z0], pal.wall, uDepth, vHeight, 0.90);
+  }
 
   // Door & windows on front (+Z) face
   const doorW = 0.85;
@@ -171,21 +189,45 @@ export function buildBuildingsMesh(
   map: MapDef,
   atlasMaterial: THREE.Material,
   getRoofTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture,
-  getRoofNormalTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture
+  getRoofNormalTexture?: (kind: RoofTextureKind) => THREE.CanvasTexture,
+  getWallTexture?: (key: TileAtlasKey) => THREE.CanvasTexture,
+  getWallNormalTexture?: (key: TileAtlasKey) => THREE.CanvasTexture
 ): THREE.Group | null {
   if (map.buildings.length === 0) return null;
 
   const qb = createQuadBuilder();
+  const wallBuilders = getWallTexture ? new Map<TileAtlasKey, QuadBuilder>() : null;
   const roofBuilders = getRoofTexture ? new Map<RoofTextureKind, QuadBuilder>() : null;
   for (const b of map.buildings) {
-    addBuildingGeometry(qb, roofBuilders, map, b);
+    addBuildingGeometry(qb, wallBuilders, roofBuilders, map, b);
   }
 
   const group = new THREE.Group();
-  const wallMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
-  wallMesh.matrixAutoUpdate = false;
-  wallMesh.updateMatrix();
-  group.add(wallMesh);
+
+  if (wallBuilders && getWallTexture) {
+    for (const [wallKey, wqb] of wallBuilders.entries()) {
+      if (wqb.indices.length === 0) continue;
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: getWallTexture(wallKey),
+        normalMap: getWallNormalTexture ? getWallNormalTexture(wallKey) : null,
+        normalScale: new THREE.Vector2(1.05, 1.05),
+        roughness: 0.85,
+        metalness: 0.05,
+        vertexColors: true,
+      });
+      const wallMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(wqb), wallMat);
+      wallMesh.matrixAutoUpdate = false;
+      wallMesh.updateMatrix();
+      group.add(wallMesh);
+    }
+  }
+
+  if (qb.indices.length > 0) {
+    const miscMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
+    miscMesh.matrixAutoUpdate = false;
+    miscMesh.updateMatrix();
+    group.add(miscMesh);
+  }
 
   if (roofBuilders && getRoofTexture) {
     for (const [kind, rqb] of roofBuilders.entries()) {

@@ -341,11 +341,37 @@ export const ES = {
     cueva_eco: 'Cueva Eco',
     arena_cumbre: 'Arena Cumbre',
   } as Record<string, string>,
+  tutorial: {
+    headerBadge: 'INSTRUCCIÓN INICIAL',
+    speaker: 'Maestro de Marionetas',
+    skip: 'Omitir tutorial',
+    prev: '◀ Anterior',
+    next: 'Siguiente ▶',
+    finish: 'Entrar a Villa Origen ▶',
+    controlsHint: 'Z/Enter: Avanzar · Flechas: Cambiar lección · Esc/X: Omitir',
+    touchControlsHint: 'Toca la pantalla o botones para avanzar',
+  },
   dialogs: {
     isekai_intro_1:
       'Despiertas bajo un cielo violeta tras cruzar un umbral dimensional... Ya no estás en tu mundo: has renacido como un viajero en la tierra de SoulDolls.',
     isekai_intro_2:
       'Aquí los guerreros luchan vinculando Almas salvajes con Cuerpos Contenedores mediante Ki y armas arcanas. ¡Habla con el Prof. Robledo frente al laboratorio para recibir tu primera marioneta!',
+    guide_welcome:
+      '¡Hola, viajero! Soy Lía, guía de Villa Origen. ¿Quieres que te acompañe por la villa hasta hablar con el Prof. Robledo y elegir tu SoulDoll inicial?',
+    guide_skip_tour:
+      '¡De acuerdo! El Prof. Robledo y los tres Soulpots iniciales te esperan al norte de la plaza. ¡Habla conmigo si necesitas orientación!',
+    guide_tour_plaza:
+      'Esta es la plaza de Villa Origen. Aquí descansan los vecinos y el Artesano Gael; cuando estés listo, el sendero norte lleva a la Ruta 1.',
+    guide_tour_professor:
+      '¡Llegamos frente al laboratorio! Aquí está el Prof. Robledo para recibirte. Déjame presentarte con él.',
+    guide_choose_starter:
+      '¡Mira a la derecha sobre los pedestales! Acércate a los Soulpots de Brasa, Marea o Flora y pulsa A (Z/Enter) para despertar a tu SoulDoll inicial.',
+    guide_remind_prof:
+      'Habla primero con el Prof. Robledo aquí al lado del laboratorio y luego elige tu SoulDoll en los pedestales de la derecha.',
+    guide_remind_starter:
+      'El Prof. Robledo ya te dio permiso. ¡Acércate a uno de los 3 pedestales de Soulpot aquí a la derecha y pulsa A para elegir tu compañera!',
+    guide_after_starter:
+      '¡Gran elección! Tu nueva SoulDoll ya está lista. Toma el camino empedrado hacia el norte para comenzar tu aventura por la Ruta 1.',
     prof_welcome:
       '¡Bienvenido a Villa Origen, viajero! Soy el Prof. Robledo. Elige uno de los 3 Soulpots iniciales sobre los pedestales para despertar a tu primera SoulDoll hacia la Arena Cumbre.',
     prof_after_starter:

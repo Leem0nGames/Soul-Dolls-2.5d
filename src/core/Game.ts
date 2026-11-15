@@ -33,6 +33,7 @@ import { GalleryScene } from '../scenes/GalleryScene.ts';
 import { OverworldScene } from '../scenes/OverworldScene.ts';
 import { ShopScene } from '../scenes/ShopScene.ts';
 import { TitleScene } from '../scenes/TitleScene.ts';
+import { TutorialScene } from '../scenes/TutorialScene.ts';
 import { EventBus } from './EventBus.ts';
 import { Input } from './Input.ts';
 import { Loop } from './Loop.ts';
@@ -248,7 +249,7 @@ export class Game {
   startNewGame(): void {
     this.saveData = this.saveManager.createNew();
     this.applyOptions();
-    this.scenes.replace(new OverworldScene(this));
+    this.scenes.replace(new TutorialScene(this));
   }
 
   continueGame(): void {
