@@ -7,6 +7,7 @@ import {
   formatCardBonuses,
   getAvailableCardCopies,
   getCardDef,
+  getEffectiveCardDef,
   socketCardOnCreature,
   unsocketCardFromCreature,
 } from '../domain/Cards.ts';
@@ -60,7 +61,14 @@ export class SummaryScreen extends ModalOverlay {
       const ability = getCreatureAbilityDef(creature);
       const heldItem = getHeldItemDef(creature);
       const socketedCard =
-        creature.socketedCardId !== undefined ? getCardDef(creature.socketedCardId) : null;
+        creature.socketedCardId !== undefined
+          ? cardConfig
+            ? getEffectiveCardDef(cardConfig.save, creature.socketedCardId)
+            : {
+                ...getCardDef(creature.socketedCardId),
+                bonuses: creature.socketedCardBonuses ?? getCardDef(creature.socketedCardId).bonuses,
+              }
+          : null;
       const containerDef = getBodyContainer(creature.containerId ?? 'cuerpo_aprendiz');
       const dollProfile = getSpeciesDollProfile(
         creature.speciesId,
@@ -183,7 +191,7 @@ export class SummaryScreen extends ModalOverlay {
                   ? `<div class="py-4 text-center text-xs text-bone-gray">${ES.summary.noAvailableCards}</div>`
                   : availableList
                       .map((e) => {
-                        const cDef = getCardDef(e.speciesId);
+                        const cDef = getEffectiveCardDef(cardConfig.save, e.speciesId);
                         const avail = getAvailableCardCopies(cardConfig.save, e.speciesId);
                         const isCur = creature.socketedCardId === e.speciesId;
                         const rStyle = CARD_RARITY_STYLES[cDef.rarity];

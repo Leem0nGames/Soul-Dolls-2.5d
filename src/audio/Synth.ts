@@ -6,7 +6,11 @@ export type SfxId = EventMap['audio:sfx']['sfx'];
 export class Synth {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private sfxGain: GainNode | null = null;
   private volume = 0.6;
+  private musicVolume = 0.75;
+  private sfxVolume = 0.9;
   private muted = false;
   private currentTrack: TrackId = 'none';
   private stepIndex = 0;
@@ -21,6 +25,10 @@ export class Synth {
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
+      this.musicGain = this.ctx.createGain();
+      this.sfxGain = this.ctx.createGain();
+      this.musicGain.connect(this.masterGain);
+      this.sfxGain.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
       this.applyGain();
     }
@@ -48,6 +56,16 @@ export class Synth {
     this.applyGain();
   }
 
+  setMusicVolume(vol: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, vol));
+    this.applyGain();
+  }
+
+  setSfxVolume(vol: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, vol));
+    this.applyGain();
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     this.applyGain();
@@ -61,12 +79,27 @@ export class Synth {
     return this.volume;
   }
 
+  getMusicVolume(): number {
+    return this.musicVolume;
+  }
+
+  getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
   private applyGain(): void {
     if (!this.masterGain || !this.ctx) return;
+    const now = this.ctx.currentTime;
     this.masterGain.gain.setValueAtTime(
       this.muted ? 0 : this.volume * 0.28,
-      this.ctx.currentTime
+      now
     );
+    if (this.musicGain) {
+      this.musicGain.gain.setValueAtTime(this.musicVolume, now);
+    }
+    if (this.sfxGain) {
+      this.sfxGain.gain.setValueAtTime(this.sfxVolume, now);
+    }
   }
 
   playSfx(sfx: SfxId): void {
@@ -224,10 +257,10 @@ export class Synth {
       const note = track.notes[this.stepIndex % track.notes.length];
       const durSec = (track.tempoMs * note.dur) / 1000;
       if (note.freq > 0) {
-        this.tone(note.freq, durSec * 0.85, 'square', this.nextNoteAt, 0.18);
+        this.tone(note.freq, durSec * 0.85, 'square', this.nextNoteAt, 0.18, true);
       }
       if (note.bass && note.bass > 0) {
-        this.tone(note.bass, durSec * 0.9, 'triangle', this.nextNoteAt, 0.22);
+        this.tone(note.bass, durSec * 0.9, 'triangle', this.nextNoteAt, 0.22, true);
       }
       this.nextNoteAt += durSec;
       this.stepIndex += 1;
@@ -239,9 +272,11 @@ export class Synth {
     dur: number,
     type: OscillatorType,
     startAt: number,
-    gainPeak: number
+    gainPeak: number,
+    isMusic = false
   ): void {
-    if (!this.ctx || !this.masterGain) return;
+    const dest = isMusic ? (this.musicGain ?? this.masterGain) : (this.sfxGain ?? this.masterGain);
+    if (!this.ctx || !dest) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = type;
@@ -250,7 +285,7 @@ export class Synth {
     gain.gain.linearRampToValueAtTime(gainPeak, startAt + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.03, dur));
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(dest);
     osc.start(startAt);
     osc.stop(startAt + Math.max(0.04, dur + 0.01));
   }

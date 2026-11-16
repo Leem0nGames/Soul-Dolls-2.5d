@@ -280,6 +280,7 @@ export interface CreatureInstance {
   abilityId?: string;
   heldItemId?: string;
   socketedCardId?: number;
+  socketedCardBonuses?: Partial<Stats>;
   moves: MoveSlot[];
 }
 
@@ -350,6 +351,8 @@ export interface CardEntry {
   speciesId: number;
   count: number;
   firstObtainedAt: number;
+  rarityOverride?: CardRarity;
+  upgradeLevel?: number;
 }
 
 export interface CardDef {
@@ -421,7 +424,18 @@ export type PropKind =
   | 'heal_machine'
   | 'pillar'
   | 'bench'
-  | 'cave_entrance';
+  | 'cave_entrance'
+  | 'bed'
+  | 'chest'
+  | 'achievements_wall'
+  | 'sofa'
+  | 'dining_table'
+  | 'kitchen_counter'
+  | 'stove'
+  | 'bookshelf'
+  | 'house_plant'
+  | 'stair_up'
+  | 'stair_down';
 
 export type BuildingKind =
   | 'house_red'
@@ -481,6 +495,7 @@ export interface NpcDef {
   patrol?: NpcPatrolDef;
   lookAtPlayerAfterTalk?: boolean;
   staticEncounter?: { speciesId: number; level: number; flagOnEnd: string };
+  houseBrokerId?: string;
 }
 
 export interface WarpDef {
@@ -491,6 +506,8 @@ export interface WarpDef {
   targetY: number;
   dir?: Direction;
   requiredBadges?: number;
+  houseId?: string;
+  doorStyle?: 'gate' | 'building' | 'interior';
 }
 
 export interface SignDef {
@@ -549,6 +566,7 @@ export interface MapDef {
   nameKey: string;
   biome: BattleBiome;
   music: 'town' | 'route' | 'cave';
+  isInterior?: boolean;
   skyTopColor: number;
   skyBottomColor: number;
   fogColor: number;
@@ -686,11 +704,23 @@ export type BattleEvent =
   | { type: 'run_fail' }
   | { type: 'battle_end'; outcome: 'win' | 'lose' | 'caught' | 'ran'; rewardMoney: number };
 
+export type GraphicsQualitySetting = 'auto' | 'low' | 'medium' | 'high';
+
 export interface GameOptions {
   volume: number;
+  musicVolume: number;
+  sfxVolume: number;
   muted: boolean;
   batterySaver: boolean;
   pixelEffect: boolean;
+  graphicsQuality: GraphicsQualitySetting;
+  shadows: boolean;
+  ambientParticles: boolean;
+  bloom: boolean;
+  bloomIntensity: number;
+  tiltShift: boolean;
+  colorGrading: boolean;
+  vignette: boolean;
   textSpeed: 'normal' | 'fast';
 }
 
@@ -729,6 +759,11 @@ export interface SaveData {
   bodyPartShards?: Record<string, number>;
   soulReserve?: CapturedSoul[];
   cardAlbum?: Record<number, CardEntry>;
+  soulDust?: number;
+  ownedHouses?: string[];
+  itemChest?: BagSlot[];
+  cardChest?: Record<number, CardEntry>;
+  soulChest?: CapturedSoul[];
   stats: PlayStats;
   options: GameOptions;
   savedAt: number;

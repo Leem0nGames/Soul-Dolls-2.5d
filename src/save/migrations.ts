@@ -1,12 +1,17 @@
+import { CARD_RARITY_ORDER, MAX_CARD_STAT_UPGRADE_LEVEL } from '../data/cards.ts';
 import { SPECIES } from '../data/species.ts';
 import { resolveDeterministicAbility } from '../domain/Abilities.ts';
 import { ensureBodyParts, ensureSaveVesselState } from '../domain/BodyParts.ts';
+import { getEffectiveCardBonuses } from '../domain/Cards.ts';
+import { recalculateCreatureStats } from '../domain/Creature.ts';
+import { ensureHousingState } from '../domain/Housing.ts';
 import { clampQuestIndex } from '../domain/Quests.ts';
 import { createDefaultStorageBoxes, normalizeStorageBoxes } from '../domain/Storage.ts';
 import type {
   BestiaryEntry,
   CapturedSoul,
   CardEntry,
+  CardRarity,
   CreatureInstance,
   GameOptions,
   SaveData,
@@ -17,9 +22,19 @@ export const CURRENT_SAVE_VERSION = 7;
 export function defaultOptions(): GameOptions {
   return {
     volume: 0.6,
+    musicVolume: 0.75,
+    sfxVolume: 0.9,
     muted: false,
     batterySaver: false,
     pixelEffect: false,
+    graphicsQuality: 'auto',
+    shadows: true,
+    ambientParticles: true,
+    bloom: true,
+    bloomIntensity: 1.0,
+    tiltShift: true,
+    colorGrading: true,
+    vignette: true,
     textSpeed: 'normal',
   };
 }
@@ -57,6 +72,11 @@ export function createInitialSave(): SaveData {
     bodyPartShards: {},
     soulReserve: [],
     cardAlbum: {},
+    soulDust: 0,
+    ownedHouses: [],
+    itemChest: [],
+    cardChest: {},
+    soulChest: [],
     stats: {
       battlesWon: 0,
       creaturesCaught: 0,
@@ -74,6 +94,7 @@ function hydrateCreature(c: CreatureInstance, indexSeed: number): CreatureInstan
   }
   if (c.socketedCardId !== undefined && !SPECIES[c.socketedCardId]) {
     delete c.socketedCardId;
+    delete c.socketedCardBonuses;
   }
   ensureBodyParts(c);
   return c;
@@ -162,10 +183,28 @@ export function migrateSaveData(raw: unknown): SaveData | null {
     vessels,
     bodyPartShards,
     soulReserve,
+    soulDust:
+      typeof obj.soulDust === 'number' && Number.isFinite(obj.soulDust) && obj.soulDust >= 0
+        ? Math.floor(obj.soulDust)
+        : 0,
+    ownedHouses: Array.isArray(obj.ownedHouses)
+      ? (obj.ownedHouses as string[])
+      : [],
+    itemChest: Array.isArray(obj.itemChest)
+      ? (obj.itemChest as SaveData['itemChest'])
+      : [],
+    cardChest:
+      obj.cardChest && typeof obj.cardChest === 'object'
+        ? (obj.cardChest as SaveData['cardChest'])
+        : {},
+    soulChest: Array.isArray(obj.soulChest)
+      ? (obj.soulChest as SaveData['soulChest'])
+      : [],
     savedAt: typeof obj.savedAt === 'number' ? obj.savedAt : Date.now(),
   };
 
   ensureSaveVesselState(migrated);
+  ensureHousingState(migrated);
   if (version < 4 && !migrated.bag.some((slot) => slot.itemId === 'fragmento_alma')) {
     migrated.bag.push({ itemId: 'fragmento_alma', quantity: 1 });
   }
@@ -241,12 +280,24 @@ export function migrateSaveData(raw: unknown): SaveData | null {
       const e = v as Partial<CardEntry>;
       const count = typeof e.count === 'number' && e.count > 0 ? Math.floor(e.count) : 0;
       if (count <= 0) continue;
-      cardAlbum[id] = {
+      const rarityOverride =
+        typeof e.rarityOverride === 'string' &&
+        CARD_RARITY_ORDER.includes(e.rarityOverride as CardRarity)
+          ? (e.rarityOverride as CardRarity)
+          : undefined;
+      const upgradeLevel =
+        typeof e.upgradeLevel === 'number' && Number.isFinite(e.upgradeLevel) && e.upgradeLevel > 0
+          ? Math.min(MAX_CARD_STAT_UPGRADE_LEVEL, Math.floor(e.upgradeLevel))
+          : 0;
+      const entry: CardEntry = {
         speciesId: id,
         count,
         firstObtainedAt:
           typeof e.firstObtainedAt === 'number' ? e.firstObtainedAt : migrated.savedAt,
       };
+      if (rarityOverride) entry.rarityOverride = rarityOverride;
+      if (upgradeLevel > 0) entry.upgradeLevel = upgradeLevel;
+      cardAlbum[id] = entry;
     }
   }
   const socketCounts: Record<number, number> = {};
@@ -264,6 +315,16 @@ export function migrateSaveData(raw: unknown): SaveData | null {
     }
   }
   migrated.cardAlbum = cardAlbum;
+
+  for (const mon of allOwned) {
+    if (mon.socketedCardId !== undefined && SPECIES[mon.socketedCardId]) {
+      const entry = migrated.cardAlbum[mon.socketedCardId];
+      mon.socketedCardBonuses = { ...getEffectiveCardBonuses(migrated, mon.socketedCardId) };
+      if (entry?.rarityOverride || (entry?.upgradeLevel ?? 0) > 0) {
+        recalculateCreatureStats(mon);
+      }
+    }
+  }
 
   if (version < 2) {
     migrated.stats = {
@@ -287,12 +348,36 @@ export function migrateSaveData(raw: unknown): SaveData | null {
 
   if (obj.options && typeof obj.options === 'object') {
     const opt = obj.options as Record<string, unknown>;
+    const def = defaultOptions();
+    const q = opt.graphicsQuality;
     migrated.options = {
-      volume: typeof opt.volume === 'number' ? opt.volume : 0.6,
-      muted: typeof opt.muted === 'boolean' ? opt.muted : false,
-      batterySaver: typeof opt.batterySaver === 'boolean' ? opt.batterySaver : false,
+      volume: typeof opt.volume === 'number' ? Math.max(0, Math.min(1, opt.volume)) : def.volume,
+      musicVolume:
+        typeof opt.musicVolume === 'number'
+          ? Math.max(0, Math.min(1, opt.musicVolume))
+          : def.musicVolume,
+      sfxVolume:
+        typeof opt.sfxVolume === 'number'
+          ? Math.max(0, Math.min(1, opt.sfxVolume))
+          : def.sfxVolume,
+      muted: typeof opt.muted === 'boolean' ? opt.muted : def.muted,
+      batterySaver: typeof opt.batterySaver === 'boolean' ? opt.batterySaver : def.batterySaver,
       pixelEffect:
-        version >= 6 && typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : false,
+        version >= 6 && typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : def.pixelEffect,
+      graphicsQuality:
+        q === 'auto' || q === 'low' || q === 'medium' || q === 'high' ? q : def.graphicsQuality,
+      shadows: typeof opt.shadows === 'boolean' ? opt.shadows : def.shadows,
+      ambientParticles:
+        typeof opt.ambientParticles === 'boolean' ? opt.ambientParticles : def.ambientParticles,
+      bloom: typeof opt.bloom === 'boolean' ? opt.bloom : def.bloom,
+      bloomIntensity:
+        typeof opt.bloomIntensity === 'number'
+          ? Math.max(0.4, Math.min(1.6, opt.bloomIntensity))
+          : def.bloomIntensity,
+      tiltShift: typeof opt.tiltShift === 'boolean' ? opt.tiltShift : def.tiltShift,
+      colorGrading:
+        typeof opt.colorGrading === 'boolean' ? opt.colorGrading : def.colorGrading,
+      vignette: typeof opt.vignette === 'boolean' ? opt.vignette : def.vignette,
       textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
     };
   }

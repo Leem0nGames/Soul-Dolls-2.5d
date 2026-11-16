@@ -28,6 +28,14 @@ export class SceneStack {
     return top;
   }
 
+  replaceTop(scene: Scene): Scene | undefined {
+    const top = this.stack.pop();
+    top?.onExit?.();
+    this.stack.push(scene);
+    scene.onEnter?.();
+    return top;
+  }
+
   replace(scene: Scene): void {
     while (this.stack.length > 0) {
       const top = this.stack.pop();

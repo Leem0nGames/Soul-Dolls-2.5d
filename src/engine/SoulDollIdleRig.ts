@@ -95,6 +95,7 @@ export class SoulDollIdleRig {
   private breathWeight = 0;
   private secondaryWeight = 0;
   private prevBreathVel = 0;
+  private time = 0;
 
   // Fixed 120Hz soft-body spring-mass solver for cohesive chest jiggle & volume preservation
   private readonly bustSpring: SoftBodySpring120Hz;
@@ -198,6 +199,7 @@ export class SoulDollIdleRig {
 
   update(dt: number, animateBreathing = true): void {
     if (dt <= 0) return;
+    this.time += dt;
 
     const subSteps = Math.min(48, Math.max(1, Math.ceil(dt * 120)));
     const stepDt = dt / subSteps;
@@ -268,6 +270,7 @@ export class SoulDollIdleRig {
 
   applyToMaterial(handle: BattleSpriteMaterialHandle): void {
     const screenTorsoX = this.flipX ? 1 - this.anchor.torsoX : this.anchor.torsoX;
+    handle.setTime(this.time);
     handle.setIdleDeform(
       this.breathWeight,
       this.secondaryWeight,

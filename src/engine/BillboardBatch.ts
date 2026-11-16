@@ -99,10 +99,64 @@ function getPropDimensions(kind: PropKind): [number, number] {
       return [1.2, 1.0];
     case 'tall_grass_flower':
       return [1.2, 1.05];
+    case 'bed':
+      return [1.38, 1.25];
+    case 'chest':
+      return [0.95, 0.92];
+    case 'achievements_wall':
+      return [1.35, 1.35];
+    case 'sofa':
+      return [1.45, 1.05];
+    case 'dining_table':
+      return [1.1, 0.95];
+    case 'kitchen_counter':
+      return [1.1, 1.02];
+    case 'stove':
+      return [1.2, 1.32];
+    case 'bookshelf':
+      return [1.25, 1.55];
+    case 'house_plant':
+      return [0.85, 1.05];
+    case 'stair_up':
+    case 'stair_down':
+      return [1.0, 1.1];
     default:
       return [0.95, 0.95];
   }
 }
+
+const _windTimeUniform = { value: 0 };
+
+const WIND_PROP_AMP: Partial<Record<PropKind, number>> = {
+  oak: 0.055,
+  birch: 0.055,
+  pine: 0.048,
+  snow_pine: 0.042,
+  mushroom_tree: 0.032,
+  mushroom_tree_arcane: 0.032,
+  bush: 0.045,
+  bush_arcane: 0.045,
+  flower_patch: 0.05,
+  tall_grass_clump: 0.07,
+  tall_grass_flower: 0.07,
+};
+
+const SHADOW_CASTER_PROPS: ReadonlySet<PropKind> = new Set([
+  'oak',
+  'birch',
+  'pine',
+  'snow_pine',
+  'mushroom_tree',
+  'mushroom_tree_arcane',
+  'boulder',
+  'well',
+  'pillar',
+  'cave_entrance',
+  'lamp_post',
+  'lamp_wood',
+  'lamp_double',
+  'lamp_stone',
+]);
 
 export function createBottomPivotPlaneGeometry(
   w: number,
@@ -112,7 +166,64 @@ export function createBottomPivotPlaneGeometry(
 ): THREE.PlaneGeometry {
   const geo = new THREE.PlaneGeometry(w, h, segX, segY);
   geo.translate(0, h * 0.5, 0);
+  // Upward vertex normals ensure consistent overhead sun/sky lighting across any camera yaw
+  const normAttr = geo.attributes.normal;
+  if (normAttr) {
+    for (let i = 0; i < normAttr.count; i++) {
+      normAttr.setXYZ(i, 0, 1, 0);
+    }
+    normAttr.needsUpdate = true;
+  }
   return geo;
+}
+
+export function createLitBillboardMaterial(
+  tex: THREE.Texture,
+  opts: {
+    windAmp?: number;
+    alphaTest?: number;
+    emissiveHex?: number;
+    emissiveIntensity?: number;
+  } = {}
+): THREE.MeshLambertMaterial {
+  const mat = new THREE.MeshLambertMaterial({
+    map: tex,
+    alphaTest: opts.alphaTest ?? 0.5,
+    side: THREE.DoubleSide,
+    emissive: new THREE.Color(opts.emissiveHex ?? 0x1c1b24),
+    emissiveIntensity: opts.emissiveIntensity ?? 0.52,
+  });
+
+  const windAmp = opts.windAmp ?? 0;
+  if (windAmp > 0) {
+    mat.customProgramCacheKey = () => `hd2d_wind_${windAmp.toFixed(3)}`;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = _windTimeUniform;
+      shader.uniforms.uWindAmp = { value: windAmp };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform float uWindTime;
+           uniform float uWindAmp;`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           float windBend = pow(clamp(uv.y, 0.0, 1.0), 1.35) * uWindAmp;
+           #ifdef USE_INSTANCING
+             vec3 windInstPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+             float windPhase = uWindTime * 1.85 + windInstPos.x * 0.48 + windInstPos.z * 0.37;
+           #else
+             float windPhase = uWindTime * 1.85;
+           #endif
+           transformed.x += sin(windPhase) * windBend;
+           transformed.z += cos(windPhase * 0.72) * windBend * 0.35;`
+        );
+    };
+  }
+
+  return mat;
 }
 
 export function buildInstancedPropBatches(
@@ -132,13 +243,20 @@ export function buildInstancedPropBatches(
   const groups: PropBatchGroup[] = [];
   for (const [kind, list] of grouped.entries()) {
     const [w, h] = getPropDimensions(kind);
-    const geo = createBottomPivotPlaneGeometry(w, h);
-    const mat = new THREE.MeshBasicMaterial({
-      map: assets.getPropTexture(kind),
-      alphaTest: 0.5,
-      side: THREE.DoubleSide,
-    });
+    const windAmp = WIND_PROP_AMP[kind] ?? 0;
+    const geo = createBottomPivotPlaneGeometry(w, h, 1, windAmp > 0 ? 4 : 1);
+    const tex = assets.getPropTexture(kind);
+    const mat = createLitBillboardMaterial(tex, { windAmp });
     const inst = new THREE.InstancedMesh(geo, mat, list.length);
+    inst.receiveShadow = true;
+    if (SHADOW_CASTER_PROPS.has(kind)) {
+      inst.castShadow = true;
+      inst.customDepthMaterial = new THREE.MeshDepthMaterial({
+        depthPacking: THREE.RGBADepthPacking,
+        map: tex,
+        alphaTest: 0.5,
+      });
+    }
     for (let i = 0; i < list.length; i++) {
       _dummy.position.set(list[i].x, list[i].y, list[i].z);
       _dummy.rotation.set(0, 0, 0);
@@ -161,6 +279,8 @@ export function updatePropBatchAnimation(
   playerX: number,
   playerZ: number
 ): void {
+  _windTimeUniform.value = time;
+
   for (const g of groups) {
     const isGrass = g.kind === 'tall_grass_clump' || g.kind === 'tall_grass_flower';
     if (!isGrass && g.lastYaw === yaw) {
@@ -179,7 +299,7 @@ export function updatePropBatchAnimation(
         const sway =
           dist < 1.3
             ? (Math.sin(time * 16 + i * 1.7) * 0.28 * Math.max(0, 1.3 - dist)) / 1.3
-            : Math.sin(time * 2.8 + i * 0.9) * 0.05;
+            : Math.sin(time * 2.8 + i * 0.9) * 0.04;
         _dummy.rotation.z = sway;
       }
 

@@ -111,7 +111,10 @@ export function healCreatureFull(creature: CreatureInstance): void {
 export function recalculateCreatureStats(creature: CreatureInstance): void {
   const spec = getSpecies(creature.speciesId);
   const prevMax = creature.stats.hp;
-  const cardBonuses = getCardBonuses(creature.socketedCardId);
+  const cardBonuses =
+    creature.socketedCardId !== undefined
+      ? (creature.socketedCardBonuses ?? getCardBonuses(creature.socketedCardId))
+      : undefined;
   const nextStats = calculateStats(
     spec.baseStats,
     creature.ivs,

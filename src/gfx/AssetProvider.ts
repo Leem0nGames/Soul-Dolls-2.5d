@@ -23,6 +23,7 @@ import {
   extractAndNormalizeSoulDollPair,
   getSoulDollSheetId,
   getSoulDollSheetUrl,
+  SOULDOLL_MAX_SHEET_ID,
   type NormalizedSoulDollPair,
   type SoulDollTorsoAnchor,
 } from './SoulDollSheets.ts';
@@ -399,8 +400,8 @@ export class ProceduralAssetProvider implements AssetProvider {
   private tileAtlasNormal: THREE.CanvasTexture | null = null;
   private grassTexture: THREE.CanvasTexture | null = null;
   private grassNormalTexture: THREE.CanvasTexture | null = null;
-  private creatureCache = new LruTextureCache(104);
-  private silhouetteCache = new LruTextureCache(104);
+  private creatureCache = new LruTextureCache(128);
+  private silhouetteCache = new LruTextureCache(128);
   private creatureUrls = new Map<string, string>();
   private silhouetteUrls = new Map<number, string>();
   private souldollPairs = new Map<number, NormalizedSoulDollPair>();
@@ -747,6 +748,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     texture: THREE.CanvasTexture,
     source: HTMLCanvasElement
   ): void {
+    if (source.width <= 0 || source.height <= 0) return;
     const canvas = texture.image as HTMLCanvasElement;
     const resized = canvas.width !== source.width || canvas.height !== source.height;
     canvas.width = source.width;
@@ -763,11 +765,11 @@ export class ProceduralAssetProvider implements AssetProvider {
   }
 
   private preloadSoulDollSheets(): void {
-    // Prioritize starter SoulDolls first, then queue remaining sheets 1..50
+    // Prioritize starter SoulDolls first, then queue remaining sheets 1..SOULDOLL_MAX_SHEET_ID
     for (const id of [1, 4, 7]) {
       this.enqueueSoulDollLoad(id, true);
     }
-    for (let id = 1; id <= 50; id++) {
+    for (let id = 1; id <= SOULDOLL_MAX_SHEET_ID; id++) {
       this.enqueueSoulDollLoad(id, false);
     }
   }
@@ -886,6 +888,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     sw: number,
     sh: number
   ): void {
+    if (sw <= 0 || sh <= 0 || img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
     const canvas = tex.image as HTMLCanvasElement;
     const resized = canvas.width !== sw || canvas.height !== sh;
     canvas.width = sw;

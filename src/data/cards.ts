@@ -23,6 +23,39 @@ export const CARD_RARITY_ORDER: readonly CardRarity[] = [
   'legendaria',
 ];
 
+export const CARD_DISMANTLE_DUST: Record<CardRarity, number> = {
+  comun: 15,
+  rara: 35,
+  epica: 75,
+  legendaria: 150,
+};
+
+export const CARD_RARITY_UPGRADE_COST: Record<Exclude<CardRarity, 'legendaria'>, number> = {
+  comun: 45,
+  rara: 100,
+  epica: 220,
+};
+
+export const MAX_CARD_STAT_UPGRADE_LEVEL = 5;
+
+export function getNextCardRarity(rarity: CardRarity): CardRarity | null {
+  const idx = CARD_RARITY_ORDER.indexOf(rarity);
+  if (idx < 0 || idx >= CARD_RARITY_ORDER.length - 1) return null;
+  return CARD_RARITY_ORDER[idx + 1];
+}
+
+export function getRarityUpgradeCost(rarity: CardRarity): number {
+  if (rarity === 'legendaria') return 0;
+  return CARD_RARITY_UPGRADE_COST[rarity];
+}
+
+export function getCardStatUpgradeCost(rarity: CardRarity, currentLevel: number): number {
+  const lv = Math.max(0, Math.floor(currentLevel));
+  if (lv >= MAX_CARD_STAT_UPGRADE_LEVEL) return 0;
+  const tierIndex = Math.max(0, CARD_RARITY_ORDER.indexOf(rarity));
+  return 25 + lv * 20 + tierIndex * 15;
+}
+
 export function getCardRarityDropMultiplier(rarity: CardRarity): number {
   return CARD_RARITY_DROP_MULTIPLIERS[rarity];
 }
@@ -55,10 +88,17 @@ export function getCardRarity(specOrStage: SpeciesDef | (1 | 2 | 3)): CardRarity
   return 'comun';
 }
 
-export function computeCardBonuses(spec: SpeciesDef): Partial<Stats> {
-  const ranked = [...STAT_PRIORITY].sort((a, b) => spec.baseStats[b] - spec.baseStats[a]);
+export function getCardRankedStats(spec: SpeciesDef): StatName[] {
+  return [...STAT_PRIORITY].sort((a, b) => spec.baseStats[b] - spec.baseStats[a]);
+}
+
+export function computeCardBonusesForRarity(
+  spec: SpeciesDef,
+  rarity: CardRarity,
+  upgradeLevel = 0
+): Partial<Stats> {
+  const ranked = getCardRankedStats(spec);
   const bonuses: Partial<Stats> = {};
-  const rarity = getCardRarity(spec);
 
   if (rarity === 'comun') {
     bonuses[ranked[0]] = 4;
@@ -78,7 +118,17 @@ export function computeCardBonuses(spec: SpeciesDef): Partial<Stats> {
     bonuses[ranked[3]] = 4;
   }
 
+  const lv = Math.max(0, Math.min(MAX_CARD_STAT_UPGRADE_LEVEL, Math.floor(upgradeLevel)));
+  if (lv > 0) {
+    bonuses[ranked[0]] = (bonuses[ranked[0]] ?? 0) + lv * 2;
+    bonuses[ranked[1]] = (bonuses[ranked[1]] ?? 0) + lv;
+  }
+
   return bonuses;
+}
+
+export function computeCardBonuses(spec: SpeciesDef): Partial<Stats> {
+  return computeCardBonusesForRarity(spec, getCardRarity(spec), 0);
 }
 
 export function getCardDef(speciesId: number): CardDef {

@@ -81,8 +81,22 @@ export class Input {
     }
   }
 
+  private isEditableTarget(target: EventTarget | null): boolean {
+    if (!target || typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) {
+      return false;
+    }
+    if (target.isContentEditable) return true;
+    const tag = target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') {
+      return (target as HTMLInputElement).type !== 'range';
+    }
+    return false;
+  }
+
   private onKeyDown = (e: KeyboardEvent): void => {
     this.notifyUnlock();
+    if (this.isEditableTarget(e.target)) return;
     const btn = this.mapKey(e.code);
     if (!btn) return;
     if (e.code.startsWith('Arrow') || e.code === 'Space') {

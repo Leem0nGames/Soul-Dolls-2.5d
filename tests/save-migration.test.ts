@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CURRENT_SAVE_VERSION, migrateSaveData } from '../src/save/migrations.ts';
+import {
+  CURRENT_SAVE_VERSION,
+  defaultOptions,
+  migrateSaveData,
+} from '../src/save/migrations.ts';
 
 describe('Save migrations', () => {
   it('migrates a v1 save to current schema preserving progress', () => {
@@ -25,17 +29,67 @@ describe('Save migrations', () => {
     expect(migrated!.money).toBe(1200);
     expect(migrated!.repelSteps).toBe(0);
     expect(migrated!.stats.creaturesCaught).toBe(1);
-    expect(migrated!.options.textSpeed).toBe('normal');
-    expect(migrated!.options.pixelEffect).toBe(false);
+    expect(migrated!.options).toEqual(defaultOptions());
   });
 
-  it('preserves the pixel effect option when migrating a saved game', () => {
+  it('preserves expanded sound, quality, and post-FX options across saves', () => {
     const migrated = migrateSaveData({
-      version: 4,
-      options: { pixelEffect: false },
+      version: 7,
+      options: {
+        volume: 0.45,
+        musicVolume: 0.3,
+        sfxVolume: 0.85,
+        muted: true,
+        batterySaver: true,
+        pixelEffect: true,
+        graphicsQuality: 'medium',
+        shadows: false,
+        ambientParticles: false,
+        bloom: false,
+        bloomIntensity: 1.5,
+        tiltShift: false,
+        colorGrading: false,
+        vignette: false,
+        textSpeed: 'fast',
+      },
     });
 
-    expect(migrated?.options.pixelEffect).toBe(false);
+    expect(migrated?.options).toEqual({
+      volume: 0.45,
+      musicVolume: 0.3,
+      sfxVolume: 0.85,
+      muted: true,
+      batterySaver: true,
+      pixelEffect: true,
+      graphicsQuality: 'medium',
+      shadows: false,
+      ambientParticles: false,
+      bloom: false,
+      bloomIntensity: 1.5,
+      tiltShift: false,
+      colorGrading: false,
+      vignette: false,
+      textSpeed: 'fast',
+    });
+  });
+
+  it('clamps out-of-range numeric options and sanitizes invalid graphics quality', () => {
+    const migrated = migrateSaveData({
+      version: 8,
+      options: {
+        volume: 4,
+        musicVolume: -1,
+        sfxVolume: 2,
+        bloomIntensity: 9,
+        graphicsQuality: 'ultra',
+      },
+    });
+
+    expect(migrated?.options.volume).toBe(1);
+    expect(migrated?.options.musicVolume).toBe(0);
+    expect(migrated?.options.sfxVolume).toBe(1);
+    expect(migrated?.options.bloomIntensity).toBe(1.6);
+    expect(migrated?.options.graphicsQuality).toBe('auto');
   });
 
   it('returns null for invalid payloads', () => {

@@ -3,12 +3,14 @@ import { CameraRig } from '../engine/CameraRig.ts';
 import { PixelRenderer } from '../engine/Renderer.ts';
 import { ProceduralAssetProvider, type AssetProvider } from '../gfx/AssetProvider.ts';
 import { SaveManager } from '../save/SaveManager.ts';
+import { AchievementsScreen } from '../ui/AchievementsScreen.ts';
 import { ArGachaModal } from '../ui/ArGachaModal.ts';
 import { BagScreen } from '../ui/BagScreen.ts';
 import { BattleHud } from '../ui/BattleHud.ts';
 import { BattleTransition } from '../ui/BattleTransition.ts';
 import { BestiaryScreen } from '../ui/BestiaryScreen.ts';
 import { CardAlbumScreen } from '../ui/CardAlbumScreen.ts';
+import { ChestScreen } from '../ui/ChestScreen.ts';
 import { DialogBox } from '../ui/DialogBox.ts';
 import { EndingModal } from '../ui/EndingModal.ts';
 import { PauseMenu } from '../ui/Menu.ts';
@@ -75,6 +77,8 @@ export class Game {
   readonly arGachaModal: ArGachaModal;
   readonly vesselScreen: VesselScreen;
   readonly questJournal: QuestJournalModal;
+  readonly chestScreen: ChestScreen;
+  readonly achievementsScreen: AchievementsScreen;
 
   saveData: SaveData;
   private deferredInstall: BeforeInstallPromptEvent | null = null;
@@ -88,6 +92,10 @@ export class Game {
     this.synth = new Synth();
     this.saveManager = new SaveManager();
     this.saveData = this.saveManager.createNew();
+    const existingSave = this.saveManager.load();
+    if (existingSave) {
+      this.saveData.options = { ...existingSave.options };
+    }
     this.rng = createRng(Date.now() >>> 0);
     this.assets = new ProceduralAssetProvider();
 
@@ -115,6 +123,8 @@ export class Game {
     this.arGachaModal = new ArGachaModal(this.uiLayer, this.assets);
     this.vesselScreen = new VesselScreen(this.uiLayer, this.assets);
     this.questJournal = new QuestJournalModal(this.uiLayer);
+    this.chestScreen = new ChestScreen(this.uiLayer, this.assets);
+    this.achievementsScreen = new AchievementsScreen(this.uiLayer);
 
     this.toastEl = document.createElement('div');
     this.toastEl.className =
@@ -138,7 +148,9 @@ export class Game {
       this.endingModal.root,
       this.arGachaModal.root,
       this.vesselScreen.root,
-      this.questJournal.root
+      this.questJournal.root,
+      this.chestScreen.root,
+      this.achievementsScreen.root
     );
     this.uiLayers.register('toast', this.toastEl);
 
@@ -188,11 +200,33 @@ export class Game {
   applyOptions(): void {
     const opt = this.saveData.options;
     this.synth.setVolume(opt.volume);
+    this.synth.setMusicVolume(opt.musicVolume);
+    this.synth.setSfxVolume(opt.sfxVolume);
     this.synth.setMuted(opt.muted);
     this.loop.setBatterySaver(opt.batterySaver);
     this.dialog.setFastMode(opt.textSpeed === 'fast');
     this.renderer.setPixelEffect(opt.pixelEffect);
+    this.renderer.setQualityMode(opt.graphicsQuality);
+    this.renderer.setShadowsEnabled(opt.shadows);
+    this.renderer.setAmbientParticlesEnabled(opt.ambientParticles);
+    this.renderer.setPostFxOptions({
+      bloom: opt.bloom,
+      bloomIntensity: opt.bloomIntensity,
+      tiltShift: opt.tiltShift,
+      colorGrading: opt.colorGrading,
+      vignette: opt.vignette,
+    });
     document.documentElement.classList.toggle('pixel-effect-off', !opt.pixelEffect);
+  }
+
+  persistOptions(): void {
+    const existing = this.saveManager.load();
+    if (existing) {
+      existing.options = { ...this.saveData.options };
+      this.saveManager.save(existing);
+    } else if (this.saveData.flags.starter_chosen) {
+      this.saveManager.save(this.saveData);
+    }
   }
 
   showToast(message: string): void {
@@ -247,7 +281,9 @@ export class Game {
   }
 
   startNewGame(): void {
+    const prevOptions = { ...this.saveData.options };
     this.saveData = this.saveManager.createNew();
+    this.saveData.options = prevOptions;
     this.applyOptions();
     this.scenes.replace(new TutorialScene(this));
   }
@@ -275,9 +311,21 @@ export class Game {
   startEvolution(
     partyIndex: number,
     targetSpeciesId: number,
-    onDone: () => void
+    onDone: (evolved: boolean) => void,
+    options?: { replaceTop?: boolean; autoPop?: boolean }
   ): void {
-    this.scenes.push(new EvolutionScene(this, partyIndex, targetSpeciesId, onDone));
+    const scene = new EvolutionScene(
+      this,
+      partyIndex,
+      targetSpeciesId,
+      onDone,
+      options?.autoPop ?? true
+    );
+    if (options?.replaceTop) {
+      this.scenes.replaceTop(scene);
+    } else {
+      this.scenes.push(scene);
+    }
   }
 
   openShop(stock: string[], onDone: () => void): void {
@@ -326,6 +374,8 @@ export class Game {
     this.arGachaModal.dispose();
     this.vesselScreen.dispose();
     this.questJournal.dispose();
+    this.chestScreen.dispose();
+    this.achievementsScreen.dispose();
     this.cardAlbumScreen.dispose();
     this.assets.dispose();
     this.renderer.dispose();

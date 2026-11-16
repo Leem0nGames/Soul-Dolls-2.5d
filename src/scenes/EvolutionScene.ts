@@ -32,16 +32,17 @@ export class EvolutionScene implements Scene {
     private readonly game: Game,
     private readonly partyIndex: number,
     private readonly targetSpeciesId: number,
-    private readonly onDone: () => void
+    private readonly onDone: (evolved: boolean) => void,
+    private readonly autoPop = true
   ) {
     this.scene.background = new THREE.Color(hexToNumber(PALETTE.abyssInk));
     const creature = this.game.saveData.party[partyIndex];
-    this.oldName = getCreatureDisplayName(creature);
-    this.currentTexSpeciesId = creature.speciesId;
+    this.oldName = creature ? getCreatureDisplayName(creature) : 'SoulDoll';
+    this.currentTexSpeciesId = creature ? creature.speciesId : targetSpeciesId;
 
     const geo = createBottomPivotPlaneGeometry(1, 1, 24, 32);
     this.spriteMatHandle = createBattleSpriteMaterial(
-      this.game.assets.getCreatureTexture(creature.speciesId, 'front')
+      this.game.assets.getCreatureTexture(this.currentTexSpeciesId, 'front')
     );
     this.rig = new SoulDollIdleRig({
       view: 'front',
@@ -49,7 +50,7 @@ export class EvolutionScene implements Scene {
       cycleDuration: 3.5,
       initialPhase: 0.2,
     });
-    const anchor = this.game.assets.getCreatureRigAnchor?.(creature.speciesId, 'front');
+    const anchor = this.game.assets.getCreatureRigAnchor?.(this.currentTexSpeciesId, 'front');
     if (anchor) this.rig.setAnchor(anchor);
 
     this.spriteMesh = new THREE.Mesh(geo, this.spriteMatHandle.material);
@@ -76,10 +77,21 @@ export class EvolutionScene implements Scene {
       this.spriteMesh.position.y,
       this.game.cameraRig.camera.position.z
     );
+    if (!this.game.saveData.party[this.partyIndex]) {
+      this.completeScene(false);
+      return;
+    }
     this.game.dialog.show([
       ES.evolution.evolving(this.oldName),
       ES.evolution.cancelHint,
     ]);
+  }
+
+  private completeScene(evolved: boolean): void {
+    if (this.autoPop) {
+      this.game.scenes.pop();
+    }
+    this.onDone(evolved);
   }
 
   fixedUpdate(dt: number): void {
@@ -91,11 +103,17 @@ export class EvolutionScene implements Scene {
     this.rig.applyToMesh(this.spriteMesh, this.spriteMatHandle);
 
     if (this.phase === 'anim') {
+      const creature = this.game.saveData.party[this.partyIndex];
+      if (!creature) {
+        this.phase = 'done';
+        this.completeScene(false);
+        return;
+      }
+
       this.elapsed += dt;
       // Pulsing scale and flash between old and new species
       const freq = 6 + this.elapsed * 5;
       const showNew = Math.sin(this.elapsed * freq) > 0;
-      const creature = this.game.saveData.party[this.partyIndex];
       const activeId = showNew ? this.targetSpeciesId : creature.speciesId;
       if (this.currentTexSpeciesId !== activeId) {
         this.currentTexSpeciesId = activeId;
@@ -118,8 +136,7 @@ export class EvolutionScene implements Scene {
         if (anchor) this.rig.setAnchor(anchor);
         this.game.bus.emit('audio:sfx', { sfx: 'cancel' });
         this.game.dialog.show(ES.evolution.cancelled(this.oldName), () => {
-          this.game.scenes.pop();
-          this.onDone();
+          this.completeScene(false);
         });
         return;
       }
@@ -145,8 +162,7 @@ export class EvolutionScene implements Scene {
         }
 
         this.game.dialog.show(lines, () => {
-          this.game.scenes.pop();
-          this.onDone();
+          this.completeScene(true);
         });
       }
     }
@@ -154,6 +170,7 @@ export class EvolutionScene implements Scene {
   }
 
   render(): void {
+    if (this.game.renderer.isContextLost()) return;
     this.game.renderer.render(this.scene, this.game.cameraRig.camera);
   }
 

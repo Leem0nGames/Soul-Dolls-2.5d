@@ -9,7 +9,15 @@ export function generatePropCanvas(kind: PropKind): HTMLCanvasElement {
     kind === 'snow_pine' ||
     kind === 'mushroom_tree' ||
     kind === 'mushroom_tree_arcane';
-  const isLarge = kind === 'cave_entrance' || kind === 'well' || kind === 'pillar';
+  const isLarge =
+    kind === 'cave_entrance' ||
+    kind === 'well' ||
+    kind === 'pillar' ||
+    kind === 'bed' ||
+    kind === 'sofa' ||
+    kind === 'achievements_wall' ||
+    kind === 'bookshelf' ||
+    kind === 'stove';
 
   const w = isTree ? 32 : isLarge ? 32 : 24;
   const h = isTree ? 42 : isLarge ? 32 : 24;
@@ -249,6 +257,131 @@ export function generatePropCanvas(kind: PropKind): HTMLCanvasElement {
       px(4, 6, 24, 25, PALETTE.stoneMid);
       px(8, 11, 16, 20, PALETTE.abyssInk);
       px(10, 13, 12, 18, PALETTE.cryptInk);
+      break;
+
+    case 'bed':
+      // Cozy wooden bed with golden headboard, porcelain pillow & crimson-gold quilt
+      px(3, 8, 26, 20, PALETTE.darkOak);
+      px(4, 5, 24, 9, PALETTE.burntUmber);
+      px(6, 6, 20, 4, PALETTE.resonantGold);
+      px(5, 13, 22, 14, PALETTE.porcelain);
+      px(7, 11, 8, 5, PALETTE.warmWhite);
+      px(17, 11, 8, 5, PALETTE.warmWhite);
+      px(5, 17, 22, 10, PALETTE.riftCrimson);
+      px(5, 17, 22, 2, PALETTE.resonantGold);
+      px(4, 27, 4, 4, PALETTE.darkOak);
+      px(24, 27, 4, 4, PALETTE.darkOak);
+      break;
+
+    case 'chest':
+      // Sturdy iron-banded wooden chest with golden lock
+      px(2, 6, 20, 16, PALETTE.darkOak);
+      px(3, 7, 18, 6, PALETTE.burntUmber);
+      px(3, 13, 18, 8, PALETTE.leatherBrown);
+      px(2, 12, 20, 2, PALETTE.cryptInk);
+      px(5, 7, 2, 14, PALETTE.stoneMid);
+      px(17, 7, 2, 14, PALETTE.stoneMid);
+      px(10, 11, 4, 5, PALETTE.resonantGold);
+      px(11, 13, 2, 2, PALETTE.cryptInk);
+      break;
+
+    case 'achievements_wall':
+      // Ornate golden trophy wall plaque with ribbons & medallions
+      px(2, 3, 28, 26, PALETTE.darkOak);
+      px(3, 4, 26, 24, PALETTE.deepAmethyst);
+      px(3, 4, 26, 2, PALETTE.resonantGold);
+      px(3, 26, 26, 2, PALETTE.resonantGold);
+      // Center trophy cup
+      px(12, 8, 8, 7, PALETTE.resonantGold);
+      px(13, 9, 6, 4, PALETTE.paleGold);
+      px(10, 9, 2, 4, PALETTE.resonantGold);
+      px(20, 9, 2, 4, PALETTE.resonantGold);
+      px(15, 15, 2, 4, PALETTE.oldBronze);
+      px(12, 19, 8, 2, PALETTE.oldBronze);
+      // Flanking ribbons & gems
+      px(6, 9, 4, 6, PALETTE.kiCyan);
+      px(7, 15, 2, 3, PALETTE.vibrantAqua);
+      px(22, 9, 4, 6, PALETTE.riftCrimson);
+      px(23, 15, 2, 3, PALETTE.rubyGlow);
+      px(6, 23, 20, 2, PALETTE.porcelain);
+      break;
+
+    case 'sofa':
+      px(2, 10, 28, 17, PALETTE.darkOak);
+      px(3, 8, 26, 11, PALETTE.rosewood);
+      px(4, 15, 24, 9, PALETTE.riftCrimson);
+      px(6, 15, 9, 7, PALETTE.rubyGlow);
+      px(17, 15, 9, 7, PALETTE.rubyGlow);
+      px(2, 14, 4, 12, PALETTE.burntUmber);
+      px(26, 14, 4, 12, PALETTE.burntUmber);
+      break;
+
+    case 'dining_table':
+      px(3, 9, 18, 5, PALETTE.woodHighlight);
+      px(4, 8, 16, 4, PALETTE.burntUmber);
+      px(6, 14, 3, 9, PALETTE.darkOak);
+      px(15, 14, 3, 9, PALETTE.darkOak);
+      px(8, 6, 4, 3, PALETTE.porcelain);
+      px(13, 5, 3, 4, PALETTE.resonantGold);
+      break;
+
+    case 'kitchen_counter':
+      px(1, 7, 22, 16, PALETTE.darkOak);
+      px(2, 6, 20, 4, PALETTE.porcelain);
+      px(2, 11, 20, 11, PALETTE.burntUmber);
+      px(5, 13, 6, 6, PALETTE.leatherBrown);
+      px(13, 13, 6, 6, PALETTE.leatherBrown);
+      px(7, 15, 2, 2, PALETTE.resonantGold);
+      px(15, 15, 2, 2, PALETTE.resonantGold);
+      break;
+
+    case 'stove':
+      // Brick/iron hearth stove with simmering soup pot & ember glow
+      px(3, 6, 26, 24, PALETTE.cryptInk);
+      px(4, 7, 24, 22, PALETTE.stoneShadow);
+      px(5, 8, 22, 4, PALETTE.coldStone);
+      // Pot on top
+      px(9, 2, 14, 7, PALETTE.stoneMid);
+      px(11, 2, 10, 2, PALETTE.kiCyan);
+      // Warm firebox
+      px(9, 17, 14, 9, PALETTE.abyssInk);
+      px(11, 19, 10, 6, PALETTE.riftCrimson);
+      px(13, 21, 6, 4, PALETTE.resonantGold);
+      break;
+
+    case 'bookshelf':
+      px(2, 3, 28, 27, PALETTE.darkOak);
+      px(4, 5, 24, 23, PALETTE.burntUmber);
+      for (let sy = 6; sy <= 20; sy += 7) {
+        px(4, sy + 5, 24, 2, PALETTE.darkOak);
+        px(5, sy, 3, 5, PALETTE.riftCrimson);
+        px(9, sy + 1, 3, 4, PALETTE.vibrantAqua);
+        px(13, sy, 3, 5, PALETTE.resonantGold);
+        px(17, sy + 1, 3, 4, PALETTE.emerald);
+        px(21, sy, 4, 5, PALETTE.soulViolet);
+      }
+      break;
+
+    case 'house_plant':
+      px(7, 14, 10, 9, PALETTE.rust);
+      px(6, 13, 12, 2, PALETTE.oldBronze);
+      px(6, 5, 12, 9, PALETTE.forestGreen);
+      px(8, 3, 8, 8, PALETTE.oliveDrab);
+      px(10, 4, 4, 5, PALETTE.moss);
+      break;
+
+    case 'stair_up':
+      px(3, 4, 18, 18, PALETTE.darkOak);
+      px(5, 16, 14, 4, PALETTE.woodHighlight);
+      px(7, 12, 10, 4, PALETTE.woodHighlight);
+      px(9, 8, 6, 4, PALETTE.resonantGold);
+      break;
+
+    case 'stair_down':
+      px(3, 4, 18, 18, PALETTE.darkOak);
+      px(5, 6, 14, 4, PALETTE.woodHighlight);
+      px(7, 10, 10, 4, PALETTE.leatherBrown);
+      px(9, 14, 6, 4, PALETTE.burntUmber);
       break;
   }
 

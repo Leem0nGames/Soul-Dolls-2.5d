@@ -223,17 +223,21 @@ export class BattleCameraScript {
       }
 
       case 'victory_orbit': {
-        const angle = this.shotElapsed * 0.65;
+        const blend = easeOutCubic(Math.min(1, this.shotElapsed / 0.65));
+        const angle = this.shotElapsed * 0.45;
         const playerX = -2.15;
         const playerZ = 2.0;
-        const radius = 3.8;
-        out.pos.x = playerX + Math.sin(angle - 0.45) * radius;
-        out.pos.y = 1.65 + Math.sin(this.shotElapsed * 1.1) * 0.15;
-        out.pos.z = playerZ + Math.cos(angle - 0.45) * radius;
-        out.lookAt.x = playerX;
-        out.lookAt.y = 1.05;
-        out.lookAt.z = playerZ;
-        out.fov = 46;
+        const radius = 3.65;
+        const orbitX = playerX + Math.sin(angle - 0.35) * radius;
+        const orbitY = 1.58 + Math.sin(this.shotElapsed * 1.1) * 0.12;
+        const orbitZ = playerZ + Math.cos(angle - 0.35) * radius;
+        out.pos.x = lerp(def.pos.x, orbitX, blend);
+        out.pos.y = lerp(def.pos.y, orbitY, blend);
+        out.pos.z = lerp(def.pos.z, orbitZ, blend);
+        out.lookAt.x = lerp(def.lookAt.x, playerX, blend);
+        out.lookAt.y = lerp(def.lookAt.y, 1.08, blend);
+        out.lookAt.z = lerp(def.lookAt.z, playerZ, blend);
+        out.fov = lerp(def.fov, 46, blend);
         break;
       }
 

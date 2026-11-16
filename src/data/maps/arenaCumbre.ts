@@ -18,8 +18,9 @@ function buildArenaCumbre() {
   addHill(z, 10, 12, 8, 5);
   addHill(z, 38, 12, 8, 5);
 
-  // Grand Arena terrace at height 5
+  // Grand Arena terrace at height 5 (+ east chalet terrace)
   fillRect(z, 14, 14, 20, 20, 'A', 5);
+  fillRect(z, 29, 21, 6, 7, '=', 5);
   carveRoad(z, 23, 34, 23, 47, 2, '=', 3);
   fillRect(z, 23, 33, 2, 3, '^', 4);
   carveRoad(z, 23, 18, 23, 34, 2, '=', 5);
@@ -53,7 +54,10 @@ export const MAP_ARENA_CUMBRE: MapDef = {
   grid: built.grid,
   heights: built.heights,
   legend: DEFAULT_LEGEND,
-  buildings: [{ kind: 'arena_hall', x: 21, z: 14, width: 6, depth: 4, facing: 'down' }],
+  buildings: [
+    { kind: 'arena_hall', x: 21, z: 14, width: 6, depth: 4, facing: 'down' },
+    { kind: 'house_blue', x: 30, z: 22, width: 3, depth: 3, facing: 'down' },
+  ],
   props: [
     { kind: 'pillar', x: 18, z: 20 },
     { kind: 'pillar', x: 29, z: 20 },
@@ -80,6 +84,16 @@ export const MAP_ARENA_CUMBRE: MapDef = {
   warps: [
     { x: 23, y: 47, targetMap: 'cueva_eco', targetX: 23, targetY: 2, dir: 'down' },
     { x: 24, y: 47, targetMap: 'cueva_eco', targetX: 24, targetY: 2, dir: 'down' },
+    {
+      x: 31,
+      y: 25,
+      targetMap: 'casa_cumbre_pb',
+      targetX: 8,
+      targetY: 10,
+      dir: 'up',
+      houseId: 'casa_cumbre',
+      doorStyle: 'building',
+    },
   ],
   npcs: [
     {
@@ -133,6 +147,17 @@ export const MAP_ARENA_CUMBRE: MapDef = {
       dialogKey: 'trainer',
       trainerId: 'leader_valeria',
       sightRange: 3,
+    },
+    {
+      id: 'agente_cumbre',
+      name: 'Agente Darío',
+      role: 'merchant',
+      x: 32,
+      y: 25,
+      dir: 'down',
+      dialogKey: 'house_broker_cumbre',
+      houseBrokerId: 'casa_cumbre',
+      lookAtPlayerAfterTalk: true,
     },
   ],
   signs: [{ x: 22, y: 40, textKey: 'sign_arena' }],

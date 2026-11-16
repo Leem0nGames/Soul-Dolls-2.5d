@@ -6,21 +6,38 @@ import { getSpecies } from '../data/species.ts';
 import { TYPE_VISUALS } from '../data/types.ts';
 import { getMoveEffectivenessHint } from '../domain/BattleHints.ts';
 import { BODY_PART_SHORT } from '../domain/BodyParts.ts';
+import {
+  formatCardBonuses,
+  getCardDef,
+  getCardDismantleValue,
+} from '../domain/Cards.ts';
 import { getCreatureDisplayName, xpForLevel } from '../domain/Creature.ts';
 import type { BodyPartName, CreatureInstance } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
+import { CARD_RARITY_STYLES } from './cardRarityStyles.ts';
+import { renderSoulDustCounter } from './renderSoulDustCounter.ts';
 import { renderTypeBadge, renderTypeBadges } from './renderTypeBadge.ts';
+
+export interface BattleResultDropSummary {
+  speciesId: number;
+  creatureName: string;
+  isDuplicate?: boolean;
+  dismantled?: boolean;
+  dustGained?: number;
+}
 
 export class BattleHud {
   readonly root: HTMLDivElement;
   readonly fxOverlay: HTMLDivElement;
   private enemyBox: HTMLDivElement;
+  private dustBox: HTMLDivElement;
   private bannerEl: HTMLDivElement;
   private bottomDock: HTMLDivElement;
   private playerBox: HTMLDivElement;
   private menuBox: HTMLDivElement;
   private replaceModal: HTMLDivElement;
+  private currentSoulDust = 0;
 
   private assets: AssetProvider | null = null;
   private lastEnemyUid = '';
@@ -65,6 +82,10 @@ export class BattleHud {
     this.enemyBox.className =
       'pointer-events-none absolute top-[calc(0.375rem+env(safe-area-inset-top,0px))] inset-x-2 mx-auto max-w-[400px] sm:mx-0 sm:max-w-none sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[328px] px-hud-box px-2.5 py-1.5 sm:p-2';
 
+    this.dustBox = document.createElement('div');
+    this.dustBox.className =
+      'pointer-events-none absolute top-[calc(6.4rem+env(safe-area-inset-top,0px))] left-[calc(0.5rem+env(safe-area-inset-left,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:left-[calc(21.75rem+env(safe-area-inset-left,0px))]';
+
     this.bannerEl = document.createElement('div');
     this.bannerEl.className =
       'pointer-events-none absolute hidden max-w-[220px] rounded-none border-2 border-ki-cyan bg-crypt-ink px-2.5 py-1 text-right shadow-[2px_2px_0_#050505] top-[calc(6.4rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
@@ -89,15 +110,36 @@ export class BattleHud {
     this.bottomDock.appendChild(this.menuBox);
 
     this.root.appendChild(this.enemyBox);
+    this.root.appendChild(this.dustBox);
     this.root.appendChild(this.bannerEl);
     this.root.appendChild(this.bottomDock);
     this.root.appendChild(this.replaceModal);
     parent.appendChild(this.fxOverlay);
     parent.appendChild(this.root);
+    this.updateSoulDust(0);
   }
 
   setAssets(assets: AssetProvider): void {
     this.assets = assets;
+  }
+
+  updateSoulDust(amount: number): void {
+    this.currentSoulDust = Math.max(0, Math.floor(amount));
+    this.dustBox.innerHTML = renderSoulDustCounter(this.currentSoulDust, {
+      compact: true,
+      showLabel: true,
+      dataAttr: 'data-battle-soul-dust',
+    });
+  }
+
+  setVictoryShowcaseMode(active: boolean): void {
+    this.enemyBox.classList.toggle('hidden', active);
+    this.playerBox.classList.toggle('hidden', active);
+    this.dustBox.classList.toggle('hidden', active);
+    if (active) {
+      this.bannerEl.classList.add('hidden');
+      this.hideMenu();
+    }
   }
 
   show(): void {
@@ -109,6 +151,8 @@ export class BattleHud {
     this.playerHit = { part: null, tick: 0 };
     this.bannerTimer = 0;
     this.bannerEl.classList.add('hidden');
+    this.setVictoryShowcaseMode(false);
+    this.updateSoulDust(this.currentSoulDust);
     this.root.classList.remove('hidden');
     this.fxOverlay.classList.remove('hidden');
   }
@@ -118,6 +162,7 @@ export class BattleHud {
     this.fxOverlay.classList.add('hidden');
     this.fxOverlay.innerHTML = '';
     this.bannerEl.classList.add('hidden');
+    this.setVictoryShowcaseMode(false);
     this.hideMenu();
     this.replaceModal.classList.add('hidden');
     this.replaceModal.classList.remove('flex');
@@ -575,6 +620,8 @@ export class BattleHud {
       })
       .join('');
 
+    this.replaceModal.className =
+      'pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-abyss-ink p-3 safe-pad';
     this.replaceModal.innerHTML = `
       <div class="w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto px-panel p-4">
         <div class="text-sm font-bold text-resonant-gold mb-2">${ES.battle.wantsToLearn(getCreatureDisplayName(creature), newMove.name)}</div>
@@ -583,8 +630,6 @@ export class BattleHud {
         <button data-skip class="min-h-[44px] w-full px-btn-secondary text-sm font-bold">${ES.battle.skipMove}</button>
       </div>
     `;
-    this.replaceModal.classList.remove('hidden');
-    this.replaceModal.classList.add('flex');
 
     this.replaceModal.querySelectorAll<HTMLElement>('[data-slot]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -597,6 +642,120 @@ export class BattleHud {
       this.replaceModal.classList.add('hidden');
       this.replaceModal.classList.remove('flex');
       onDecision(null);
+    });
+  }
+
+  showBattleResultOverlay(
+    summary: {
+      xpTotal: number;
+      soulDust?: number;
+      championName?: string;
+      rewardMoney?: number;
+      droppedCards: BattleResultDropSummary[];
+    },
+    onAlbum: () => void,
+    onContinue: () => void,
+    onDismantleDuplicate?: (index: number) => void
+  ): void {
+    const soulDust = summary.soulDust ?? this.currentSoulDust;
+    const cardsHtml =
+      summary.droppedCards.length === 0
+        ? `<div class="text-xs text-bone-gray italic py-2">Ninguna carta obtenida en este combate.</div>`
+        : summary.droppedCards
+            .map((card, idx) => {
+              const cardDef = getCardDef(card.speciesId);
+              const rarityStyle = CARD_RARITY_STYLES[cardDef.rarity];
+              const rarityTag = ES.cards.rarity[cardDef.rarity];
+              const bonuses = formatCardBonuses(cardDef.bonuses);
+              const dustValue = getCardDismantleValue(card.speciesId);
+              const metaStatus = card.isDuplicate
+                ? `${rarityTag} · ${ES.cards.duplicateTag}`
+                : `${rarityTag} · Nueva`;
+
+              let actionHtml = '';
+              if (card.dismantled) {
+                actionHtml = `<span class="text-[11px] font-bold text-ghost-violet tabular-nums shrink-0">${ES.cards.dismantledLabel(card.dustGained ?? dustValue)}</span>`;
+              } else if (card.isDuplicate && onDismantleDuplicate) {
+                actionHtml = `<button data-dismantle="${idx}" class="min-h-[44px] px-2.5 px-btn-arcane text-[11px] font-bold whitespace-nowrap shrink-0">${ES.cards.dismantleAction(dustValue)}</button>`;
+              }
+
+              return `
+                <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 rounded-none border-2 ${rarityStyle.border} ${rarityStyle.frameBg} p-2.5 shadow-[2px_2px_0_#050505]">
+                  <img src="${
+                    this.assets ? this.assets.getCreatureDataUrl(card.speciesId, 'front') : ''
+                  }" class="souldoll-img w-12 h-12 object-contain bg-abyss-ink border border-ash-purple p-0.5 shrink-0" alt="${
+                card.creatureName
+              }" />
+                  <div class="flex-1 min-w-0 text-left">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-bold text-xs text-porcelain truncate">${cardDef.name}</span>
+                      <span class="text-[10px] font-bold ${rarityStyle.accent} whitespace-nowrap shrink-0">${metaStatus}</span>
+                    </div>
+                    <div class="text-[10px] text-ki-cyan tabular-nums mt-0.5 truncate">${bonuses}</div>
+                  </div>
+                  ${actionHtml}
+                </div>
+              `;
+            })
+            .join('');
+
+    const subtitleParts: string[] = [];
+    if (summary.championName) subtitleParts.push(`${summary.championName} vence`);
+    if (summary.rewardMoney && summary.rewardMoney > 0) {
+      subtitleParts.push(`+${summary.rewardMoney} monedas`);
+    }
+    const subtitleText =
+      subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Resumen de recompensas y botín';
+
+    this.replaceModal.className =
+      'pointer-events-none fixed inset-0 z-40 flex items-end justify-center sm:items-center sm:justify-end bg-transparent p-2.5 sm:p-6 safe-pad';
+    this.replaceModal.innerHTML = `
+      <div class="pointer-events-auto w-full max-w-md max-h-[54dvh] sm:max-h-[calc(100dvh-2.5rem)] touch-scroll overflow-y-auto px-panel bg-crypt-ink/95 p-3.5 sm:p-5 text-porcelain shadow-2xl space-y-3.5">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-ash-purple pb-2.5">
+          <div class="min-w-0">
+            <div class="text-base sm:text-lg font-black text-resonant-gold">¡Victoria!</div>
+            <div class="text-xs text-bone-gray truncate">${subtitleText}</div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-result-soul-dust' })}
+            <div class="px-2.5 py-1 rounded-none border-2 border-ki-cyan bg-deep-abyss text-xs font-bold text-ki-cyan tabular-nums whitespace-nowrap">
+              +${summary.xpTotal} XP
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-xs font-bold uppercase tracking-wider text-bone-gray mb-2">Cartas Obtenidas en Combate</div>
+          <div class="space-y-2 max-h-44 sm:max-h-56 touch-scroll overflow-y-auto pr-1">
+            ${cardsHtml}
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-center gap-2.5 pt-2 border-t-2 border-ash-purple">
+          <button data-album class="w-full sm:flex-1 min-h-[44px] px-btn-primary font-bold text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap">
+            <span>Ver en Álbum de Cartas</span>
+          </button>
+          <button data-continue class="w-full sm:flex-1 min-h-[44px] px-btn-secondary font-bold text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap">
+            <span>Continuar</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.replaceModal.querySelectorAll<HTMLElement>('[data-dismantle]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        onDismantleDuplicate?.(Number(btn.dataset.dismantle));
+      });
+    });
+
+    this.replaceModal.querySelector('[data-album]')?.addEventListener('click', () => {
+      onAlbum();
+    });
+
+    this.replaceModal.querySelector('[data-continue]')?.addEventListener('click', () => {
+      this.replaceModal.classList.add('hidden');
+      this.replaceModal.classList.remove('flex');
+      onContinue();
     });
   }
 

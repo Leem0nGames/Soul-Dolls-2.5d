@@ -66,8 +66,16 @@ describe('BattleCameraScript', () => {
     expect(pose.timeScale).toBeLessThan(0.5);
 
     script.playImmediate('victory_orbit', 1.0, true);
-    script.step(2.5, pose);
+    script.step(0.1, pose);
     expect(script.getCurrentShot()).toBe('victory_orbit');
+    // At t = 0.1s the camera begins blending smoothly from DEFAULT_BATTLE_POSE toward player station (-2.15, 1.08, 2.0)
+    expect(pose.lookAt.x).toBeLessThan(DEFAULT_BATTLE_POSE.lookAt.x);
+    expect(pose.lookAt.x).toBeGreaterThan(-2.15);
+
+    script.step(2.4, pose);
+    expect(script.getCurrentShot()).toBe('victory_orbit');
+    expect(pose.lookAt.x).toBeCloseTo(-2.15, 2);
+    expect(pose.lookAt.z).toBeCloseTo(2.0, 2);
     expect(pose.timeScale).toBe(1);
   });
 });

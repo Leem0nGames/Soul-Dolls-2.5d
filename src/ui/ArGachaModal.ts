@@ -68,18 +68,29 @@ export class ArGachaModal extends ModalOverlay {
         return;
       }
       try {
-        this.stream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' },
           audio: false,
         });
+        if (!this.isOpen()) {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+          return;
+        }
+        this.stream = stream;
         this.cameraActive = true;
         this.cameraStatus = 'Escaneando código QR en realidad aumentada...';
         render();
 
         const video = this.root.querySelector<HTMLVideoElement>('[data-ar-video]');
-        if (video) {
+        if (video && this.cameraActive && this.stream) {
           video.srcObject = this.stream;
           await video.play().catch(() => {});
+          if (!this.isOpen() || !this.cameraActive) {
+            this.stopCamera();
+            return;
+          }
 
           const DetectorCtor = (
             window as unknown as {
@@ -276,6 +287,14 @@ export class ArGachaModal extends ModalOverlay {
         this.close();
         onClose();
       });
+
+      if (this.cameraActive && this.stream) {
+        const activeVideo = this.root.querySelector<HTMLVideoElement>('[data-ar-video]');
+        if (activeVideo && activeVideo.srcObject !== this.stream) {
+          activeVideo.srcObject = this.stream;
+          void activeVideo.play().catch(() => {});
+        }
+      }
 
       this.root.querySelector('[data-start-cam]')?.addEventListener('click', () => {
         void startCamera();

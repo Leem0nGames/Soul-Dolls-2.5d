@@ -85,14 +85,42 @@ export class BattleCamera {
   }
 
   private applyPose(): void {
-    const portraitT =
-      this.script.getCurrentShot() === 'victory_orbit' ? 0 : this.getPortraitBlend();
-    const px = this.pose.pos.x - 1.1 * portraitT;
-    const py = this.pose.pos.y - 0.27 * portraitT;
-    const pz = this.pose.pos.z + 0.55 * portraitT;
-    const lx = this.pose.lookAt.x - 0.52 * portraitT;
-    const ly = this.pose.lookAt.y - 0.32 * portraitT;
-    const lz = this.pose.lookAt.z + 0.1 * portraitT;
+    const isVictoryOrbit = this.script.getCurrentShot() === 'victory_orbit';
+    const rawPortrait = this.getPortraitBlend();
+    const portraitT = isVictoryOrbit ? 0 : rawPortrait;
+
+    let px = this.pose.pos.x - 1.1 * portraitT;
+    let py = this.pose.pos.y - 0.27 * portraitT;
+    let pz = this.pose.pos.z + 0.55 * portraitT;
+    let lx = this.pose.lookAt.x - 0.52 * portraitT;
+    let ly = this.pose.lookAt.y - 0.32 * portraitT;
+    let lz = this.pose.lookAt.z + 0.1 * portraitT;
+
+    if (isVictoryOrbit) {
+      const fx = this.pose.lookAt.x - this.pose.pos.x;
+      const fz = this.pose.lookAt.z - this.pose.pos.z;
+      const len = Math.hypot(fx, fz) || 1;
+      const fwdX = fx / len;
+      const fwdZ = fz / len;
+      // Horizontal right vector = forward x up = (-fwdZ, 0, fwdX)
+      const rightX = -fwdZ;
+      const rightZ = fwdX;
+
+      if (rawPortrait > 0.05) {
+        // Portrait mobile: pull back slightly & aim lower so SoulDoll stands in upper showcase above bottom result sheet
+        px -= fwdX * (0.95 * rawPortrait);
+        pz -= fwdZ * (0.95 * rawPortrait);
+        py += 0.12 * rawPortrait;
+        ly -= 0.58 * rawPortrait;
+      } else {
+        // Landscape/desktop: shift camera aim slightly right so SoulDoll orbits cleanly in left half beside result card
+        const sideShift = 0.78;
+        px += rightX * sideShift;
+        pz += rightZ * sideShift;
+        lx += rightX * sideShift;
+        lz += rightZ * sideShift;
+      }
+    }
 
     this.camera.position.set(px, py, pz);
     const targetFov = this.getAdaptiveFov(this.pose.fov);

@@ -7,6 +7,7 @@ import {
   buildGeometryFromQuadBuilder,
   createQuadBuilder,
   pushQuad,
+  pushTiledBox,
   pushTiledQuad,
   pushTiledQuadKey,
   pushTriangle,
@@ -216,6 +217,8 @@ export function buildBuildingsMesh(
         vertexColors: true,
       });
       const wallMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(wqb), wallMat);
+      wallMesh.castShadow = true;
+      wallMesh.receiveShadow = true;
       wallMesh.matrixAutoUpdate = false;
       wallMesh.updateMatrix();
       group.add(wallMesh);
@@ -224,6 +227,8 @@ export function buildBuildingsMesh(
 
   if (qb.indices.length > 0) {
     const miscMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(qb), atlasMaterial);
+    miscMesh.castShadow = true;
+    miscMesh.receiveShadow = true;
     miscMesh.matrixAutoUpdate = false;
     miscMesh.updateMatrix();
     group.add(miscMesh);
@@ -241,10 +246,83 @@ export function buildBuildingsMesh(
         vertexColors: true,
       });
       const roofMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(rqb), roofMat);
+      roofMesh.castShadow = true;
+      roofMesh.receiveShadow = true;
       roofMesh.matrixAutoUpdate = false;
       roofMesh.updateMatrix();
       group.add(roofMesh);
     }
+  }
+
+  group.matrixAutoUpdate = false;
+  group.updateMatrix();
+  return group;
+}
+
+/**
+ * Builds crisp 3D interior walls on solid '#' tiles for indoor house maps.
+ */
+export function buildInteriorWallsMesh(
+  map: MapDef,
+  atlasMaterial: THREE.Material,
+  getWallTexture?: (key: TileAtlasKey) => THREE.CanvasTexture,
+  getWallNormalTexture?: (key: TileAtlasKey) => THREE.CanvasTexture
+): THREE.Group | null {
+  if (!map.isInterior) return null;
+
+  const wallQb = createQuadBuilder();
+  const trimQb = createQuadBuilder();
+  const h = map.grid.length;
+  const w = map.grid[0]?.length ?? 0;
+
+  for (let z = 0; z < h; z++) {
+    const row = map.grid[z];
+    for (let x = 0; x < w; x++) {
+      if (row[x] !== '#') continue;
+      const groundY = getTileWorldY(map, x, z);
+      const x0 = x - 0.5;
+      const x1 = x + 0.5;
+      const z0 = z - 0.5;
+      const z1 = z + 0.5;
+      pushTiledBox(wallQb, x0, x1, groundY, groundY + 2.05, z0, z1, 0.96, [1.0, 0.96, 0.9]);
+      // Baseboard & crown timber molding strip
+      pushTiledBox(trimQb, x0 - 0.01, x1 + 0.01, groundY + 2.0, groundY + 2.15, z0 - 0.01, z1 + 0.01, 0.85);
+    }
+  }
+
+  if (wallQb.indices.length === 0) return null;
+
+  const group = new THREE.Group();
+  const wallMat = getWallTexture
+    ? new THREE.MeshStandardMaterial({
+        map: getWallTexture('wall_plaster'),
+        normalMap: getWallNormalTexture ? getWallNormalTexture('wall_plaster') : null,
+        normalScale: new THREE.Vector2(1.05, 1.05),
+        roughness: 0.88,
+        metalness: 0.03,
+        vertexColors: true,
+      })
+    : atlasMaterial;
+  const wallMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(wallQb), wallMat);
+  wallMesh.matrixAutoUpdate = false;
+  wallMesh.updateMatrix();
+  group.add(wallMesh);
+
+  if (trimQb.indices.length > 0) {
+    const trimMat = getWallTexture
+      ? new THREE.MeshStandardMaterial({
+          map: getWallTexture('wall_wood_gold'),
+          normalMap: getWallNormalTexture ? getWallNormalTexture('wall_wood_gold') : null,
+          normalScale: new THREE.Vector2(1.05, 1.05),
+          roughness: 0.85,
+          metalness: 0.05,
+          vertexColors: true,
+        })
+      : atlasMaterial;
+    const trimMesh = new THREE.Mesh(buildGeometryFromQuadBuilder(trimQb), trimMat);
+    trimMesh.matrixAutoUpdate = false;
+    trimMesh.updateMatrix();
+    group.add(trimMesh);
   }
 
   group.matrixAutoUpdate = false;

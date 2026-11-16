@@ -21,10 +21,12 @@ function buildVillaOrigen() {
   addHill(z, 11, 37, 8, 3);
   addHill(z, 37, 36, 9, 4);
 
-  // Village central plateau at height 2
-  fillRect(z, 12, 14, 24, 20, '.', 2);
-  // Village plaza cobble
+  // Village central plateau at height 2 (+ south-east cottage plot & yard)
+  fillRect(z, 12, 14, 24, 22, '.', 2);
+  fillRect(z, 28, 30, 9, 7, '.', 2);
+  // Village plaza cobble & cottage walkway
   fillRect(z, 17, 20, 14, 11, '=', 2);
+  fillRect(z, 29, 31, 4, 5, '=', 2);
   // Pond on east side
   fillRect(z, 31, 24, 5, 5, '~', 1);
   // Flower meadows
@@ -69,6 +71,7 @@ export const MAP_VILLA_ORIGEN: MapDef = {
     { kind: 'lab', x: 17, z: 14, width: 5, depth: 4, facing: 'down' },
     { kind: 'house_red', x: 13, z: 19, width: 4, depth: 3, facing: 'down' },
     { kind: 'house_blue', x: 29, z: 14, width: 4, depth: 3, facing: 'down' },
+    { kind: 'house_blue', x: 30, z: 31, width: 3, depth: 3, facing: 'down' },
   ],
   props: [
     { kind: 'well', x: 20, z: 24 },
@@ -83,7 +86,7 @@ export const MAP_VILLA_ORIGEN: MapDef = {
     { kind: 'fence', x: 14, z: 24 },
     { kind: 'fence', x: 15, z: 24 },
     { kind: 'oak', x: 14, z: 31 },
-    { kind: 'birch', x: 34, z: 31 },
+    { kind: 'birch', x: 35, z: 31 },
     { kind: 'mushroom_tree', x: 13, z: 29 },
     { kind: 'mushroom_tree_arcane', x: 35, z: 18 },
     { kind: 'lamp_wood', x: 21, z: 3 },
@@ -105,6 +108,16 @@ export const MAP_VILLA_ORIGEN: MapDef = {
   warps: [
     { x: 23, y: 0, targetMap: 'ruta_1', targetX: 23, targetY: 53, dir: 'up' },
     { x: 24, y: 0, targetMap: 'ruta_1', targetX: 24, targetY: 53, dir: 'up' },
+    {
+      x: 31,
+      y: 34,
+      targetMap: 'casa_villa_pb',
+      targetX: 8,
+      targetY: 10,
+      dir: 'up',
+      houseId: 'casa_villa',
+      doorStyle: 'building',
+    },
   ],
   npcs: [
     {
@@ -199,6 +212,17 @@ export const MAP_VILLA_ORIGEN: MapDef = {
         speed: 1.4,
         pauseSec: 1.5,
       },
+      lookAtPlayerAfterTalk: true,
+    },
+    {
+      id: 'agente_villa',
+      name: 'Agente Bruno',
+      role: 'merchant',
+      x: 29,
+      y: 34,
+      dir: 'down',
+      dialogKey: 'house_broker_villa',
+      houseBrokerId: 'casa_villa',
       lookAtPlayerAfterTalk: true,
     },
   ],

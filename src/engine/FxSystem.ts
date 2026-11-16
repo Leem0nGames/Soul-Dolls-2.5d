@@ -105,6 +105,7 @@ export class FxSystem {
       blending: THREE.AdditiveBlending,
       transparent: true,
       depthWrite: false,
+      toneMapped: false,
       side: THREE.DoubleSide,
     });
 

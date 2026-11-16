@@ -26,21 +26,28 @@ interface GatePlacement {
 }
 
 function clusterWarps(map: MapDef): GatePlacement[] {
+  if (map.isInterior) return [];
   const h = map.grid.length;
   const w = map.grid[0]?.length ?? 0;
+  const edgeWarps = map.warps.filter(
+    (warp) =>
+      !warp.houseId &&
+      warp.doorStyle !== 'building' &&
+      warp.doorStyle !== 'interior'
+  );
   const visited = new Set<number>();
   const placements: GatePlacement[] = [];
 
-  for (let i = 0; i < map.warps.length; i++) {
+  for (let i = 0; i < edgeWarps.length; i++) {
     if (visited.has(i)) continue;
-    const queue: WarpDef[] = [map.warps[i]];
+    const queue: WarpDef[] = [edgeWarps[i]];
     visited.add(i);
 
     for (let q = 0; q < queue.length; q++) {
       const cur = queue[q];
-      for (let j = 0; j < map.warps.length; j++) {
+      for (let j = 0; j < edgeWarps.length; j++) {
         if (visited.has(j)) continue;
-        const other = map.warps[j];
+        const other = edgeWarps[j];
         if (
           other.targetMap === cur.targetMap &&
           Math.abs(other.x - cur.x) + Math.abs(other.y - cur.y) <= 1
@@ -204,8 +211,8 @@ function buildArchGateGroup(
     // Lantern cap & base
     pushGateBox(qb, wallBuilders, lx - 0.13, lx + 0.13, 2.16, 2.26, -0.13, 0.13, 'wall_iron', 0.88);
     pushGateBox(qb, wallBuilders, lx - 0.11, lx + 0.11, 1.84, 1.92, -0.11, 0.11, 'wall_iron', 0.88);
-    // Warm amber emissive lantern core
-    pushColorBox(glowQb, lx - 0.09, lx + 0.09, 1.92, 2.16, -0.09, 0.09, 1.0, 0.84, 0.42);
+    // Warm amber HDR emissive lantern core (triggers soft bloom above 1.04 threshold)
+    pushColorBox(glowQb, lx - 0.09, lx + 0.09, 1.92, 2.16, -0.09, 0.09, 1.45, 1.22, 0.58);
   }
 
   // 5. Heavy timber crossbeam lintel + decorative route crest plaque
@@ -312,9 +319,9 @@ function buildCavePortalGroup(
     // Crystal / torch sconce on pillar front
     const sx = side < 0 ? -1.42 : 1.42;
     pushGateBox(qb, wallBuilders, sx - 0.16, sx + 0.16, 1.35, 1.62, 0.60, 0.86, 'wall_crypt', 0.92);
-    const cr = ((p.accentColor >> 16) & 0xff) / 255;
-    const cg = ((p.accentColor >> 8) & 0xff) / 255;
-    const cb = (p.accentColor & 0xff) / 255;
+    const cr = (((p.accentColor >> 16) & 0xff) / 255) * 1.45;
+    const cg = (((p.accentColor >> 8) & 0xff) / 255) * 1.45;
+    const cb = ((p.accentColor & 0xff) / 255) * 1.45;
     pushColorBox(glowQb, sx - 0.11, sx + 0.11, 1.62, 2.02, 0.64, 0.82, cr, cg, cb);
   }
 

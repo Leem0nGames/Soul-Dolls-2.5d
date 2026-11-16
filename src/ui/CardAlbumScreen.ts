@@ -2,15 +2,27 @@ import { ALL_SPECIES_IDS, getSpecies } from '../data/species.ts';
 import { TYPE_VISUALS } from '../data/types.ts';
 import {
   CARD_RARITY_ORDER,
+  canDismantleDuplicateCard,
+  dismantleDuplicateCard,
   formatCardBonuses,
   formatCreaturesUsingCard,
   getAlbumCounts,
   getAvailableCardCopies,
   getCardDef,
+  getCardDismantleValue,
   getCardDropChance,
+  getCardRankedStats,
   getCardRarityDropMultiplier,
+  getCardStatUpgradeCost,
+  getEffectiveCardDef,
+  getNextCardRarity,
+  getRarityUpgradeCost,
+  getSoulDust,
+  MAX_CARD_STAT_UPGRADE_LEVEL,
   socketCardOnCreature,
   unsocketCardFromCreature,
+  upgradeCardRarity,
+  upgradeCardStats,
 } from '../domain/Cards.ts';
 import { getCreatureDisplayName } from '../domain/Creature.ts';
 import type { CardRarity, SaveData, StatName } from '../domain/types.ts';
@@ -19,6 +31,7 @@ import { ES } from '../i18n/es.ts';
 import { ModalOverlay } from './ModalOverlay.ts';
 import { CARD_RARITY_STYLES } from './cardRarityStyles.ts';
 import { playCardSocketFx } from './cardSocketFx.ts';
+import { renderSoulDustCounter } from './renderSoulDustCounter.ts';
 import { renderTypeBadges } from './renderTypeBadge.ts';
 
 type CardFilter = 'all' | 'owned' | 'missing';
@@ -97,7 +110,10 @@ export class CardAlbumScreen extends ModalOverlay {
         {} as Record<CardRarity, number>
       );
       for (const id of ALL_SPECIES_IDS) {
-        rarityCounts[getCardDef(id).rarity] += 1;
+        const entry = save.cardAlbum?.[id];
+        const owned = Boolean(entry && entry.count > 0);
+        const effRarity = owned ? getEffectiveCardDef(save, id).rarity : getCardDef(id).rarity;
+        rarityCounts[effRarity] += 1;
       }
 
       const rarityBtns = [
@@ -121,7 +137,8 @@ export class CardAlbumScreen extends ModalOverlay {
         const owned = (save.cardAlbum?.[id]?.count ?? 0) > 0;
         if (this.filter === 'owned' && !owned) return false;
         if (this.filter === 'missing' && owned) return false;
-        if (this.rarityFilter !== 'all' && getCardDef(id).rarity !== this.rarityFilter) {
+        const effRarity = owned ? getEffectiveCardDef(save, id).rarity : getCardDef(id).rarity;
+        if (this.rarityFilter !== 'all' && effRarity !== this.rarityFilter) {
           return false;
         }
         return true;
@@ -141,7 +158,9 @@ export class CardAlbumScreen extends ModalOverlay {
                 const entry = save.cardAlbum?.[id];
                 const owned = Boolean(entry && entry.count > 0);
                 const spec = getSpecies(id);
-                const card = getCardDef(id);
+                const card = owned
+                  ? getEffectiveCardDef(save, id)
+                  : { ...getCardDef(id), upgradeLevel: 0 };
                 const rarityStyle = CARD_RARITY_STYLES[card.rarity];
 
                 if (!owned) {
@@ -165,12 +184,13 @@ export class CardAlbumScreen extends ModalOverlay {
                 const primaryType = TYPE_VISUALS[card.types[0]];
                 const typesText = card.types.map((t) => ES.types[t]).join(' · ');
                 const bonusStr = formatCardBonuses(card.bonuses);
+                const upgradeLabel = card.upgradeLevel > 0 ? ` +${card.upgradeLevel}` : '';
 
                 return `
                   <button data-card="${id}" class="text-left rounded-none border-2 ${rarityStyle.border} ${rarityStyle.frameBg} ${rarityStyle.glow} ${rarityStyle.hoverBorder} p-2.5 flex flex-col justify-between gap-1.5 min-h-[156px] relative overflow-hidden">
                     <div class="w-full flex items-center justify-between gap-1 text-[11px] tabular-nums">
                       <span class="text-bone-gray font-bold">#${String(id).padStart(2, '0')}</span>
-                      <span class="font-bold ${rarityStyle.accent}">${ES.cards.rarity[card.rarity]} · ×${entry!.count}</span>
+                      <span class="font-bold ${rarityStyle.accent}">${ES.cards.rarity[card.rarity]}${upgradeLabel} · ×${entry!.count}</span>
                     </div>
                     <div class="w-full flex items-center justify-center rounded-none border-2 bg-abyss-ink py-1" style="border-color:${primaryType.border}">
                       <img src="${this.assets.getCreatureDataUrl(id, 'front')}" data-souldoll-id="${id}" data-souldoll-view="front" class="souldoll-img w-16 h-16 object-contain" alt="${spec.name}" />
@@ -190,12 +210,15 @@ export class CardAlbumScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-4xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2.5 gap-2">
+          <div class="flex flex-wrap items-center justify-between border-b-2 border-ash-purple pb-2 mb-2.5 gap-2">
             <div>
               <div class="font-bold text-resonant-gold">${ES.cards.title}</div>
               <div class="text-xs text-bone-gray tabular-nums">${ES.cards.collected}: ${counts.collected}/${counts.total} · Copias totales: ${counts.totalCopies}</div>
             </div>
-            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+            <div class="flex items-center gap-2 shrink-0">
+              ${renderSoulDustCounter(getSoulDust(save), { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
+              <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+            </div>
           </div>
           <div class="text-xs text-bone-gray mb-2">${ES.cards.subtitle}</div>
           <div class="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 mb-2">${filterBtns}</div>
@@ -246,19 +269,25 @@ export class CardAlbumScreen extends ModalOverlay {
     onMutate: () => void
   ): void {
     const spec = getSpecies(speciesId);
-    const card = getCardDef(speciesId);
     const entry = save.cardAlbum?.[speciesId];
     const owned = Boolean(entry && entry.count > 0);
+    const card = owned
+      ? getEffectiveCardDef(save, speciesId)
+      : { ...getCardDef(speciesId), upgradeLevel: 0 };
     const rarityStyle = CARD_RARITY_STYLES[card.rarity];
     const dropPct = `${(getCardDropChance(speciesId, false) * 100).toFixed(1)}%`;
     const dropMult = `×${getCardRarityDropMultiplier(card.rarity).toFixed(2)}`;
+    const soulDust = getSoulDust(save);
 
     if (!owned) {
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto ${rarityStyle.border} p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-4">
+          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-4 gap-2">
             <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.cards.unknown}</div>
-            <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+            <div class="flex items-center gap-2 shrink-0">
+              ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
+              <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+            </div>
           </div>
           <div class="flex flex-col items-center py-6 gap-3 text-center">
             <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain" alt="${ES.cards.unknown}" />
@@ -277,6 +306,20 @@ export class CardAlbumScreen extends ModalOverlay {
     const holdersText = formatCreaturesUsingCard(save, speciesId);
     const primaryType = TYPE_VISUALS[card.types[0]];
     const typeBadges = renderTypeBadges(card.types, 'md');
+    const upgradeSuffix = card.upgradeLevel > 0 ? ` · +${card.upgradeLevel}` : '';
+
+    const dismantleCheck = canDismantleDuplicateCard(save, speciesId);
+    const dismantleValue = getCardDismantleValue(speciesId);
+    const nextRarity = getNextCardRarity(card.rarity);
+    const rarityCost = nextRarity ? getRarityUpgradeCost(card.rarity) : 0;
+    const canAffordRarity = Boolean(nextRarity && soulDust >= rarityCost);
+
+    const statUpgradeLv = card.upgradeLevel;
+    const statMaxed = statUpgradeLv >= MAX_CARD_STAT_UPGRADE_LEVEL;
+    const statCost = statMaxed ? 0 : getCardStatUpgradeCost(card.rarity, statUpgradeLv);
+    const canAffordStat = !statMaxed && soulDust >= statCost;
+    const rankedStats = getCardRankedStats(spec);
+    const statPreview = `+2 ${ES.stats[rankedStats[0]]} · +1 ${ES.stats[rankedStats[1]]}`;
 
     const bonusesGrid = STAT_ORDER.filter((stat) => (card.bonuses[stat] ?? 0) > 0)
       .map(
@@ -297,7 +340,7 @@ export class CardAlbumScreen extends ModalOverlay {
               const hasThis = mon.socketedCardId === speciesId;
               const otherCard =
                 mon.socketedCardId !== undefined && !hasThis
-                  ? getCardDef(mon.socketedCardId)
+                  ? getEffectiveCardDef(save, mon.socketedCardId)
                   : null;
               const activeCard = hasThis ? card : otherCard;
               const canDropHere = !hasThis && availCopies > 0;
@@ -371,11 +414,68 @@ export class CardAlbumScreen extends ModalOverlay {
 
     const canDragCard = availCopies > 0 && save.party.length > 0;
 
+    const forgeHtml = `
+      <div class="px-card border-soul-violet p-3 space-y-2.5">
+        <div class="flex items-center justify-between gap-2 border-b border-ash-purple pb-1.5">
+          <span class="text-xs font-bold uppercase tracking-wider text-ethereal-orchid">${ES.cards.forgeTitle}</span>
+          <span class="text-[11px] font-bold text-ghost-violet tabular-nums">${ES.cards.rarity[card.rarity]} · Nivel +${statUpgradeLv}/${MAX_CARD_STAT_UPGRADE_LEVEL}</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          ${
+            nextRarity
+              ? `<button data-upgrade-rarity ${canAffordRarity ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold flex flex-col items-start justify-center ${
+                  canAffordRarity
+                    ? 'px-btn-primary'
+                    : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-bone-gray cursor-not-allowed'
+                }">
+                  <span class="whitespace-nowrap">${ES.cards.upgradeRarityAction(ES.cards.rarity[nextRarity], rarityCost)}</span>
+                  ${
+                    !canAffordRarity
+                      ? `<span class="text-[10px] text-coral-red">${ES.cards.insufficientDust(rarityCost - soulDust)}</span>`
+                      : ''
+                  }
+                </button>`
+              : `<div class="min-h-[44px] px-3 rounded-none border-2 border-old-bronze bg-smoked-wood flex items-center text-xs font-bold text-bright-brass">${ES.cards.upgradeRarityMax}</div>`
+          }
+
+          ${
+            !statMaxed
+              ? `<button data-upgrade-stats ${canAffordStat ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold flex flex-col items-start justify-center ${
+                  canAffordStat
+                    ? 'px-btn-arcane'
+                    : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-bone-gray cursor-not-allowed'
+                }">
+                  <span class="whitespace-nowrap">${ES.cards.upgradeStatsAction(statUpgradeLv + 1, statCost)}</span>
+                  <span class="text-[10px] ${canAffordStat ? 'text-ki-cyan' : 'text-bone-gray'} tabular-nums">${statPreview}</span>
+                </button>`
+              : `<div class="min-h-[44px] px-3 rounded-none border-2 border-ki-cyan bg-deep-abyss flex items-center text-xs font-bold text-ki-cyan">${ES.cards.upgradeStatsMax(MAX_CARD_STAT_UPGRADE_LEVEL)}</div>`
+          }
+        </div>
+
+        <div class="pt-1 border-t border-ash-purple flex flex-wrap items-center justify-between gap-2">
+          ${
+            dismantleCheck.ok
+              ? `<span class="text-[11px] text-bone-gray tabular-nums">${ES.cards.copiesLabel(availCopies, totalCopies)}</span>
+                 <button data-dismantle-card class="min-h-[44px] px-3 px-btn-secondary text-xs font-bold whitespace-nowrap">${ES.cards.dismantleAction(dismantleValue)}</button>`
+              : `<span class="text-[11px] text-bone-gray">${
+                  dismantleCheck.reason === 'all_socketed'
+                    ? ES.cards.dismantleAllSocketed
+                    : ES.cards.dismantleNeedDuplicate
+                }</span>`
+          }
+        </div>
+      </div>
+    `;
+
     this.root.innerHTML = `
       <div class="px-panel w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
-        <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
+        <div class="flex flex-wrap items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
           <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${card.name}</div>
-          <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+          <div class="flex items-center gap-2 shrink-0">
+            ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
+            <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+          </div>
         </div>
 
         ${this.notice ? `<div class="mb-3 rounded-none border-2 border-ki-cyan bg-deep-abyss px-3 py-2 text-xs font-bold text-frosted-glass">${this.notice}</div>` : ''}
@@ -387,7 +487,7 @@ export class CardAlbumScreen extends ModalOverlay {
             }">
               <div class="flex items-center justify-between text-xs font-bold">
                 <span class="tabular-nums text-bone-gray">#${String(speciesId).padStart(2, '0')} · ${card.title}</span>
-                <span class="${rarityStyle.accent} uppercase tracking-wider">${ES.cards.rarity[card.rarity]}</span>
+                <span class="${rarityStyle.accent} uppercase tracking-wider tabular-nums">${ES.cards.rarity[card.rarity]}${upgradeSuffix}</span>
               </div>
 
               <div class="rounded-none border-2 bg-abyss-ink py-3 flex items-center justify-center" style="border-color:${primaryType.border}">
@@ -421,15 +521,42 @@ export class CardAlbumScreen extends ModalOverlay {
             }
           </div>
 
-          <div class="flex flex-col gap-2">
-            <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.cards.socketIntoParty}</div>
-            <div class="space-y-2">${partyHtml}</div>
+          <div class="flex flex-col gap-3">
+            ${forgeHtml}
+            <div class="flex flex-col gap-2">
+              <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.cards.socketIntoParty}</div>
+              <div class="space-y-2">${partyHtml}</div>
+            </div>
           </div>
         </div>
       </div>
     `;
 
     this.root.querySelector('[data-back]')?.addEventListener('click', onBack);
+
+    this.root.querySelector('[data-upgrade-rarity]')?.addEventListener('click', () => {
+      const res = upgradeCardRarity(save, speciesId);
+      if (res.ok && res.newRarity) {
+        this.notice = `${card.name} ascendió a rareza ${ES.cards.rarity[res.newRarity]} (-${res.cost} ${ES.cards.soulDustLabel}).`;
+        onMutate();
+      }
+    });
+
+    this.root.querySelector('[data-upgrade-stats]')?.addEventListener('click', () => {
+      const res = upgradeCardStats(save, speciesId);
+      if (res.ok && res.newLevel !== undefined) {
+        this.notice = `${card.name} reforzada a +${res.newLevel} (-${res.cost} ${ES.cards.soulDustLabel}).`;
+        onMutate();
+      }
+    });
+
+    this.root.querySelector('[data-dismantle-card]')?.addEventListener('click', () => {
+      const res = dismantleDuplicateCard(save, speciesId);
+      if (res.ok) {
+        this.notice = `Rompiste un duplicado de ${card.name} y obtuviste +${res.dustGained} ${ES.cards.soulDustLabel}.`;
+        onMutate();
+      }
+    });
 
     const performSocket = (idx: number) => {
       const mon = save.party[idx];

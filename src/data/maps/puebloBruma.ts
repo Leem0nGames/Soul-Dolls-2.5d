@@ -84,7 +84,7 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
     { kind: 'center', x: 13, z: 17, width: 5, depth: 4, facing: 'down' },
     { kind: 'shop', x: 30, z: 17, width: 5, depth: 4, facing: 'down' },
     { kind: 'house_blue', x: 16, z: 8, width: 4, depth: 3, facing: 'down' },
-    { kind: 'house_red', x: 28, z: 8, width: 4, depth: 3, facing: 'down' },
+    { kind: 'house_red', x: 29, z: 8, width: 3, depth: 3, facing: 'down' },
   ],
   props: [
     { kind: 'well', x: 23, z: 23 },
@@ -121,6 +121,16 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
     { x: 24, y: 47, targetMap: 'ruta_1', targetX: 24, targetY: 2, dir: 'down' },
     { x: 47, y: 23, targetMap: 'ruta_2', targetX: 2, targetY: 24, dir: 'right' },
     { x: 47, y: 24, targetMap: 'ruta_2', targetX: 2, targetY: 25, dir: 'right' },
+    {
+      x: 30,
+      y: 11,
+      targetMap: 'casa_bruma_pb',
+      targetX: 8,
+      targetY: 10,
+      dir: 'up',
+      houseId: 'casa_bruma',
+      doorStyle: 'building',
+    },
   ],
   npcs: [
     {
@@ -201,6 +211,17 @@ export const MAP_PUEBLO_BRUMA: MapDef = {
         speed: 1.45,
         pauseSec: 1.4,
       },
+      lookAtPlayerAfterTalk: true,
+    },
+    {
+      id: 'agente_bruma',
+      name: 'Agente Vera',
+      role: 'merchant',
+      x: 28,
+      y: 11,
+      dir: 'down',
+      dialogKey: 'house_broker_bruma',
+      houseBrokerId: 'casa_bruma',
       lookAtPlayerAfterTalk: true,
     },
   ],

@@ -219,6 +219,7 @@ export function buildTerrainChunks(
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, mats.length === 1 ? mats[0] : mats);
       geo.computeBoundingSphere();
+      mesh.receiveShadow = true;
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
 
@@ -478,6 +479,7 @@ export function buildTerrainBorderApron(
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, mats.length === 1 ? mats[0] : mats);
   geo.computeBoundingSphere();
+  mesh.receiveShadow = true;
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
   return mesh;

@@ -11,8 +11,16 @@ import {
   pickBestVesselForSpecies,
   rebindCreatureContainer,
 } from '../domain/BodyParts.ts';
-import { addCardToAlbum, formatCardBonuses, getCardDef } from '../domain/Cards.ts';
+import {
+  addCardToAlbum,
+  canDismantleDuplicateCard,
+  dismantleDuplicateCard,
+  formatCardBonuses,
+  getCardDef,
+  getSoulDust,
+} from '../domain/Cards.ts';
 import { getCreatureDisplayName } from '../domain/Creature.ts';
+import { checkLevelEvolution } from '../domain/Evolution.ts';
 import { replaceCreatureMove } from '../domain/Experience.ts';
 import { addCapturedCreature } from '../domain/Storage.ts';
 import type {
@@ -38,16 +46,30 @@ import { createBottomPivotPlaneGeometry } from '../engine/BillboardBatch.ts';
 import { computeVfxScaleMetrics } from '../engine/AbilityVfxSystem.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { FxSystem } from '../engine/FxSystem.ts';
+import {
+  createMeleeStabMaterial,
+  loadMeleeStabTexture,
+  type MeleeStabMaterialHandle,
+} from '../engine/MeleeStabSprite.ts';
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { TweenRunner } from '../engine/Tween.ts';
-import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
+import {
+  evaluateMeleeStabPhase,
+  MELEE_STAB_TOTAL_DURATION,
+} from '../domain/MeleeStabTiming.ts';
+import { hexToNumber, PALETTE, TYPE_PALETTES } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
+import type { BattleResultDropSummary } from '../ui/BattleHud.ts';
 import { CARD_RARITY_STYLES } from '../ui/cardRarityStyles.ts';
 
 const _camPos = new THREE.Vector3();
 const _fromPos = new THREE.Vector3();
 const _toPos = new THREE.Vector3();
 const _projVec = new THREE.Vector3();
+const _stabFwd = new THREE.Vector3();
+const _stabRight = new THREE.Vector3();
+const _stabTipPos = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
 
 export class BattleScene implements Scene {
   readonly name = 'battle';
@@ -65,11 +87,13 @@ export class BattleScene implements Scene {
 
   private playerMesh: THREE.Mesh;
   private enemyMesh: THREE.Mesh;
+  private meleeStabMesh: THREE.Mesh;
   private trainerMesh: THREE.Mesh | null = null;
   private capsuleMesh: THREE.Mesh;
 
   private playerMatHandle: BattleSpriteMaterialHandle;
   private enemyMatHandle: BattleSpriteMaterialHandle;
+  private meleeStabMatHandle: MeleeStabMaterialHandle;
   private playerRig: SoulDollIdleRig;
   private enemyRig: SoulDollIdleRig;
   private unsubCreatureLoad: (() => void) | null = null;
@@ -87,6 +111,8 @@ export class BattleScene implements Scene {
   private eventQueue: BattleEvent[] = [];
   private processingEvent = false;
   private pendingEvolutions: Array<{ partyIndex: number; targetSpeciesId: number }> = [];
+  private totalXpEarned = 0;
+  private droppedCards: BattleResultDropSummary[] = [];
   private onDone: (outcome: 'win' | 'lose' | 'caught' | 'ran') => void;
 
   private handleStageTap = (): void => {
@@ -119,10 +145,16 @@ export class BattleScene implements Scene {
     );
 
     this.stage = new BattleStage(this.scene, game.assets, this.biome, this.isBoss);
+    this.stage.setShadowsEnabled(game.renderer.areShadowsEnabled());
+    this.stage.setAmbientParticlesEnabled(game.renderer.areAmbientParticlesEnabled());
     this.battleCamera = new BattleCamera(game.cameraRig.camera);
     this.fx = new FxSystem(this.scene);
     this.fx.setFlashCallback((css, ms) => this.game.battleTransition.flashScreen(css, ms));
     this.postFx = new BattlePostFx(game.renderer.webgl, this.scene, game.cameraRig.camera);
+    this.postFx.setBiome(this.biome, this.isBoss);
+    this.postFx.setPixelEffect(game.renderer.isPixelEffectEnabled());
+    this.postFx.setQualityTier(game.renderer.getQualityTier());
+    this.postFx.setPostFxOptions(game.renderer.getPostFxOptions());
 
     this.lastAspect = game.renderer.getAspect();
     this.lastInternalH = game.renderer.getInternalHeight();
@@ -233,7 +265,21 @@ export class BattleScene implements Scene {
     this.disposables.track(capGeo);
     this.disposables.track(capMat);
 
-    this.scene.add(this.playerMesh, this.enemyMesh, this.capsuleMesh);
+    const meleeStabGeo = createBottomPivotPlaneGeometry(1, 1);
+    const meleeStabTex = loadMeleeStabTexture((loaded) => {
+      if (!this.exited) {
+        this.meleeStabMatHandle.setTexture(loaded);
+      }
+    });
+    this.meleeStabMatHandle = createMeleeStabMaterial(meleeStabTex);
+    this.meleeStabMesh = new THREE.Mesh(meleeStabGeo, this.meleeStabMatHandle.material);
+    this.meleeStabMesh.visible = false;
+    this.meleeStabMesh.renderOrder = 3;
+    this.disposables.track(meleeStabGeo);
+    this.disposables.track(meleeStabTex);
+    this.disposables.track(this.meleeStabMatHandle.material);
+
+    this.scene.add(this.playerMesh, this.enemyMesh, this.meleeStabMesh, this.capsuleMesh);
   }
 
   onEnter(): void {
@@ -312,6 +358,7 @@ export class BattleScene implements Scene {
         this.enemyMatHandle.setFlash(Math.max(0, 0.42 * (1 - t * 1.8)));
       },
       () => {
+        if (this.exited) return;
         this.enemyAnimating = false;
         this.enemyMesh.position.set(
           ENEMY_STATION_POS.x,
@@ -350,6 +397,7 @@ export class BattleScene implements Scene {
             tMesh.position.x = ENEMY_STATION_POS.x + t * 3.6;
           },
           () => {
+            if (this.exited) return;
             tMesh.visible = false;
           }
         );
@@ -433,6 +481,7 @@ export class BattleScene implements Scene {
         this.capsuleMesh.rotation.z = t * Math.PI * 3;
       },
       () => {
+        if (this.exited) return;
         this.capsuleMesh.visible = false;
         this.capsuleMesh.rotation.z = 0;
 
@@ -468,6 +517,7 @@ export class BattleScene implements Scene {
             matHandle.setFlash(Math.max(0, 0.55 * (1 - t * 1.8)));
           },
           () => {
+            if (this.exited) return;
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.scale.setScalar(baseScale);
@@ -481,6 +531,7 @@ export class BattleScene implements Scene {
   }
 
   private refreshHud(): void {
+    this.game.battleHud.updateSoulDust(getSoulDust(this.game.saveData));
     this.game.battleHud.updateBars(
       this.engine.getActive('player'),
       this.engine.getActive('enemy'),
@@ -520,7 +571,8 @@ export class BattleScene implements Scene {
             },
             () => {
               this.showPlayerCommandMenu();
-            }
+            },
+            getSoulDust(this.game.saveData)
           );
         },
         onParty: () => {
@@ -633,10 +685,17 @@ export class BattleScene implements Scene {
         else this.enemyAnimating = true;
         const actorRig = isPlayer ? this.playerRig : this.enemyRig;
 
+        const attackerMatHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
+        const targetRig = isPlayer ? this.enemyRig : this.playerRig;
+        const targetSide = isPlayer ? 'enemy' : 'player';
+
         const groundedY = this.getGroundedY(isPlayer ? 'player' : 'enemy');
         const finishMoveAnim = () => {
           if (isPlayer) this.playerAnimating = false;
           else this.enemyAnimating = false;
+          this.meleeStabMesh.visible = false;
+          mesh.visible = true;
+          attackerMatHandle.setOpacity(1);
           mesh.position.set(home.x, groundedY, home.z);
           mesh.scale.setScalar(baseScale);
           actorRig.injectImpulse(isPlayer ? -0.24 : 0.24, -0.45, 0.14);
@@ -647,44 +706,157 @@ export class BattleScene implements Scene {
         const toFx = computeVfxScaleMetrics(targetScale).silhouette;
 
         if (move.category === 'physical') {
-          let fxFired = false;
-          actorRig.injectImpulse(isPlayer ? 0.32 : -0.32, 0.4, 0.14);
-          const dx = (target.x - home.x) * 0.24;
-          const dz = (target.z - home.z) * 0.24;
+          let impactFired = false;
+          let dashDustFired = false;
+          actorRig.injectImpulse(isPlayer ? 0.34 : -0.34, 0.36, 0.14);
+
+          const typePal = TYPE_PALETTES[move.type];
+          const elemAccentHex = typePal.accent;
+          const elemBaseHex = typePal.base;
+          const elemLightHex = typePal.light;
+          const elemNum = hexToNumber(elemBaseHex);
+          const elemAccentNum = hexToNumber(elemAccentHex);
+          const elemLightNum = hexToNumber(elemLightHex);
+          const stabScale = targetScale * 1.18;
+          const targetGroundedY = this.getGroundedY(targetSide);
+
           this.tweens.start(
-            0.34,
+            MELEE_STAB_TOTAL_DURATION,
             (t) => {
-              const p = Math.sin(t * Math.PI);
-              mesh.position.x = home.x + dx * p;
-              mesh.position.z = home.z + dz * p;
-              mesh.position.y = groundedY + p * 0.18;
-              mesh.scale.set(
-                baseScale * (1 + 0.08 * p),
-                baseScale * (1 - 0.05 * p),
-                1
-              );
-              if (t >= 0.45 && !fxFired) {
-                fxFired = true;
-                actorRig.injectImpulse(isPlayer ? -0.36 : 0.36, -0.52, 0.18);
-                this.fx.playTypeMove(move.type, _fromPos, _toPos, 'physical', {
-                  power: move.power,
-                  fromGroundY: home.y,
-                  toGroundY: target.y,
-                  fromScale: baseScale,
-                  toScale: targetScale,
-                });
-                this.fx.burst(_toPos, {
-                  count: 10,
-                  speedMin: 2.2 * toFx,
-                  speedMax: 4.5 * toFx,
-                  lifeMin: 0.16,
-                  lifeMax: 0.3,
-                  sizeStart: 0.28 * toFx,
-                  sizeEnd: 0.04 * toFx,
-                  colorHex: hexToNumber(PALETTE.warmWhite),
-                  gravity: 0,
-                  spreadScale: toFx,
-                });
+              const elapsed = t * MELEE_STAB_TOTAL_DURATION;
+              const st = evaluateMeleeStabPhase(elapsed);
+
+              if (st.phase === 'advance') {
+                this.meleeStabMesh.visible = false;
+                mesh.visible = true;
+                attackerMatHandle.setOpacity(st.attackerOpacity);
+
+                const dashFrac = 0.36 * st.advanceLungeT;
+                mesh.position.x = THREE.MathUtils.lerp(home.x, target.x, dashFrac);
+                mesh.position.z = THREE.MathUtils.lerp(home.z, target.z, dashFrac);
+                mesh.position.y = groundedY + Math.sin(st.phaseT * Math.PI) * (baseScale * 0.1);
+                mesh.scale.set(
+                  baseScale * (1 + 0.08 * st.advanceLungeT),
+                  baseScale * (1 - 0.05 * st.advanceLungeT),
+                  1
+                );
+
+                if (!dashDustFired && st.phaseT >= 0.18) {
+                  dashDustFired = true;
+                  this.fx.burst(_fromPos, {
+                    count: 10,
+                    speedMin: 1.0 * fromFx,
+                    speedMax: 2.5 * fromFx,
+                    lifeMin: 0.18,
+                    lifeMax: 0.32,
+                    sizeStart: 0.22 * fromFx,
+                    sizeEnd: 0.04 * fromFx,
+                    colorHex: elemLightNum,
+                    gravity: 0.2 * fromFx,
+                    spreadScale: fromFx,
+                  });
+                }
+              } else if (st.phase === 'stab') {
+                mesh.visible = false;
+                attackerMatHandle.setOpacity(0);
+
+                // Position directly to the right side of the opponent from the camera's viewpoint
+                _stabFwd.set(
+                  target.x - this.game.cameraRig.camera.position.x,
+                  0,
+                  target.z - this.game.cameraRig.camera.position.z
+                );
+                if (_stabFwd.lengthSq() < 0.0001) _stabFwd.set(0, 0, -1);
+                _stabFwd.normalize();
+                _stabRight.crossVectors(_stabFwd, _worldUp).normalize();
+
+                const rightOffset = targetScale * 0.44;
+                this.meleeStabMesh.position.set(
+                  target.x + _stabRight.x * rightOffset - _stabFwd.x * 0.08,
+                  targetGroundedY,
+                  target.z + _stabRight.z * rightOffset - _stabFwd.z * 0.08
+                );
+                this.meleeStabMesh.scale.setScalar(stabScale);
+                this.meleeStabMesh.visible = true;
+
+                // Mirror horizontally so standing to the right of the enemy thrusts left into them
+                this.meleeStabMatHandle.setFrame(st.frameIndex, true);
+                this.meleeStabMatHandle.setOpacity(st.stabOpacity);
+                this.meleeStabMatHandle.setElementEffect(elemAccentHex, st.elementGlow);
+
+                if (st.impactTriggered && !impactFired) {
+                  impactFired = true;
+
+                  // Dynamic camera shake + hit-stop + close attack framing
+                  this.battleCamera.playImmediate(
+                    isPlayer ? 'attack_player' : 'attack_enemy',
+                    0.42,
+                    true
+                  );
+                  this.battleCamera.triggerHitStop(0.048);
+                  this.battleCamera.triggerShake(move.power >= 75 ? 0.28 : 0.2, 8.0);
+                  targetRig.injectImpulse(isPlayer ? 0.46 : -0.46, -0.64, 0.22);
+
+                  // Arena dim + radial shockwave centered on enemy torso
+                  this.postFx.pulseArenaDim(0.24, 0.44);
+                  _projVec.set(target.x, target.y + targetScale * 0.5, target.z);
+                  _projVec.project(this.game.cameraRig.camera);
+                  this.postFx.triggerShockwave(
+                    (_projVec.x + 1) * 0.5,
+                    (_projVec.y + 1) * 0.5,
+                    0.022,
+                    0.3
+                  );
+
+                  // Elemental flash tint on screen
+                  const r = (elemAccentNum >> 16) & 0xff;
+                  const g = (elemAccentNum >> 8) & 0xff;
+                  const b = elemAccentNum & 0xff;
+                  this.fx.flash(`rgba(${r}, ${g}, ${b}, 0.30)`, 120);
+
+                  // Elemental VFX + stab spark burst & expanding ring right where the blade strikes
+                  _stabTipPos.set(
+                    this.meleeStabMesh.position.x - _stabRight.x * (stabScale * 0.25),
+                    target.y + targetScale * 0.52,
+                    this.meleeStabMesh.position.z - _stabRight.z * (stabScale * 0.25)
+                  );
+                  this.fx.playTypeMove(move.type, _stabTipPos, _toPos, 'physical', {
+                    power: move.power,
+                    fromGroundY: targetGroundedY,
+                    toGroundY: target.y,
+                    fromScale: stabScale,
+                    toScale: targetScale,
+                  });
+                  this.fx.burst(_toPos, {
+                    count: 24,
+                    speedMin: 2.2 * toFx,
+                    speedMax: 5.4 * toFx,
+                    lifeMin: 0.18,
+                    lifeMax: 0.38,
+                    sizeStart: 0.32 * toFx,
+                    sizeEnd: 0.04 * toFx,
+                    colorHex: elemNum,
+                    gravity: 0.2 * toFx,
+                    spreadScale: toFx,
+                  });
+                  this.fx.ring(_toPos, {
+                    count: 18,
+                    radius: 0.18 * toFx,
+                    speed: 3.4 * toFx,
+                    life: 0.34,
+                    sizeStart: 0.26 * toFx,
+                    sizeEnd: 0.04 * toFx,
+                    colorHex: elemLightNum,
+                    vy: 0.4 * toFx,
+                  });
+                }
+              } else {
+                // Return phase: restore attacker at home station and fade cleanly back in
+                this.meleeStabMesh.visible = false;
+                mesh.visible = true;
+                mesh.position.set(home.x, groundedY, home.z);
+                mesh.scale.setScalar(baseScale);
+                attackerMatHandle.setOpacity(st.attackerOpacity);
               }
             },
             finishMoveAnim
@@ -832,6 +1004,7 @@ export class BattleScene implements Scene {
             matHandle.setFlash(Math.max(0, 0.92 * Math.max(0, 1 - t * 2.2)));
           },
           () => {
+            if (this.exited) return;
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.position.set(home.x, this.getGroundedY(ev.target), home.z);
@@ -911,7 +1084,12 @@ export class BattleScene implements Scene {
 
       case 'flinch':
       case 'miss':
+        this.refreshHud();
+        done();
+        break;
+
       case 'xp_gain':
+        this.totalXpEarned += ev.amount;
         this.refreshHud();
         done();
         break;
@@ -946,6 +1124,7 @@ export class BattleScene implements Scene {
             this.stage.setShadowScale(ev.target, 1 - t * 0.8, t < 0.9);
           },
           () => {
+            if (this.exited) return;
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.visible = false;
@@ -975,6 +1154,7 @@ export class BattleScene implements Scene {
             mesh.scale.setScalar(baseScale * Math.max(0.08, 1 - t));
           },
           () => {
+            if (this.exited) return;
             if (isPlayer) this.playerAnimating = false;
             else this.enemyAnimating = false;
             mesh.visible = false;
@@ -1024,6 +1204,7 @@ export class BattleScene implements Scene {
             this.capsuleMesh.rotation.z = t * Math.PI * 3;
           },
           () => {
+            if (this.exited) return;
             this.enemyMesh.visible = false;
             this.stage.setShadowScale('enemy', 0.5, true);
             this.capsuleMesh.position.set(
@@ -1067,6 +1248,7 @@ export class BattleScene implements Scene {
                 }
               },
               () => {
+                if (this.exited) return;
                 this.capsuleMesh.rotation.z = 0;
                 const enemyFx = computeVfxScaleMetrics(this.enemyScale).silhouette;
                 _toPos.set(
@@ -1187,6 +1369,10 @@ export class BattleScene implements Scene {
 
       case 'learn_move_prompt': {
         const creature = this.game.saveData.party[ev.partyIndex];
+        if (!creature) {
+          done();
+          break;
+        }
         const newMoveName = getMove(ev.moveId).name;
         this.game.battleHud.showLearnMovePrompt(creature, ev.moveId, (replaceIndex) => {
           if (replaceIndex !== null) {
@@ -1211,15 +1397,23 @@ export class BattleScene implements Scene {
       }
 
       case 'evolution_ready':
-        this.pendingEvolutions.push({
-          partyIndex: ev.partyIndex,
-          targetSpeciesId: ev.targetSpeciesId,
-        });
+        if (!this.pendingEvolutions.some((e) => e.partyIndex === ev.partyIndex)) {
+          this.pendingEvolutions.push({
+            partyIndex: ev.partyIndex,
+            targetSpeciesId: ev.targetSpeciesId,
+          });
+        }
         done();
         break;
 
       case 'card_drop': {
         const { isNew } = addCardToAlbum(this.game.saveData, ev.speciesId);
+        this.droppedCards.push({
+          speciesId: ev.speciesId,
+          creatureName: ev.creatureName,
+          isDuplicate: !isNew,
+          dismantled: false,
+        });
         const card = getCardDef(ev.speciesId);
         const rarityStyle = CARD_RARITY_STYLES[card.rarity];
         const rarityTag = ES.cards.rarity[card.rarity];
@@ -1260,21 +1454,143 @@ export class BattleScene implements Scene {
 
       case 'battle_end': {
         this.game.battleTransition.setVignette(false);
-        if (ev.outcome === 'win') {
+        const dropped = this.droppedCards.map((d) => ({ ...d }));
+        let victoryApplied = false;
+
+        const applyVictoryRewardsOnce = () => {
+          if (victoryApplied || ev.outcome !== 'win') return;
+          victoryApplied = true;
           this.game.saveData.money += ev.rewardMoney;
           this.game.saveData.stats.battlesWon += 1;
-          this.battleCamera.playImmediate('victory_orbit', 2.0, true);
+        };
+
+        const startSoloVictoryShowcase = () => {
+          const activePlayer = this.engine.getActive('player');
+          this.enemyMesh.visible = false;
+          this.meleeStabMesh.visible = false;
+          if (this.trainerMesh) this.trainerMesh.visible = false;
+
+          // Showcase player's SoulDoll from front view while camera orbits her alone
+          this.playerMesh.visible = true;
+          this.playerMatHandle.setOpacity(1);
+          this.playerMatHandle.setDissolve(0);
+          this.playerMatHandle.setFlash(0);
+          this.playerMatHandle.setTexture(
+            this.game.assets.getCreatureTexture(activePlayer.speciesId, 'front')
+          );
+          this.playerRig.setView('front', true);
+          const frontAnchor = this.game.assets.getCreatureRigAnchor?.(
+            activePlayer.speciesId,
+            'front'
+          );
+          if (frontAnchor) this.playerRig.setAnchor(frontAnchor);
+          this.playerRig.injectImpulse(0, 0.55, 0.24);
+
+          const pFx = computeVfxScaleMetrics(this.playerScale).silhouette;
+          _fromPos.set(
+            PLAYER_STATION_POS.x,
+            PLAYER_STATION_POS.y + this.playerScale * 0.45,
+            PLAYER_STATION_POS.z
+          );
+          this.fx.ring(_fromPos, {
+            count: 24,
+            radius: 0.4 * pFx,
+            speed: 1.9 * pFx,
+            life: 0.65,
+            sizeStart: 0.26 * pFx,
+            sizeEnd: 0.04 * pFx,
+            colorHex: hexToNumber(PALETTE.resonantGold),
+            vy: 1.4 * pFx,
+          });
+          this.fx.burst(_fromPos, {
+            count: 20,
+            speedMin: 1.2 * pFx,
+            speedMax: 3.0 * pFx,
+            lifeMin: 0.4,
+            lifeMax: 0.75,
+            sizeStart: 0.24 * pFx,
+            sizeEnd: 0.04 * pFx,
+            colorHex: hexToNumber(PALETTE.kiCyan),
+            gravity: 0.6 * pFx,
+            spreadScale: pFx,
+          });
+
+          this.game.battleHud.setVictoryShowcaseMode(true);
+          this.battleCamera.playImmediate('victory_orbit', 2.0, false);
           this.game.bus.emit('audio:sfx', { sfx: 'victory_fanfare' });
           this.game.bus.emit('audio:music', { track: 'victory' });
-          this.tweens.start(
-            0.95,
-            () => {},
+        };
+
+        const proceedToFinish = () => {
+          applyVictoryRewardsOnce();
+          this.finishBattle(ev.outcome);
+        };
+
+        const showResultOverlay = () => {
+          const activePlayer = this.engine.getActive('player');
+          this.game.battleHud.showBattleResultOverlay(
+            {
+              xpTotal: this.totalXpEarned,
+              soulDust: getSoulDust(this.game.saveData),
+              championName: getCreatureDisplayName(activePlayer),
+              rewardMoney: ev.rewardMoney,
+              droppedCards: dropped,
+            },
+            openAlbum,
+            proceedToFinish,
+            handleDismantle
+          );
+        };
+
+        const handleDismantle = (index: number) => {
+          const item = dropped[index];
+          if (!item || !item.isDuplicate || item.dismantled) return;
+          const res = dismantleDuplicateCard(this.game.saveData, item.speciesId);
+          if (res.ok) {
+            item.dismantled = true;
+            item.dustGained = res.dustGained;
+            this.game.battleHud.updateSoulDust(res.soulDust);
+            this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+            this.game.saveManager.save(this.game.saveData);
+            showResultOverlay();
+          } else if (res.reason === 'all_socketed') {
+            this.game.showToast(ES.cards.dismantleAllSocketed);
+          } else {
+            item.isDuplicate = false;
+            showResultOverlay();
+          }
+        };
+
+        const openAlbum = () => {
+          this.game.cardAlbumScreen.open(
+            this.game.saveData,
             () => {
-              this.finishBattle(ev.outcome);
+              for (const item of dropped) {
+                if (
+                  item.isDuplicate &&
+                  !item.dismantled &&
+                  !canDismantleDuplicateCard(this.game.saveData, item.speciesId).ok
+                ) {
+                  item.isDuplicate = false;
+                }
+              }
+              this.game.battleHud.updateSoulDust(getSoulDust(this.game.saveData));
+              showResultOverlay();
+            },
+            () => {
+              this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+              this.game.battleHud.updateSoulDust(getSoulDust(this.game.saveData));
+              this.game.saveManager.save(this.game.saveData);
             }
           );
+        };
+
+        if (ev.outcome === 'win') {
+          applyVictoryRewardsOnce();
+          startSoloVictoryShowcase();
+          showResultOverlay();
         } else {
-          this.finishBattle(ev.outcome);
+          proceedToFinish();
         }
         break;
       }
@@ -1283,26 +1599,50 @@ export class BattleScene implements Scene {
 
   private finishBattle(outcome: 'win' | 'lose' | 'caught' | 'ran'): void {
     if (this.exited) return;
-    const popAndCallback = () => {
-      this.game.scenes.pop();
-      this.onDone(outcome);
-    };
 
     if (outcome === 'win' && this.pendingEvolutions.length > 0) {
-      const next = this.pendingEvolutions.shift()!;
-      this.game.scenes.pop();
-      this.game.startEvolution(next.partyIndex, next.targetSpeciesId, () => {
+      const queue = this.pendingEvolutions.splice(0);
+      const finishAllEvolutions = () => {
+        this.game.scenes.pop();
         this.onDone(outcome);
-      });
+      };
+
+      const runNextEvolution = () => {
+        while (queue.length > 0) {
+          const next = queue.shift()!;
+          const creature = this.game.saveData.party[next.partyIndex];
+          const liveTarget = creature ? checkLevelEvolution(creature) : null;
+          if (liveTarget !== null) {
+            this.game.startEvolution(
+              next.partyIndex,
+              liveTarget,
+              (evolved) => {
+                if (evolved) {
+                  this.game.saveManager.save(this.game.saveData);
+                }
+                runNextEvolution();
+              },
+              { replaceTop: true, autoPop: false }
+            );
+            return;
+          }
+        }
+        finishAllEvolutions();
+      };
+
+      runNextEvolution();
       return;
     }
 
-    popAndCallback();
+    this.game.scenes.pop();
+    this.onDone(outcome);
   }
 
   fixedUpdate(dt: number): void {
     const tier = this.game.renderer.getQualityTier();
     this.stage.setQualityTier(tier);
+    this.stage.setShadowsEnabled(this.game.renderer.areShadowsEnabled());
+    this.stage.setAmbientParticlesEnabled(this.game.renderer.areAmbientParticlesEnabled());
     this.fx.setQualityTier(tier);
     this.postFx.setQualityTier(tier);
 
@@ -1337,7 +1677,9 @@ export class BattleScene implements Scene {
 
     if (scaledDt > 0) {
       this.tweens.update(scaledDt);
-      this.fx.emitAmbient(this.biome, scaledDt);
+      if (this.game.renderer.areAmbientParticlesEnabled()) {
+        this.fx.emitAmbient(this.biome, scaledDt);
+      }
       this.fx.update(scaledDt, _camPos);
       this.stage.update(scaledDt, _camPos);
       if (this.playerMesh.visible) {
@@ -1367,6 +1709,9 @@ export class BattleScene implements Scene {
       this.enemyRig.applyToMesh(this.enemyMesh, this.enemyMatHandle);
     }
 
+    if (this.meleeStabMesh.visible) {
+      this.meleeStabMesh.lookAt(_camPos.x, this.meleeStabMesh.position.y, _camPos.z);
+    }
     if (this.trainerMesh && this.trainerMesh.visible) {
       this.trainerMesh.lookAt(_camPos.x, this.trainerMesh.position.y, _camPos.z);
     }
@@ -1404,6 +1749,9 @@ export class BattleScene implements Scene {
 
   render(): void {
     if (this.game.renderer.isContextLost()) return;
+    this.postFx.setQualityTier(this.game.renderer.getQualityTier());
+    this.postFx.setPixelEffect(this.game.renderer.isPixelEffectEnabled());
+    this.postFx.setPostFxOptions(this.game.renderer.getPostFxOptions());
     this.postFx.render();
   }
 

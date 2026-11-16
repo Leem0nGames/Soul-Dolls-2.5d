@@ -63,6 +63,9 @@ export class BestiaryScreen extends ModalOverlay {
         return;
       }
 
+      this.activeAnimView?.dispose();
+      this.activeAnimView = null;
+
       const filters: Array<{ id: BestiaryFilter; label: string }> = [
         { id: 'all', label: ES.bestiary.filterAll },
         { id: 'caught', label: ES.bestiary.filterCaught },

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { FxQualityTier } from '../domain/FxPool.ts';
+import type { GraphicsQualitySetting } from '../domain/types.ts';
+import type { PostFxOptions } from './BiomeGradeShader.ts';
 
 export const BASE_RENDER_W = 427;
 export const BASE_RENDER_H = 240;
@@ -54,11 +56,22 @@ export class PixelRenderer {
   readonly webgl: THREE.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
   private scale = 1.0;
+  private qualityMode: GraphicsQualitySetting = 'auto';
   private qualityTier: FxQualityTier = 'high';
+  private shadowsEnabled = true;
+  private ambientParticlesEnabled = true;
+  private postFxOptions: PostFxOptions = {
+    bloom: true,
+    bloomIntensity: 1.0,
+    tiltShift: true,
+    colorGrading: true,
+    vignette: true,
+  };
   private avgFrameMs = 16.6;
   private resizeCooldown = 2000;
   private contextLost = false;
   private pixelEffect = false;
+  private readonly isSoftwareGl: boolean;
   private onContextLostCb?: () => void;
   private onContextRestoredCb?: () => void;
 
@@ -77,7 +90,22 @@ export class PixelRenderer {
     });
     this.webgl.outputColorSpace = THREE.SRGBColorSpace;
     this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.webgl.shadowMap.enabled = false;
+
+    let softwareGl = true;
+    try {
+      const gl = this.webgl.getContext();
+      if (gl) {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+        const gpu = String(gl.getParameter(param) ?? '');
+        softwareGl = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+      }
+    } catch {
+      softwareGl = true;
+    }
+    this.isSoftwareGl = softwareGl;
+    this.webgl.shadowMap.enabled = !softwareGl;
+    this.webgl.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.canvas = this.webgl.domElement;
     this.canvas.className = 'pixel-canvas w-full h-full block bg-crypt-ink';
@@ -127,6 +155,14 @@ export class PixelRenderer {
     this.applyInternalSize();
   }
 
+  isPixelEffectEnabled(): boolean {
+    return this.pixelEffect;
+  }
+
+  isSoftwareRenderer(): boolean {
+    return this.isSoftwareGl;
+  }
+
   getAspect(): number {
     return this.canvas.width / Math.max(1, this.canvas.height);
   }
@@ -139,8 +175,58 @@ export class PixelRenderer {
     return this.qualityTier;
   }
 
+  setQualityMode(mode: GraphicsQualitySetting): void {
+    this.qualityMode = mode;
+    if (mode !== 'auto') {
+      this.qualityTier = mode;
+    }
+    this.syncShadowMapState();
+  }
+
+  getQualityMode(): GraphicsQualitySetting {
+    return this.qualityMode;
+  }
+
+  setShadowsEnabled(enabled: boolean): void {
+    this.shadowsEnabled = enabled;
+    this.syncShadowMapState();
+  }
+
+  areShadowsEnabled(): boolean {
+    return this.shadowsEnabled;
+  }
+
+  setAmbientParticlesEnabled(enabled: boolean): void {
+    this.ambientParticlesEnabled = enabled;
+  }
+
+  areAmbientParticlesEnabled(): boolean {
+    return this.ambientParticlesEnabled;
+  }
+
+  setPostFxOptions(opts: PostFxOptions): void {
+    this.postFxOptions = { ...opts };
+  }
+
+  getPostFxOptions(): PostFxOptions {
+    return this.postFxOptions;
+  }
+
+  private syncShadowMapState(): void {
+    this.webgl.shadowMap.enabled =
+      !this.isSoftwareGl && this.shadowsEnabled && this.qualityTier !== 'low';
+  }
+
   updateDynamicResolution(dtMs: number): void {
     this.avgFrameMs = this.avgFrameMs * 0.9 + dtMs * 0.1;
+    if (this.qualityMode !== 'auto') {
+      if (this.qualityTier !== this.qualityMode) {
+        this.qualityTier = this.qualityMode;
+        this.syncShadowMapState();
+      }
+      return;
+    }
+
     if (this.resizeCooldown > 0) {
       this.resizeCooldown -= dtMs;
       return;
@@ -167,6 +253,7 @@ export class PixelRenderer {
       const scaleChanged = nextScale !== this.scale;
       this.scale = nextScale;
       this.qualityTier = nextTier;
+      this.syncShadowMapState();
       if (scaleChanged) {
         this.applyInternalSize();
       }

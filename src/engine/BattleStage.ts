@@ -7,7 +7,10 @@ import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import type { TileAtlasKey } from '../gfx/ProceduralTiles.ts';
 import { getTileUv } from './AtlasBuilder.ts';
-import { createBottomPivotPlaneGeometry } from './BillboardBatch.ts';
+import {
+  createBottomPivotPlaneGeometry,
+  createLitBillboardMaterial,
+} from './BillboardBatch.ts';
 import { DisposableRegistry } from './Disposables.ts';
 import {
   buildCloudBillboards,
@@ -526,10 +529,16 @@ export class BattleStage {
   private glowSprites: THREE.Mesh[] = [];
   private perimeterProps: StagePropMesh[] = [];
   private bossAura: THREE.Mesh | null = null;
+  private arenaParticles: THREE.Points | null = null;
+  private arenaParticleMat: THREE.ShaderMaterial | null = null;
+  private sunLight: THREE.DirectionalLight;
   private playerShadow: THREE.Mesh;
   private enemyShadow: THREE.Mesh;
   private time = 0;
   private qualityTier: FxQualityTier = 'high';
+  private shadowsEnabled = true;
+  private ambientParticlesEnabled = true;
+  private isCave = false;
 
   constructor(
     scene: THREE.Scene,
@@ -546,6 +555,7 @@ export class BattleStage {
     scene.fog = new THREE.Fog(theme.fog, 16, 36);
 
     const isCave = biome === 'cave';
+    this.isCave = isCave;
     const hemiLight = new THREE.HemisphereLight(
       isCave ? 0xd9c8ff : 0xfff8eb,
       isCave ? 0x6f5894 : 0xa39c8e,
@@ -559,8 +569,22 @@ export class BattleStage {
       isCave ? 1.35 : 1.55
     );
     sunLight.position.set(4.5, 8.2, 3.5);
+    sunLight.castShadow = !isCave;
+    if (sunLight.castShadow) {
+      sunLight.shadow.mapSize.set(1024, 1024);
+      sunLight.shadow.camera.near = 1;
+      sunLight.shadow.camera.far = 32;
+      const d = 10.5;
+      sunLight.shadow.camera.left = -d;
+      sunLight.shadow.camera.right = d;
+      sunLight.shadow.camera.top = d;
+      sunLight.shadow.camera.bottom = -d;
+      sunLight.shadow.bias = -0.0008;
+      sunLight.shadow.normalBias = 0.03;
+    }
     scene.add(sunLight);
     this.disposables.track(sunLight);
+    this.sunLight = sunLight;
 
     // 24x24 heightfield terrain patch with normal mapping
     const atlasMat = new THREE.MeshStandardMaterial({
@@ -613,6 +637,10 @@ export class BattleStage {
     );
     const pMesh = new THREE.Mesh(pGeo, atlasMat);
     const eMesh = new THREE.Mesh(eGeo, atlasMat);
+    pMesh.castShadow = true;
+    pMesh.receiveShadow = true;
+    eMesh.castShadow = true;
+    eMesh.receiveShadow = true;
     scene.add(pMesh, eMesh);
     this.disposables.track(pGeo);
     this.disposables.track(eGeo);
@@ -660,9 +688,12 @@ export class BattleStage {
       const rayGeo = new THREE.PlaneGeometry(2.6, 8.2);
       const rayMat = new THREE.MeshBasicMaterial({
         map: rayTex,
+        color: new THREE.Color(1.22, 1.15, 0.96),
         transparent: true,
         opacity: 0.55,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
+        toneMapped: false,
         side: THREE.DoubleSide,
       });
       this.disposables.track(rayTex);
@@ -679,16 +710,18 @@ export class BattleStage {
       }
     }
 
-    // Glow sprites (cave crystals / arena torches)
+    // Glow sprites (cave crystals / arena torches) with HDR bloom boost
     if (theme.hasGlowLights) {
       const glowTex = createGlowTexture(theme.glowColor);
-      const glowGeo = new THREE.PlaneGeometry(1.3, 1.3);
+      const glowGeo = new THREE.PlaneGeometry(1.4, 1.4);
       const glowMat = new THREE.MeshBasicMaterial({
         map: glowTex,
+        color: new THREE.Color(1.5, 1.42, 1.35),
         blending: THREE.AdditiveBlending,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.75,
         depthWrite: false,
+        toneMapped: false,
         side: THREE.DoubleSide,
       });
       this.disposables.track(glowTex);
@@ -708,16 +741,18 @@ export class BattleStage {
       }
     }
 
-    // Boss pulsing aura on enemy platform
+    // Boss pulsing HDR aura on enemy platform
     if (isBoss) {
       const auraTex = createBossAuraTexture();
-      const auraGeo = new THREE.PlaneGeometry(3.1, 3.1);
+      const auraGeo = new THREE.PlaneGeometry(3.2, 3.2);
       auraGeo.rotateX(-Math.PI / 2);
       const auraMat = new THREE.MeshBasicMaterial({
         map: auraTex,
+        color: new THREE.Color(1.55, 1.25, 1.15),
         blending: THREE.AdditiveBlending,
         transparent: true,
         depthWrite: false,
+        toneMapped: false,
       });
       this.bossAura = new THREE.Mesh(auraGeo, auraMat);
       this.bossAura.position.set(
@@ -730,6 +765,8 @@ export class BattleStage {
       this.disposables.track(auraGeo);
       this.disposables.track(auraMat);
     }
+
+    this.buildArenaParticles(scene, biome, isBoss);
 
     // Soft procedural contact shadows flush on top of each station platform beneath the feet
     const shadowTex = createBlobShadowTexture();
@@ -770,16 +807,41 @@ export class BattleStage {
     heightGrid: number[][]
   ): void {
     const rng = createRng(biome.length * 1337 + 77);
-    const matCache = new Map<PropKind, THREE.MeshBasicMaterial>();
+    const matCache = new Map<PropKind, THREE.MeshLambertMaterial>();
+    const depthMatCache = new Map<PropKind, THREE.MeshDepthMaterial>();
     const geoCache = new Map<PropKind, THREE.PlaneGeometry>();
 
-    const getPropMat = (kind: PropKind): THREE.MeshBasicMaterial => {
+    const shadowKinds = new Set<PropKind>([
+      'oak',
+      'birch',
+      'pine',
+      'snow_pine',
+      'mushroom_tree',
+      'mushroom_tree_arcane',
+      'pillar',
+      'well',
+      'cave_entrance',
+      'boulder',
+    ]);
+    const windKinds = new Set<PropKind>([
+      'oak',
+      'birch',
+      'pine',
+      'snow_pine',
+      'mushroom_tree',
+      'mushroom_tree_arcane',
+      'bush',
+      'bush_arcane',
+      'tall_grass_clump',
+      'tall_grass_flower',
+    ]);
+
+    const getPropMat = (kind: PropKind): THREE.MeshLambertMaterial => {
       let mat = matCache.get(kind);
       if (!mat) {
-        mat = new THREE.MeshBasicMaterial({
-          map: assets.getPropTexture(kind),
+        mat = createLitBillboardMaterial(assets.getPropTexture(kind), {
           alphaTest: 0.45,
-          side: THREE.DoubleSide,
+          windAmp: windKinds.has(kind) ? 0.045 : 0,
         });
         matCache.set(kind, mat);
         this.disposables.track(mat);
@@ -787,11 +849,26 @@ export class BattleStage {
       return mat;
     };
 
+    const getPropDepthMat = (kind: PropKind): THREE.MeshDepthMaterial | null => {
+      if (!shadowKinds.has(kind)) return null;
+      let dm = depthMatCache.get(kind);
+      if (!dm) {
+        dm = new THREE.MeshDepthMaterial({
+          depthPacking: THREE.RGBADepthPacking,
+          map: assets.getPropTexture(kind),
+          alphaTest: 0.45,
+        });
+        depthMatCache.set(kind, dm);
+        this.disposables.track(dm);
+      }
+      return dm;
+    };
+
     const getPropGeo = (kind: PropKind): THREE.PlaneGeometry => {
       let geo = geoCache.get(kind);
       if (!geo) {
         const [w, h] = getStagePropDimensions(kind);
-        geo = createBottomPivotPlaneGeometry(w, h);
+        geo = createBottomPivotPlaneGeometry(w, h, 1, windKinds.has(kind) ? 4 : 1);
         geoCache.set(kind, geo);
         this.disposables.track(geo);
       }
@@ -824,6 +901,12 @@ export class BattleStage {
     ) => {
       if (!canPlace(wx, wz)) return;
       const mesh = new THREE.Mesh(getPropGeo(kind), getPropMat(kind));
+      const depthMat = getPropDepthMat(kind);
+      if (depthMat) {
+        mesh.castShadow = true;
+        mesh.customDepthMaterial = depthMat;
+      }
+      mesh.receiveShadow = true;
       mesh.position.set(wx, sampleY(wx, wz), wz);
       mesh.scale.setScalar(scale);
       mesh.renderOrder = 1;
@@ -901,9 +984,123 @@ export class BattleStage {
     }
   }
 
+  private buildArenaParticles(
+    scene: THREE.Scene,
+    biome: BattleBiome,
+    isBoss: boolean
+  ): void {
+    const count = 48;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const phases = new Float32Array(count);
+
+    const colorA = isBoss
+      ? new THREE.Color(1.65, 0.95, 0.42)
+      : biome === 'cave'
+        ? new THREE.Color(0.8, 1.35, 1.65)
+        : biome === 'forest'
+          ? new THREE.Color(1.4, 1.35, 0.55)
+          : biome === 'mountain' || biome === 'snow'
+            ? new THREE.Color(1.08, 1.15, 1.28)
+            : new THREE.Color(1.32, 1.24, 0.78);
+    const colorB = isBoss
+      ? new THREE.Color(1.55, 0.42, 0.58)
+      : biome === 'cave'
+        ? new THREE.Color(1.32, 0.72, 1.6)
+        : new THREE.Color(1.05, 1.32, 0.96);
+
+    for (let i = 0; i < count; i++) {
+      const h1 = Math.sin(i * 19.31 + 2.1) * 31415.92;
+      const h2 = Math.sin(i * 73.17 + 5.7) * 27182.81;
+      const h3 = Math.sin(i * 41.89 + 8.3) * 16180.34;
+      positions[i * 3] = (h1 - Math.floor(h1) - 0.5) * 13;
+      positions[i * 3 + 1] = (h2 - Math.floor(h2)) * 4.4 + 0.3;
+      positions[i * 3 + 2] = (h3 - Math.floor(h3) - 0.5) * 12;
+      const c = i % 2 === 0 ? colorA : colorB;
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+      phases[i] = (i * 0.87) % (Math.PI * 2);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 0.78 },
+        uDriftY: { value: isBoss || biome === 'arena' || biome === 'cave' ? 0.35 : 0.1 },
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 color;
+        attribute float aPhase;
+        uniform float uTime;
+        uniform float uDriftY;
+        varying vec3 vColor;
+        varying float vPulse;
+        void main() {
+          vColor = color;
+          vec3 p = position;
+          p.x += sin(uTime * 0.85 + aPhase) * 0.45;
+          p.y = mod(p.y + uTime * uDriftY, 4.8) + 0.2;
+          p.z += cos(uTime * 0.7 + aPhase * 1.2) * 0.35;
+          vPulse = 0.55 + 0.45 * sin(uTime * 2.8 + aPhase * 2.0);
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = clamp(18.0 / max(1.5, -mv.z), 2.0, 9.0);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uOpacity;
+        varying vec3 vColor;
+        varying float vPulse;
+        void main() {
+          float d = length(gl_PointCoord - 0.5) * 2.0;
+          if (d > 1.0) discard;
+          float a = smoothstep(1.0, 0.12, d) * vPulse * uOpacity;
+          gl_FragColor = vec4(vColor, a);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+    this.disposables.track(geo);
+    this.disposables.track(mat);
+
+    const pts = new THREE.Points(geo, mat);
+    pts.renderOrder = 3;
+    scene.add(pts);
+    this.arenaParticles = pts;
+    this.arenaParticleMat = mat;
+  }
+
   setQualityTier(tier: FxQualityTier): void {
     if (this.qualityTier === tier) return;
     this.qualityTier = tier;
+    this.syncVisualState();
+  }
+
+  setShadowsEnabled(enabled: boolean): void {
+    if (this.shadowsEnabled === enabled) return;
+    this.shadowsEnabled = enabled;
+    this.syncVisualState();
+  }
+
+  setAmbientParticlesEnabled(enabled: boolean): void {
+    if (this.ambientParticlesEnabled === enabled) return;
+    this.ambientParticlesEnabled = enabled;
+    this.syncVisualState();
+  }
+
+  private syncVisualState(): void {
+    const tier = this.qualityTier;
+    this.sunLight.castShadow = !this.isCave && this.shadowsEnabled && tier !== 'low';
     if (this.midLayerMesh) {
       this.midLayerMesh.visible = tier !== 'low';
     }
@@ -912,7 +1109,11 @@ export class BattleStage {
         tier === 'high' ? true : tier === 'medium' ? i % 2 === 0 : false;
     }
     for (let i = 0; i < this.sunRays.length; i++) {
-      this.sunRays[i].visible = tier !== 'low';
+      this.sunRays[i].visible = tier !== 'low' && this.ambientParticlesEnabled;
+    }
+    if (this.arenaParticles && this.arenaParticleMat) {
+      this.arenaParticles.visible = tier !== 'low' && this.ambientParticlesEnabled;
+      this.arenaParticleMat.uniforms.uOpacity.value = tier === 'high' ? 0.78 : 0.45;
     }
     const maxWeight = tier === 'high' ? 2 : tier === 'medium' ? 1 : 0;
     for (let i = 0; i < this.perimeterProps.length; i++) {
@@ -957,9 +1158,14 @@ export class BattleStage {
       const s = 0.94 + Math.sin(this.time * 3.8) * 0.1;
       this.bossAura.scale.set(s, 1, s);
     }
+
+    if (this.arenaParticleMat && this.arenaParticles?.visible) {
+      this.arenaParticleMat.uniforms.uTime.value = this.time;
+    }
   }
 
   dispose(): void {
+    this.sunLight.shadow.map?.dispose();
     this.disposables.disposeAll();
   }
 }

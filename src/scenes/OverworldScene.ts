@@ -8,7 +8,7 @@ import {
   SHARDS_PER_CONTAINER,
 } from '../data/containers.ts';
 import { getItem } from '../data/items.ts';
-import { getMap } from '../data/maps/index.ts';
+import { getMap, MAPS } from '../data/maps/index.ts';
 import { getSpecies } from '../data/species.ts';
 import { getTrainer } from '../data/trainers.ts';
 import { getClaimableMilestones, claimBestiaryMilestone } from '../domain/Bestiary.ts';
@@ -20,6 +20,7 @@ import {
 import { createCreature, getCreatureDisplayName } from '../domain/Creature.ts';
 import { checkItemEvolution } from '../domain/Evolution.ts';
 import { equipHeldItem } from '../domain/HeldItems.ts';
+import { buyHouse, getHouse, ownsHouse } from '../domain/Housing.ts';
 import {
   addItem,
   applyMedicineToCreature,
@@ -79,18 +80,22 @@ import type {
   MapDef,
   NpcDef,
   PropKind,
+  WarpDef,
 } from '../domain/types.ts';
 import {
   buildEncounterGrassPlacements,
   buildInstancedPropBatches,
   createBottomPivotPlaneGeometry,
+  createLitBillboardMaterial,
   updatePropBatchAnimation,
   type PropBatchGroup,
   type PropInstancePlacement,
 } from '../engine/BillboardBatch.ts';
-import { buildBuildingsMesh } from '../engine/BuildingMesher.ts';
+import { buildBuildingsMesh, buildInteriorWallsMesh } from '../engine/BuildingMesher.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { buildMapGatesGroup } from '../engine/GateMesher.ts';
+import { OverworldAtmosphere } from '../engine/OverworldAtmosphere.ts';
+import { OverworldPostFx } from '../engine/OverworldPostFx.ts';
 import {
   buildCloudBillboards,
   createGradientSkyTexture,
@@ -104,13 +109,15 @@ import {
   updateVisibleTerrainChunks,
   type TerrainChunk,
 } from '../engine/TerrainMesher.ts';
+import { WaterSurface } from '../engine/WaterSurface.ts';
 import { ES } from '../i18n/es.ts';
 import { OverworldHud } from '../ui/OverworldHud.ts';
 
 interface RuntimeNpc {
   def: NpcDef;
   mesh: THREE.Mesh;
-  mat: THREE.MeshBasicMaterial;
+  mat: THREE.MeshLambertMaterial;
+  depthMat: THREE.MeshDepthMaterial;
   visible: boolean;
   isPedestal: boolean;
   behavior: NpcBehaviorState;
@@ -226,7 +233,13 @@ export class OverworldScene implements Scene {
   private blockedTiles = new Set<string>();
 
   private playerMesh: THREE.Mesh;
-  private playerMat: THREE.MeshBasicMaterial;
+  private playerShadow: THREE.Mesh | null = null;
+  private playerMat: THREE.MeshLambertMaterial;
+  private playerDepthMat: THREE.MeshDepthMaterial;
+  private postFx: OverworldPostFx;
+  private atmosphere: OverworldAtmosphere | null = null;
+  private waterSurface: WaterSurface | null = null;
+  private sunLight: THREE.DirectionalLight | null = null;
   private charGeo: THREE.PlaneGeometry;
   private markerGeo: THREE.PlaneGeometry;
   private questExclamationTex: THREE.CanvasTexture;
@@ -273,15 +286,22 @@ export class OverworldScene implements Scene {
     this.persistentDisposables.track(this.questExclamationTex);
     this.persistentDisposables.track(this.questQuestionTex);
 
-    this.playerMat = new THREE.MeshBasicMaterial({
-      map: game.assets.getCharacterTexture('player', 'up', 0),
+    const initPlayerTex = game.assets.getCharacterTexture('player', 'up', 0);
+    this.playerMat = createLitBillboardMaterial(initPlayerTex, { emissiveIntensity: 0.54 });
+    this.playerDepthMat = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+      map: initPlayerTex,
       alphaTest: 0.5,
-      side: THREE.DoubleSide,
     });
     this.persistentDisposables.track(this.playerMat);
+    this.persistentDisposables.track(this.playerDepthMat);
 
     this.playerMesh = new THREE.Mesh(this.charGeo, this.playerMat);
+    this.playerMesh.castShadow = true;
+    this.playerMesh.receiveShadow = true;
+    this.playerMesh.customDepthMaterial = this.playerDepthMat;
     this.scene.add(this.playerMesh);
+    this.postFx = new OverworldPostFx(game.renderer.webgl, this.scene, game.cameraRig.camera);
 
     this.hud = new OverworldHud({
       onToggleQuest: () => {
@@ -711,6 +731,10 @@ export class OverworldScene implements Scene {
       mark(s.x, s.y, true);
     }
 
+    if (map.isInterior) {
+      return placements;
+    }
+
     placements.push(...buildEncounterGrassPlacements(map));
 
     // Seeded decoration pass across terrain
@@ -926,6 +950,14 @@ export class OverworldScene implements Scene {
     this.npcs = [];
     this.pickups = [];
     this.blockedTiles.clear();
+    this.atmosphere = null;
+    this.waterSurface = null;
+    if (this.playerShadow) {
+      this.playerMesh.remove(this.playerShadow);
+      this.playerShadow = null;
+    }
+    this.sunLight?.shadow.map?.dispose();
+    this.sunLight = null;
 
     const toRemove: THREE.Object3D[] = [];
     for (const child of this.scene.children) {
@@ -934,16 +966,22 @@ export class OverworldScene implements Scene {
     for (const c of toRemove) this.scene.remove(c);
     this.mapDisposables.disposeAll();
 
-    const map = getMap(mapId);
+    const safeMapId = MAPS[mapId] ? mapId : 'villa_origen';
+    const map = getMap(safeMapId);
+    const maxW = Math.max(0, (map.grid[0]?.length ?? 1) - 1);
+    const maxH = Math.max(0, map.grid.length - 1);
+    const clampedX = MAPS[mapId] ? Math.max(0, Math.min(maxW, Math.round(x))) : 24;
+    const clampedY = MAPS[mapId] ? Math.max(0, Math.min(maxH, Math.round(y))) : 26;
+
     this.currentMap = map;
-    this.gridX = x;
-    this.gridY = y;
+    this.gridX = clampedX;
+    this.gridY = clampedY;
     this.dir = dir;
     this.moving = false;
 
-    this.game.saveData.mapId = mapId;
-    this.game.saveData.playerX = x;
-    this.game.saveData.playerY = y;
+    this.game.saveData.mapId = safeMapId;
+    this.game.saveData.playerX = clampedX;
+    this.game.saveData.playerY = clampedY;
     this.game.saveData.playerDir = dir;
 
     const cTop = new THREE.Color(map.skyTopColor);
@@ -978,9 +1016,24 @@ export class OverworldScene implements Scene {
       isCave ? 0xffe0b8 : 0xfff7e6,
       isCave ? 1.35 : 1.55
     );
-    sunLight.position.set(4.5, 8.2, 3.5);
+    sunLight.castShadow = !map.isInterior && !isCave;
+    if (sunLight.castShadow) {
+      sunLight.shadow.mapSize.set(1024, 1024);
+      sunLight.shadow.camera.near = 1;
+      sunLight.shadow.camera.far = 38;
+      const d = 13;
+      sunLight.shadow.camera.left = -d;
+      sunLight.shadow.camera.right = d;
+      sunLight.shadow.camera.top = d;
+      sunLight.shadow.camera.bottom = -d;
+      sunLight.shadow.bias = -0.0008;
+      sunLight.shadow.normalBias = 0.03;
+    }
     this.scene.add(sunLight);
+    this.scene.add(sunLight.target);
     this.mapDisposables.track(sunLight);
+    this.sunLight = sunLight;
+    this.postFx.setBiome(map.biome, Boolean(map.isInterior));
 
     const atlasMat = new THREE.MeshStandardMaterial({
       map: this.game.assets.getTileAtlasTexture(),
@@ -1007,10 +1060,32 @@ export class OverworldScene implements Scene {
       this.mapDisposables.track(chunk.mesh.geometry);
       this.scene.add(chunk.mesh);
     }
-    const borderApron = buildTerrainBorderApron(map, atlasMat, grassMat);
+    const borderApron = map.isInterior ? null : buildTerrainBorderApron(map, atlasMat, grassMat);
     if (borderApron) {
       this.mapDisposables.track(borderApron.geometry);
       this.scene.add(borderApron);
+    }
+    this.waterSurface = new WaterSurface(this.scene, this.mapDisposables, map);
+
+    if (map.isInterior) {
+      const interiorWalls = buildInteriorWallsMesh(
+        map,
+        atlasMat,
+        (key) => this.game.assets.getWallTexture(key),
+        (key) => this.game.assets.getWallNormalTexture(key)
+      );
+      if (interiorWalls) {
+        interiorWalls.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.isMesh) {
+            if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
+            if (mesh.material && mesh.material !== atlasMat && !Array.isArray(mesh.material)) {
+              this.mapDisposables.track(mesh.material);
+            }
+          }
+        });
+        this.scene.add(interiorWalls);
+      }
     }
 
     // 2. Low-poly 3D buildings & 3D map-to-map route gates / cave portals
@@ -1045,6 +1120,11 @@ export class OverworldScene implements Scene {
       gatesGroup.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.isMesh) {
+          const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+          if (!mat || mat.toneMapped !== false) {
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+          }
           if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
           if (mesh.material && mesh.material !== atlasMat && !Array.isArray(mesh.material)) {
             this.mapDisposables.track(mesh.material);
@@ -1060,11 +1140,14 @@ export class OverworldScene implements Scene {
     for (const batch of this.propBatches) {
       this.mapDisposables.track(batch.mesh.geometry);
       this.mapDisposables.track(batch.mesh.material as THREE.Material);
+      if (batch.mesh.customDepthMaterial) {
+        this.mapDisposables.track(batch.mesh.customDepthMaterial as THREE.Material);
+      }
       this.scene.add(batch.mesh);
     }
 
     // 4. Sky cloud billboards (outdoor maps)
-    if (map.music !== 'cave') {
+    if (map.music !== 'cave' && !map.isInterior) {
       const mw = (map.grid[0]?.length ?? 48) * 0.5;
       const mh = map.grid.length * 0.5;
       this.clouds = buildCloudBillboards(
@@ -1106,12 +1189,14 @@ export class OverworldScene implements Scene {
               npcDef.trainerId ?? npcDef.id
             );
 
-      const mat = new THREE.MeshBasicMaterial({
+      const mat = createLitBillboardMaterial(tex, { emissiveIntensity: 0.54 });
+      const depthMat = new THREE.MeshDepthMaterial({
+        depthPacking: THREE.RGBADepthPacking,
         map: tex,
         alphaTest: 0.5,
-        side: THREE.DoubleSide,
       });
       this.mapDisposables.track(mat);
+      this.mapDisposables.track(depthMat);
 
       const npcGeo = isStarter
         ? capsulePedestalGeo
@@ -1119,6 +1204,9 @@ export class OverworldScene implements Scene {
           ? healMachineGeo
           : this.charGeo;
       const mesh = new THREE.Mesh(npcGeo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.customDepthMaterial = depthMat;
       const ny = getTileWorldY(map, npcDef.x, npcDef.y);
       mesh.position.set(npcDef.x, ny, npcDef.y);
       this.scene.add(mesh);
@@ -1167,6 +1255,7 @@ export class OverworldScene implements Scene {
         def: npcDef,
         mesh,
         mat,
+        depthMat,
         visible: true,
         isPedestal,
         behavior,
@@ -1178,24 +1267,44 @@ export class OverworldScene implements Scene {
     }
 
     // 6. Ground pickups not yet collected
+    const extraGlowPoints: Array<{ x: number; y: number; z: number; kind: PropKind }> = [];
+    for (const npc of this.npcs) {
+      if (npc.isPedestal) {
+        const py = getTileWorldY(map, npc.def.x, npc.def.y);
+        extraGlowPoints.push({
+          x: npc.def.x,
+          y: py,
+          z: npc.def.y,
+          kind: npc.def.id === 'arena_heal' ? 'heal_machine' : 'capsule_pedestal',
+        });
+      }
+    }
+
     for (const pk of map.pickups ?? []) {
       if (this.game.saveData.collectedPickups.includes(pk.id)) continue;
       let mesh: THREE.Mesh | null = null;
       if (!pk.hidden) {
         const isCrystal = pk.itemId === 'fragmento_alma';
-        const tex = this.game.assets.getPropTexture(
-          isCrystal ? 'crystal' : 'capsule_pedestal'
-        );
-        const pkMat = new THREE.MeshBasicMaterial({
+        const pkKind: PropKind = isCrystal ? 'crystal' : 'capsule_pedestal';
+        const tex = this.game.assets.getPropTexture(pkKind);
+        const pkMat = createLitBillboardMaterial(tex, {
+          emissiveIntensity: isCrystal ? 0.85 : 0.6,
+        });
+        const pkDepthMat = new THREE.MeshDepthMaterial({
+          depthPacking: THREE.RGBADepthPacking,
           map: tex,
           alphaTest: 0.5,
-          side: THREE.DoubleSide,
         });
         this.mapDisposables.track(pkMat);
+        this.mapDisposables.track(pkDepthMat);
         mesh = new THREE.Mesh(isCrystal ? crystalPickupGeo : capsulePedestalGeo, pkMat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.customDepthMaterial = pkDepthMat;
         const py = getTileWorldY(map, pk.x, pk.y);
         mesh.position.set(pk.x, py, pk.y);
         this.scene.add(mesh);
+        extraGlowPoints.push({ x: pk.x, y: py, z: pk.y, kind: pkKind });
       }
       this.pickups.push({
         id: pk.id,
@@ -1208,13 +1317,40 @@ export class OverworldScene implements Scene {
       });
     }
 
+    // 7. HD-2D atmosphere: contact shadows, HDR lantern/crystal halos, light shafts & biome particles
+    this.atmosphere = new OverworldAtmosphere(
+      this.scene,
+      this.mapDisposables,
+      map,
+      propPlacements,
+      extraGlowPoints
+    );
+    const pShadow = this.atmosphere.createActorShadow(0.76);
+    pShadow.position.set(0, 0.02, 0);
+    this.playerMesh.add(pShadow);
+    this.playerShadow = pShadow;
+
+    for (const npc of this.npcs) {
+      const s = this.atmosphere.createActorShadow(npc.isPedestal ? 0.84 : 0.72);
+      s.position.set(0, 0.02, 0);
+      npc.mesh.add(s);
+    }
+    for (const pk of this.pickups) {
+      if (pk.mesh) {
+        const s = this.atmosphere.createActorShadow(0.68);
+        s.position.set(0, 0.02, 0);
+        pk.mesh.add(s);
+      }
+    }
+
     this.refreshNpcVisibility();
     this.syncPlayerVisual();
     this.syncBillboardYaw(0);
 
-    const startY = sampleInterpolatedHeight(map, x, y);
-    this.game.cameraRig.snapTo(x, startY, y, this.sampleTerrain);
-    updateVisibleTerrainChunks(this.chunks, x, y);
+    const startY = sampleInterpolatedHeight(map, clampedX, clampedY);
+    this.syncSunShadowCenter(clampedX, startY, clampedY);
+    this.game.cameraRig.snapTo(clampedX, startY, clampedY, this.sampleTerrain);
+    updateVisibleTerrainChunks(this.chunks, clampedX, clampedY);
     this.game.bus.emit('audio:music', { track: map.music });
     this.updateBadge();
     this.checkQuestCoordinates();
@@ -1306,6 +1442,8 @@ export class OverworldScene implements Scene {
     if (this.playerMat.map !== tex) {
       this.playerMat.map = tex;
       this.playerMat.needsUpdate = true;
+      this.playerDepthMat.map = tex;
+      this.playerDepthMat.needsUpdate = true;
     }
   }
 
@@ -1407,6 +1545,8 @@ export class OverworldScene implements Scene {
           if (npc.mat.map !== tex) {
             npc.mat.map = tex;
             npc.mat.needsUpdate = true;
+            npc.depthMat.map = tex;
+            npc.depthMat.needsUpdate = true;
           }
         }
       }
@@ -1418,8 +1558,22 @@ export class OverworldScene implements Scene {
     }
 
     const playerX = this.playerMesh.position.x;
+    const playerY = this.playerMesh.position.y;
     const playerZ = this.playerMesh.position.z;
+    const tier = this.game.renderer.getQualityTier();
+    const showAmbient = this.game.renderer.areAmbientParticlesEnabled();
     updatePropBatchAnimation(this.propBatches, yaw, this.sceneTime, playerX, playerZ);
+    this.waterSurface?.update(dt, tier);
+    this.atmosphere?.update(
+      dt,
+      playerX,
+      playerY,
+      playerZ,
+      yaw,
+      tier,
+      showAmbient
+    );
+    this.syncSunShadowCenter(playerX, playerY, playerZ);
 
     if (this.clouds.length > 0) {
       updateCloudBillboards(this.clouds, yaw, dt);
@@ -1435,6 +1589,18 @@ export class OverworldScene implements Scene {
         false
       );
     }
+  }
+
+  private syncSunShadowCenter(px: number, py: number, pz: number): void {
+    if (!this.sunLight) return;
+    // Snap target to shadow texel grid so shadow edges never crawl as the player walks
+    const frustumSize = 26;
+    const texel = frustumSize / 1024;
+    const sx = Math.round(px / texel) * texel;
+    const sz = Math.round(pz / texel) * texel;
+    this.sunLight.target.position.set(sx, py, sz);
+    this.sunLight.position.set(sx + 7.5, py + 13.5, sz + 5.8);
+    this.sunLight.target.updateMatrixWorld();
   }
 
   private isTileBlocked(nx: number, ny: number): boolean {
@@ -1469,7 +1635,9 @@ export class OverworldScene implements Scene {
       this.game.endingModal.isOpen() ||
       this.game.arGachaModal.isOpen() ||
       this.game.vesselScreen.isOpen() ||
-      this.game.questJournal.isOpen()
+      this.game.questJournal.isOpen() ||
+      this.game.chestScreen.isOpen() ||
+      this.game.achievementsScreen.isOpen()
     );
   }
 
@@ -1575,6 +1743,33 @@ export class OverworldScene implements Scene {
         this.game.saveData.playerDir = this.dir;
         this.game.saveData.stats.steps += 1;
         this.syncPlayerVisual();
+        if (
+          this.atmosphere &&
+          this.game.renderer.getQualityTier() !== 'low' &&
+          this.game.renderer.areAmbientParticlesEnabled()
+        ) {
+          const stepCh = this.currentMap.grid[this.gridY]?.[this.gridX] ?? '.';
+          const stepTile = this.currentMap.legend[stepCh]?.tile;
+          if (stepTile === 'tall_grass') {
+            this.atmosphere.spawnStepPuff(
+              this.playerMesh.position.x,
+              this.playerMesh.position.y,
+              this.playerMesh.position.z,
+              'grass'
+            );
+          } else if (staminaStep.sprinting && stepTile !== 'water') {
+            const isSnow =
+              this.currentMap.snowLine !== undefined &&
+              getTileHeightLevel(this.currentMap, this.gridX, this.gridY) >=
+                this.currentMap.snowLine;
+            this.atmosphere.spawnStepPuff(
+              this.playerMesh.position.x,
+              this.playerMesh.position.y,
+              this.playerMesh.position.z,
+              isSnow ? 'snow' : 'dust'
+            );
+          }
+        }
         this.syncBillboardYaw(dt);
         updateVisibleTerrainChunks(this.chunks, this.gridX, this.gridY);
         this.onStepCompleted();
@@ -1646,15 +1841,11 @@ export class OverworldScene implements Scene {
       (w) => w.x === this.gridX && w.y === this.gridY
     );
     if (warp) {
-      this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-      this.pendingWarp = {
-        targetMap: warp.targetMap,
-        targetX: warp.targetX,
-        targetY: warp.targetY,
-        dir: warp.dir ?? this.dir,
-      };
-      this.warpPhase = 'out';
-      this.warpTimer = 0;
+      if (warp.houseId && !ownsHouse(this.game.saveData, warp.houseId)) {
+        this.promptBuyHouse(warp.houseId, warp);
+        return;
+      }
+      this.startWarpTransition(warp);
       return;
     }
 
@@ -1863,8 +2054,104 @@ export class OverworldScene implements Scene {
         ((n.behavior.gridX === tx && n.behavior.gridY === ty) ||
           (n.behavior.moving && n.behavior.moveToX === tx && n.behavior.moveToY === ty))
     );
-    if (!npc) return;
-    this.interactNpc(npc);
+    if (npc) {
+      this.interactNpc(npc);
+      return;
+    }
+
+    const prop = this.currentMap.props.find((p) => p.x === tx && p.z === ty);
+    if (prop) {
+      this.interactProp(prop.kind);
+    }
+  }
+
+  private startWarpTransition(warp: WarpDef): void {
+    this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+    this.pendingWarp = {
+      targetMap: warp.targetMap,
+      targetX: warp.targetX,
+      targetY: warp.targetY,
+      dir: warp.dir ?? this.dir,
+    };
+    this.warpPhase = 'out';
+    this.warpTimer = 0;
+  }
+
+  private promptBuyHouse(houseId: string, enterWarp?: WarpDef): void {
+    const house = getHouse(houseId);
+    this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+    this.game.dialog.show(
+      ES.housing.forSalePrompt(house.name, house.price, house.cityName),
+      undefined,
+      [
+        {
+          label: ES.housing.buyBtn(house.price),
+          onSelect: () => {
+            const res = buyHouse(this.game.saveData, houseId);
+            if (!res.ok) {
+              this.game.dialog.show(ES.housing.noMoney(house.price));
+              return;
+            }
+            this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
+            this.updateBadge();
+            this.game.saveManager.save(this.game.saveData);
+            this.game.showToast(`¡Compraste ${house.name}!`);
+            this.game.dialog.show(ES.housing.boughtMsg(house.name), () => {
+              if (enterWarp) {
+                this.startWarpTransition(enterWarp);
+              }
+            });
+          },
+        },
+        { label: ES.housing.laterBtn, onSelect: () => {} },
+      ]
+    );
+  }
+
+  private interactProp(kind: PropKind): void {
+    if (kind === 'bed') {
+      healPartyFull(this.game.saveData.party);
+      this.game.bus.emit('audio:sfx', { sfx: 'heal' });
+      this.game.saveManager.save(this.game.saveData);
+      this.game.dialog.show(ES.dialogs.bed_rest);
+      return;
+    }
+    if (kind === 'chest') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.chestScreen.open(
+        this.game.saveData,
+        () => {},
+        () => {
+          this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+          this.game.saveManager.save(this.game.saveData);
+        }
+      );
+      return;
+    }
+    if (kind === 'achievements_wall') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.achievementsScreen.open(this.game.saveData, () => {});
+      return;
+    }
+    if (kind === 'stove') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.dialog.show(ES.dialogs.stove_flavor);
+      return;
+    }
+    if (kind === 'bookshelf') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.dialog.show(ES.dialogs.bookshelf_flavor);
+      return;
+    }
+    if (kind === 'sofa') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.dialog.show(ES.dialogs.sofa_flavor);
+      return;
+    }
+    if (kind === 'dining_table') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.dialog.show(ES.dialogs.table_flavor);
+    }
   }
 
   private collectPickup(pickup: RuntimePickup): void {
@@ -1965,6 +2252,16 @@ export class OverworldScene implements Scene {
           this.updateBadge();
         });
       });
+      return;
+    }
+
+    if (npc.houseBrokerId) {
+      const house = getHouse(npc.houseBrokerId);
+      if (ownsHouse(this.game.saveData, npc.houseBrokerId)) {
+        this.game.dialog.show(ES.housing.alreadyOwnedGreeting(house.name));
+      } else {
+        this.promptBuyHouse(npc.houseBrokerId);
+      }
       return;
     }
 
@@ -2142,6 +2439,7 @@ export class OverworldScene implements Scene {
       },
       onOptionsChanged: () => {
         this.game.applyOptions();
+        this.game.persistOptions();
       },
       onClose: () => {},
     });
@@ -2206,7 +2504,14 @@ export class OverworldScene implements Scene {
                     return;
                   }
                   removeItem(this.game.saveData.bag, itemId, 1);
-                  this.game.startEvolution(partyIndex, targetId, () => {});
+                  this.game.startEvolution(partyIndex, targetId, (evolved) => {
+                    if (!evolved) {
+                      addItem(this.game.saveData.bag, itemId, 1);
+                    } else {
+                      this.game.saveManager.save(this.game.saveData);
+                    }
+                    this.updateBadge();
+                  });
                   return;
                 }
                 const applied = applyMedicineToCreature(itemId, creature);
@@ -2226,16 +2531,24 @@ export class OverworldScene implements Scene {
           );
         }
       },
-      () => {}
+      () => {},
+      this.game.saveData.soulDust ?? 0
     );
   }
 
   render(): void {
-    this.game.renderer.render(this.scene, this.game.cameraRig.camera);
+    if (this.game.renderer.isContextLost()) return;
+    this.postFx.setQualityTier(this.game.renderer.getQualityTier());
+    this.postFx.setPixelEffect(this.game.renderer.isPixelEffectEnabled());
+    this.postFx.setPostFxOptions(this.game.renderer.getPostFxOptions());
+    this.postFx.render();
   }
 
   onExit(): void {
     this.hud.unmount(this.game.uiLayers);
+    this.sunLight?.shadow.map?.dispose();
+    this.sunLight = null;
+    this.postFx.dispose();
     this.mapDisposables.disposeAll();
     this.persistentDisposables.disposeAll();
   }

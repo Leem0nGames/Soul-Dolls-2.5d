@@ -472,6 +472,12 @@ export class TitleScene implements Scene {
           </button>
         </div>
         <div class="pointer-events-auto flex items-center gap-2">
+          <button
+            data-options
+            class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-resonant-gold whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+          >
+            ${ES.menu.options}
+          </button>
           ${
             showFullscreen
               ? `<button data-fs class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-ice-cyan whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">${document.fullscreenElement ? 'Salir' : ES.app.fullscreen}</button>`
@@ -538,7 +544,21 @@ export class TitleScene implements Scene {
       this.game.synth.unlock();
       this.game.saveData.options.muted = !this.game.saveData.options.muted;
       this.game.applyOptions();
+      this.game.persistOptions();
       this.renderUi();
+    });
+    this.overlay.querySelector('[data-options]')?.addEventListener('click', () => {
+      this.game.synth.unlock();
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.menu.openOptionsOnly(this.game.saveData, {
+        onOptionsChanged: () => {
+          this.game.applyOptions();
+          this.game.persistOptions();
+        },
+        onClose: () => {
+          this.renderUi();
+        },
+      });
     });
     this.overlay.querySelector('[data-fs]')?.addEventListener('click', async () => {
       this.game.synth.unlock();
@@ -613,7 +633,7 @@ export class TitleScene implements Scene {
     const swayX = this.reducedMotion ? 0 : Math.sin(this.time * 0.35) * 0.65;
     this.game.cameraRig.follow(swayX, 0, 0, dt);
 
-    if (this.game.input.justPressed('a')) {
+    if (!this.game.menu.isOpen() && this.game.input.justPressed('a')) {
       this.game.synth.unlock();
       this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
       if (this.game.saveManager.hasSave()) this.game.continueGame();

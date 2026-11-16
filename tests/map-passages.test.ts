@@ -96,6 +96,7 @@ describe('Map passages & border apron', () => {
     ) as unknown as THREE.CanvasTexture;
 
     for (const map of Object.values(MAPS)) {
+      if (map.isInterior) continue;
       const group = buildMapGatesGroup(map, atlasMat, () => dummyTex);
       expect(group, `${map.id} should generate 3D warp gates`).not.toBeNull();
       if (!group) continue;

@@ -87,6 +87,11 @@ uniform sampler2D map;
 uniform float uDissolve;
 uniform float uOpacity;
 uniform float uFlash;
+uniform float uTime;
+uniform vec2 uTorsoAnchor;
+uniform float uCharHeight;
+uniform float uFlipSign;
+uniform float uIsBack;
 
 varying vec2 vUv;
 
@@ -124,10 +129,32 @@ void main() {
     if (threshold < uDissolve) discard;
   }
 
+  // Random, subtle 'flicker' opacity on chest core representing soul instability within marionette
+  float screenX = uFlipSign < 0.0 ? 1.0 - vUv.x : vUv.x;
+  vec2 sp = vec2(screenX, vUv.y);
+  float ch = max(0.32, uCharHeight);
+  float charY = clamp((sp.y - 0.0039) / ch, 0.0, 1.0);
+  float dx = sp.x - uTorsoAnchor.x;
+  float bustVertDist = (charY - uTorsoAnchor.y) / 0.11;
+  float bustHorzDist = dx / 0.145;
+  float bustBounds = smoothstep(uTorsoAnchor.y - 0.15, uTorsoAnchor.y - 0.04, charY) * (1.0 - smoothstep(uTorsoAnchor.y + 0.05, uTorsoAnchor.y + 0.14, charY));
+  float chestCoreMask = exp(-0.5 * (bustVertDist * bustVertDist + bustHorzDist * bustHorzDist)) * bustBounds * mix(1.0, 0.28, uIsBack);
+
+  float soulT = uTime * 15.0;
+  float soulNoise = 0.5 + 0.5 * sin(soulT + sin(soulT * 2.2) * 3.8 + sin(soulT * 4.9) * 5.7);
+  float soulFlicker = mix(1.0, 0.76 + 0.24 * soulNoise, chestCoreMask);
+
+  // Subtle HD-2D silhouette rim highlight along upper/outer cutout edges
+  float aUp = texture2D(map, clamp(sampleUv + vec2(0.0, 0.0055), vec2(0.001), vec2(0.999))).a;
+  float aSide = texture2D(map, clamp(sampleUv + vec2(0.0055 * uFlipSign, 0.0), vec2(0.001), vec2(0.999))).a;
+  float rimMask = clamp((1.0 - min(aUp, aSide)) * 1.4, 0.0, 1.0) * smoothstep(0.25, 0.9, charY);
+  vec3 rimTint = mix(vec3(1.06, 0.98, 0.84), vec3(1.25, 1.15, 0.95), clamp(uFlash, 0.0, 1.0));
+  vec3 litTex = texel.rgb + rimTint * rimMask * (0.14 + uFlash * 0.25);
+
   vec3 flashLinear = vec3(1.0, 0.948, 0.874);
-  vec3 color = mix(texel.rgb, flashLinear, clamp(uFlash, 0.0, 1.0));
+  vec3 color = mix(litTex, flashLinear, clamp(uFlash, 0.0, 1.0));
   float cleanAlpha = smoothstep(0.45, 0.60, texel.a);
-  gl_FragColor = vec4(color, cleanAlpha * uOpacity);
+  gl_FragColor = vec4(color, cleanAlpha * uOpacity * soulFlicker);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -139,6 +166,7 @@ export interface BattleSpriteMaterialHandle {
   setDissolve(v: number): void;
   setOpacity(v: number): void;
   setFlash(v: number): void;
+  setTime(v: number): void;
   setIdleDeform(
     breathWeight: number,
     secondaryWeight: number,
@@ -168,6 +196,7 @@ export function createBattleSpriteMaterial(
       uDissolve: { value: 0 },
       uOpacity: { value: 1 },
       uFlash: { value: 0 },
+      uTime: { value: 0 },
       uBreathWeight: { value: 0 },
       uSecondaryWeight: { value: 0 },
       uBustJiggle: { value: bustJiggle },
@@ -198,6 +227,9 @@ export function createBattleSpriteMaterial(
     },
     setFlash(v: number) {
       material.uniforms.uFlash.value = v;
+    },
+    setTime(v: number) {
+      material.uniforms.uTime.value = v;
     },
     setIdleDeform(
       breathWeight: number,

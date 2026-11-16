@@ -6,17 +6,28 @@ import { BattleEngine } from '../src/domain/BattleEngine.ts';
 import { sumBodyPartsCurrent } from '../src/domain/BodyParts.ts';
 import {
   addCardToAlbum,
+  addSoulDust,
   BASE_CARD_DROP_CHANCE,
+  canDismantleDuplicateCard,
+  CARD_DISMANTLE_DUST,
   CARD_RARITY_DROP_MULTIPLIERS,
+  CARD_RARITY_UPGRADE_COST,
+  dismantleDuplicateCard,
   formatCardBonuses,
   getAlbumCounts,
   getAvailableCardCopies,
   getCardDef,
   getCardDropChance,
   getCardRarityDropMultiplier,
+  getCardStatUpgradeCost,
+  getEffectiveCardDef,
+  getSoulDust,
+  MAX_CARD_STAT_UPGRADE_LEVEL,
   rollCardDrop,
   socketCardOnCreature,
   unsocketCardFromCreature,
+  upgradeCardRarity,
+  upgradeCardStats,
 } from '../src/domain/Cards.ts';
 import { createCreature } from '../src/domain/Creature.ts';
 import { applyEvolution } from '../src/domain/Evolution.ts';
@@ -242,5 +253,125 @@ describe('SoulDolls Collectible Cards, Album & Stat Socketing', () => {
     expect(migrated!.cardAlbum?.[1]?.count).toBe(1);
     expect(migrated!.party[0].socketedCardId).toBe(1);
     expect(migrated!.party[0].stats).toEqual(doll.stats);
+  });
+
+  it('breaks down un-socketed duplicate cards into Soul Dust scaled by rarity', () => {
+    const save = createInitialSave();
+    const rng = createRng(77);
+    const dollA = createCreature(1, 10, rng);
+    const dollB = createCreature(4, 10, rng);
+    save.party.push(dollA, dollB);
+
+    expect(getSoulDust(save)).toBe(0);
+    expect(dismantleDuplicateCard(save, 1).reason).toBe('not_owned');
+
+    addCardToAlbum(save, 1); // Comun, 1 copy
+    expect(canDismantleDuplicateCard(save, 1)).toEqual({ ok: false, reason: 'no_duplicate' });
+    expect(dismantleDuplicateCard(save, 1).ok).toBe(false);
+
+    // Add duplicate copy and socket both
+    addCardToAlbum(save, 1); // 2 copies total
+    socketCardOnCreature(save, dollA, 1);
+    socketCardOnCreature(save, dollB, 1);
+    expect(canDismantleDuplicateCard(save, 1)).toEqual({ ok: false, reason: 'all_socketed' });
+
+    // Unsocket 1 copy -> can now dismantle the duplicate
+    unsocketCardFromCreature(dollB);
+    expect(canDismantleDuplicateCard(save, 1)).toEqual({ ok: true });
+    const res = dismantleDuplicateCard(save, 1);
+    expect(res.ok).toBe(true);
+    expect(res.dustGained).toBe(CARD_DISMANTLE_DUST.comun);
+    expect(res.remainingCount).toBe(1);
+    expect(getSoulDust(save)).toBe(CARD_DISMANTLE_DUST.comun);
+
+    // Higher rarity cards yield more Soul Dust
+    addCardToAlbum(save, 50); // Legendaria
+    addCardToAlbum(save, 50);
+    const legRes = dismantleDuplicateCard(save, 50);
+    expect(legRes.ok).toBe(true);
+    expect(legRes.dustGained).toBe(CARD_DISMANTLE_DUST.legendaria);
+    expect(CARD_DISMANTLE_DUST.legendaria).toBeGreaterThan(CARD_DISMANTLE_DUST.epica);
+    expect(CARD_DISMANTLE_DUST.epica).toBeGreaterThan(CARD_DISMANTLE_DUST.rara);
+    expect(CARD_DISMANTLE_DUST.rara).toBeGreaterThan(CARD_DISMANTLE_DUST.comun);
+  });
+
+  it('upgrades card rarity and stat levels with Soul Dust, updates socketed SoulDolls, and persists across level-up, evolution, and save migration', () => {
+    const save = createInitialSave();
+    const rng = createRng(123);
+    const doll = createCreature(1, 15, rng);
+    save.party.push(doll);
+    addCardToAlbum(save, 1); // Comun card (#1 Brasito)
+    socketCardOnCreature(save, doll, 1);
+
+    const beforeStats = { ...doll.stats };
+    const beforeCard = getEffectiveCardDef(save, 1);
+    expect(beforeCard.rarity).toBe('comun');
+    expect(beforeCard.upgradeLevel).toBe(0);
+
+    // Cannot upgrade without enough Soul Dust
+    expect(upgradeCardRarity(save, 1)).toEqual({
+      ok: false,
+      cost: CARD_RARITY_UPGRADE_COST.comun,
+      soulDust: 0,
+      reason: 'insufficient_dust',
+    });
+
+    // Grant Soul Dust and upgrade rarity comun -> rara -> epica -> legendaria
+    addSoulDust(save, 500);
+    const rarityUp = upgradeCardRarity(save, 1);
+    expect(rarityUp.ok).toBe(true);
+    expect(rarityUp.newRarity).toBe('rara');
+
+    const rareCard = getEffectiveCardDef(save, 1);
+    expect(rareCard.rarity).toBe('rara');
+    expect(doll.stats.spa).toBeGreaterThanOrEqual(beforeStats.spa);
+    const rareSum = Object.values(rareCard.bonuses).reduce((s, n) => s + (n ?? 0), 0);
+    const baseSum = Object.values(beforeCard.bonuses).reduce((s, n) => s + (n ?? 0), 0);
+    expect(rareSum).toBe(12);
+    expect(baseSum).toBe(6);
+
+    // Upgrade stats multiple levels up to MAX_CARD_STAT_UPGRADE_LEVEL
+    const preStatUpgradeBonuses = { ...rareCard.bonuses };
+    const costLv0 = getCardStatUpgradeCost('rara', 0);
+    const statRes = upgradeCardStats(save, 1);
+    expect(statRes.ok).toBe(true);
+    expect(statRes.newLevel).toBe(1);
+    expect(statRes.cost).toBe(costLv0);
+
+    const reinforcedCard = getEffectiveCardDef(save, 1);
+    const reinforcedSum = Object.values(reinforcedCard.bonuses).reduce((s, n) => s + (n ?? 0), 0);
+    const preReinforcedSum = Object.values(preStatUpgradeBonuses).reduce((s, n) => s + (n ?? 0), 0);
+    expect(reinforcedSum).toBe(preReinforcedSum + 3); // +2 primary, +1 secondary
+
+    // Level-up & Evolution keep upgraded card bonuses
+    const neededXp = computeBattleXp(createCreature(20, 30, createRng(9)), true) * 4;
+    awardExperience(doll, neededXp);
+    applyEvolution(doll, 2);
+
+    const evolvedWithUpgradedCard = { ...doll.stats };
+    unsocketCardFromCreature(doll);
+    const evolvedWithoutCard = { ...doll.stats };
+    expect(
+      evolvedWithUpgradedCard.atk - evolvedWithoutCard.atk +
+        (evolvedWithUpgradedCard.spa - evolvedWithoutCard.spa) +
+        (evolvedWithUpgradedCard.spe - evolvedWithoutCard.spe) +
+        (evolvedWithUpgradedCard.def - evolvedWithoutCard.def) +
+        (evolvedWithUpgradedCard.spd - evolvedWithoutCard.spd) +
+        (evolvedWithUpgradedCard.hp - evolvedWithoutCard.hp)
+    ).toBe(reinforcedSum);
+
+    // Re-socket and verify cap + save migration preservation
+    socketCardOnCreature(save, doll, 1);
+    for (let i = 1; i < MAX_CARD_STAT_UPGRADE_LEVEL; i++) {
+      expect(upgradeCardStats(save, 1).ok).toBe(true);
+    }
+    expect(upgradeCardStats(save, 1).reason).toBe('max_level');
+
+    const raw = JSON.parse(JSON.stringify(save));
+    const migrated = migrateSaveData(raw)!;
+    expect(getSoulDust(migrated)).toBe(getSoulDust(save));
+    expect(migrated.cardAlbum?.[1]?.rarityOverride).toBe('rara');
+    expect(migrated.cardAlbum?.[1]?.upgradeLevel).toBe(MAX_CARD_STAT_UPGRADE_LEVEL);
+    expect(migrated.party[0].stats).toEqual(doll.stats);
   });
 });
