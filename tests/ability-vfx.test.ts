@@ -7,7 +7,11 @@ import {
   computeVfxScaleMetrics,
   DEFAULT_VFX_SPRITE_SCALE,
 } from '../src/engine/AbilityVfxSystem.ts';
-import { getMoveVfxStyle } from '../src/engine/moveVfxProfiles.ts';
+import {
+  getMoveImpactProfile,
+  getMoveVfxStyle,
+  type MoveVfxStyle,
+} from '../src/engine/moveVfxProfiles.ts';
 
 const ALL_TYPES: CreatureType[] = [
   'brasa',
@@ -144,6 +148,61 @@ describe('AbilityVfxSystem Procedural GLSL 3D Effects', () => {
     expect(impactCount).toBeGreaterThan(0);
     expect(barrageCount).toBeGreaterThan(impactCount);
     expect(pierceCount).not.toBe(impactCount);
+  });
+
+  it('scales screen-impact profiles with power and keeps defensive moves restrained', () => {
+    const light = getMoveImpactProfile('impact', 45, 'physical');
+    const heavy = getMoveImpactProfile('nova', 120, 'special');
+    const buff = getMoveImpactProfile('buff', 0, 'status');
+    const heal = getMoveImpactProfile('heal', 0, 'status');
+
+    expect(heavy.shake).toBeGreaterThan(light.shake);
+    expect(heavy.distortion).toBeGreaterThan(light.distortion);
+    expect(heavy.bloom).toBeGreaterThan(light.bloom);
+    expect(heavy.flash).toBeGreaterThan(light.flash);
+    expect(buff.shake).toBe(0);
+    expect(buff.hitStop).toBe(0);
+    expect(heal.shake).toBe(0);
+
+    const styles: MoveVfxStyle[] = [
+      'impact',
+      'slash',
+      'pierce',
+      'bite',
+      'barrage',
+      'projectile',
+      'beam',
+      'meteor',
+      'quake',
+      'cyclone',
+      'nova',
+      'lightning',
+      'void',
+      'haze',
+      'drain',
+      'heal',
+      'shield',
+      'buff',
+      'debuff',
+      'sonic',
+      'weather',
+      'elemental',
+    ];
+    for (const style of styles) {
+      const p = getMoveImpactProfile(style, 90, 'special');
+      for (const value of [
+        p.shake,
+        p.hitStop,
+        p.flash,
+        p.distortion,
+        p.speedLines,
+        p.bloom,
+        p.dim,
+      ]) {
+        expect(Number.isFinite(value), `style ${style}`).toBe(true);
+        expect(value, `style ${style}`).toBeGreaterThanOrEqual(0);
+      }
+    }
   });
 
   it('plays and cleans up every move-defined VFX style', () => {

@@ -44,7 +44,7 @@ interface ActiveVfxItem {
   elapsed: number;
   delay: number;
   life: number;
-  materials: THREE.ShaderMaterial[];
+  materials: THREE.Material[];
   ownedGeometries: THREE.BufferGeometry[];
   onUpdate: (t: number, dt: number) => void;
 }
@@ -122,6 +122,41 @@ function getTypeColors(type: CreatureType): TypeColorPair {
   }
 }
 
+function buildFlareTexture(): THREE.DataTexture {
+  const size = 128;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = (x / (size - 1)) * 2 - 1;
+      const v = (y / (size - 1)) * 2 - 1;
+      const r = Math.hypot(u, v);
+      const angle = Math.atan2(v, u);
+      const core = Math.exp(-r * r * 22);
+      const halo = Math.pow(Math.max(0, 1 - r), 3.4);
+      const rays =
+        Math.pow(Math.max(0, Math.cos(angle * 6 + Math.sin(angle * 3) * 0.7)), 10) *
+        Math.pow(Math.max(0, 1 - r * 0.92), 2.2) *
+        0.75;
+      const cross =
+        Math.pow(Math.max(0, Math.cos(angle * 2)), 24) *
+        Math.pow(Math.max(0, 1 - r * 0.8), 1.8) *
+        0.55;
+      const alpha = Math.min(1, halo * 0.72 + rays + cross + core * 0.9);
+      const i = (y * size + x) * 4;
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = Math.round(alpha * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function buildHelixTubeGeometry(): THREE.TubeGeometry {
   const pts: THREE.Vector3[] = [];
   const turns = 2.5;
@@ -155,6 +190,10 @@ export class AbilityVfxSystem {
   private readonly unitAccretionGeo: THREE.RingGeometry;
   private readonly unitTorusGeo: THREE.TorusGeometry;
   private readonly unitShardGeo: THREE.OctahedronGeometry;
+  private readonly flareTexture: THREE.DataTexture;
+  private readonly flashLights: THREE.PointLight[] = [];
+  private flashLightCursor = 0;
+  private flashLightToken = 0;
 
   constructor(scene: THREE.Scene) {
     this.group.renderOrder = 12;
@@ -178,6 +217,15 @@ export class AbilityVfxSystem {
     this.unitTorusGeo = new THREE.TorusGeometry(0.8, 0.08, 8, 28);
     this.unitTorusGeo.rotateX(Math.PI / 2);
     this.unitShardGeo = new THREE.OctahedronGeometry(0.13, 0);
+    this.flareTexture = this.disposables.track(buildFlareTexture());
+
+    // Persistent lights keep the scene light count stable (avoids shader recompiles).
+    for (let i = 0; i < 2; i++) {
+      const light = new THREE.PointLight(0xffffff, 0, 5.5, 2);
+      light.position.set(0, -1000, 0);
+      this.group.add(light);
+      this.flashLights.push(light);
+    }
 
     this.disposables.track(this.unitPlaneGeo);
     this.disposables.track(this.unitBeamGeo);
@@ -886,6 +934,112 @@ export class AbilityVfxSystem {
       ownedGeometries: [],
       onUpdate: (t) => {
         mesh.scale.setScalar(scale * (0.8 + 0.35 * Math.sin(t * Math.PI)));
+      },
+    });
+  }
+
+  private spawnFlare(
+    pos: THREE.Vector3,
+    size: number,
+    life: number,
+    colorHex: number,
+    delay = 0
+  ): void {
+    const mat = new THREE.SpriteMaterial({
+      map: this.flareTexture,
+      color: colorHex,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      opacity: 0,
+    });
+    // Push flare cores into HDR so the post-process bloom picks them up.
+    mat.color.multiplyScalar(2.4);
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    sprite.scale.setScalar(size * 0.2);
+    const spin = (Math.random() - 0.5) * 1.6;
+
+    this.addItem({
+      object: sprite,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      onUpdate: (t, dt) => {
+        const grow = Math.min(1, t * 4.2);
+        const s = size * (0.3 + 0.95 * grow);
+        sprite.scale.set(s, s, 1);
+        mat.opacity = Math.pow(1 - t, 1.7) * 0.95;
+        mat.rotation += dt * spin;
+      },
+    });
+  }
+
+  private spawnShockRing(
+    pos: THREE.Vector3,
+    normal: THREE.Vector3,
+    radius: number,
+    life: number,
+    colors: TypeColorPair,
+    delay = 0
+  ): void {
+    if (this.qualityTier === 'low') return;
+    _dir.copy(normal);
+    if (_dir.lengthSq() < 0.0001) _dir.set(0, 1, 0);
+    _dir.normalize();
+
+    const mat = this.createBeamMaterial(colors.core, colors.outer, 9.0, 3.4);
+    const mesh = new THREE.Mesh(this.unitTorusGeo, mat);
+    mesh.position.copy(pos);
+    mesh.quaternion.setFromUnitVectors(_up, _dir);
+    mesh.scale.setScalar(radius * 0.2);
+
+    this.addItem({
+      object: mesh,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      onUpdate: (t, dt) => {
+        const s = radius * (0.22 + 0.92 * Math.pow(t, 0.4));
+        mesh.scale.setScalar(s);
+        mesh.rotateY(dt * 5.5);
+        const fade = t > 0.55 ? 1 - (t - 0.55) / 0.45 : 1;
+        mesh.scale.multiplyScalar(0.85 + fade * 0.15);
+      },
+    });
+  }
+
+  private spawnLightFlash(
+    pos: THREE.Vector3,
+    intensity: number,
+    life: number,
+    colorHex: number,
+    delay = 0
+  ): void {
+    if (this.qualityTier === 'low' || this.flashLights.length === 0) return;
+    const light = this.flashLights[this.flashLightCursor % this.flashLights.length];
+    this.flashLightCursor += 1;
+    const token = ++this.flashLightToken;
+    light.color.setHex(colorHex);
+    light.position.copy(pos);
+    light.intensity = 0;
+    light.userData.vfxToken = token;
+
+    this.addItem({
+      object: new THREE.Object3D(),
+      elapsed: 0,
+      delay,
+      life,
+      materials: [],
+      ownedGeometries: [],
+      onUpdate: (t) => {
+        if (light.userData.vfxToken !== token) return;
+        const env = Math.sin(Math.min(1, t * 6) * Math.PI * 0.5);
+        light.intensity = intensity * env * Math.pow(1 - t, 2.4);
       },
     });
   }
@@ -2398,6 +2552,147 @@ export class AbilityVfxSystem {
         );
         break;
     }
+
+    this.spawnStyleFinishers(style, from, to, colors, ctx);
+  }
+
+  private spawnStyleFinishers(
+    style: Exclude<MoveVfxStyle, 'elemental'>,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    colors: TypeColorPair,
+    ctx: MoveVfxContext
+  ): void {
+    const { intensity, impactDelay, fromM, toM } = ctx;
+    _tmpEnd.subVectors(to, from);
+    if (_tmpEnd.lengthSq() < 0.0001) _tmpEnd.set(1, 0, 0);
+    const dir = _tmpEnd;
+    const lightLife = 0.24;
+
+    switch (style) {
+      case 'impact':
+        this.spawnFlare(to, 1.7 * intensity * toM.body, 0.34, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 0.95 * toM.silhouette, 0.32, colors, impactDelay);
+        this.spawnLightFlash(to, 2.2 * intensity, lightLife, colors.outer, impactDelay);
+        break;
+
+      case 'slash':
+        this.spawnFlare(to, 1.3 * intensity * toM.body, 0.26, colors.core, 0);
+        this.spawnShockRing(to, dir, 0.8 * toM.silhouette, 0.26, colors, 0.02);
+        this.spawnLightFlash(to, 1.0 * intensity, lightLife, colors.outer, 0.02);
+        break;
+
+      case 'pierce':
+        this.spawnFlare(to, 0.95 * intensity * toM.body, 0.22, colors.core, 0.02);
+        this.spawnShockRing(to, dir, 0.6 * toM.silhouette, 0.22, colors, 0.02);
+        this.spawnLightFlash(to, 0.7 * intensity, lightLife, colors.outer, 0.02);
+        break;
+
+      case 'bite':
+        this.spawnFlare(to, 1.2 * intensity * toM.body, 0.28, colors.core, 0.04);
+        this.spawnShockRing(to, dir, 0.7 * toM.silhouette, 0.28, colors, 0.03);
+        this.spawnLightFlash(to, 1.2 * intensity, lightLife, colors.outer, 0.03);
+        break;
+
+      case 'barrage':
+        this.spawnFlare(to, 1.5 * intensity * toM.body, 0.4, colors.core, impactDelay + 0.12);
+        this.spawnLightFlash(to, 1.4 * intensity, 0.3, colors.outer, impactDelay + 0.1);
+        break;
+
+      case 'projectile':
+        this.spawnFlare(to, 1.5 * intensity * toM.body, 0.32, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 0.9 * toM.silhouette, 0.3, colors, impactDelay);
+        this.spawnLightFlash(to, 1.5 * intensity, lightLife, colors.outer, impactDelay);
+        break;
+
+      case 'beam':
+        this.spawnFlare(to, 1.8 * intensity * toM.body, 0.4, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 1.1 * toM.silhouette, 0.34, colors, impactDelay);
+        this.spawnLightFlash(to, 2.2 * intensity, 0.3, colors.outer, impactDelay);
+        break;
+
+      case 'meteor':
+        this.spawnFlare(to, 3.0 * intensity * toM.body, 0.56, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 1.7 * toM.silhouette, 0.44, colors, impactDelay);
+        this.spawnLightFlash(to, 4.2 * intensity, 0.34, colors.outer, impactDelay);
+        break;
+
+      case 'quake':
+        this.spawnFlare(to, 2.6 * intensity * toM.body, 0.55, colors.core, impactDelay);
+        this.spawnShockRing(to, _up, 1.8 * toM.silhouette, 0.46, colors, impactDelay);
+        this.spawnLightFlash(to, 3.4 * intensity, 0.32, colors.outer, impactDelay);
+        break;
+
+      case 'cyclone':
+        this.spawnFlare(to, 2.0 * intensity * toM.body, 0.45, colors.core, 0.05);
+        this.spawnShockRing(to, dir, 1.2 * toM.silhouette, 0.36, colors, 0.04);
+        this.spawnLightFlash(to, 1.8 * intensity, 0.28, colors.outer, 0.04);
+        break;
+
+      case 'nova':
+        this.spawnFlare(to, 3.4 * intensity * toM.body, 0.62, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 2.0 * toM.silhouette, 0.5, colors, impactDelay);
+        this.spawnLightFlash(to, 5.0 * intensity, 0.38, colors.outer, impactDelay);
+        break;
+
+      case 'lightning':
+        this.spawnFlare(to, 2.5 * intensity * toM.body, 0.42, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 1.3 * toM.silhouette, 0.34, colors, impactDelay);
+        this.spawnLightFlash(to, 4.0 * intensity, 0.3, colors.outer, impactDelay);
+        break;
+
+      case 'void':
+        this.spawnFlare(to, 2.2 * intensity * toM.body, 0.56, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 1.5 * toM.silhouette, 0.42, colors, impactDelay);
+        this.spawnLightFlash(to, 2.6 * intensity, 0.34, colors.outer, impactDelay);
+        break;
+
+      case 'haze':
+        this.spawnFlare(to, 1.6 * intensity * toM.body, 0.46, colors.core, 0.04);
+        this.spawnLightFlash(to, 0.8 * intensity, lightLife, colors.outer, 0.04);
+        break;
+
+      case 'drain':
+        this.spawnFlare(to, 1.3 * intensity * toM.body, 0.36, colors.core, 0);
+        this.spawnFlare(from, 1.1 * intensity * fromM.body, 0.46, colors.outer, 0.2);
+        this.spawnLightFlash(to, 1.2 * intensity, lightLife, colors.outer, 0);
+        break;
+
+      case 'heal':
+        this.spawnFlare(from, 1.5 * intensity * fromM.body, 0.6, colors.core, 0);
+        this.spawnLightFlash(from, 1.5 * intensity, 0.5, colors.outer, 0);
+        break;
+
+      case 'shield':
+        this.spawnFlare(from, 1.6 * intensity * fromM.body, 0.55, colors.core, 0);
+        this.spawnShockRing(from, _up, 1.2 * fromM.silhouette, 0.42, colors, 0.02);
+        this.spawnLightFlash(from, 1.2 * intensity, 0.4, colors.outer, 0.02);
+        break;
+
+      case 'buff':
+        this.spawnFlare(from, 1.4 * intensity * fromM.body, 0.5, colors.core, 0);
+        this.spawnLightFlash(from, 1.0 * intensity, 0.4, colors.outer, 0);
+        break;
+
+      case 'debuff':
+        this.spawnFlare(to, 1.4 * intensity * toM.body, 0.46, colors.core, 0.02);
+        this.spawnLightFlash(to, 0.8 * intensity, lightLife, colors.outer, 0.02);
+        break;
+
+      case 'sonic':
+        this.spawnFlare(to, 1.6 * intensity * toM.body, 0.32, colors.core, impactDelay);
+        this.spawnShockRing(to, dir, 1.1 * toM.silhouette, 0.32, colors, impactDelay);
+        this.spawnLightFlash(to, 1.4 * intensity, lightLife, colors.outer, impactDelay);
+        break;
+
+      case 'weather':
+        this.spawnFlare(from, 2.2 * intensity * fromM.body, 0.7, colors.core, 0);
+        this.spawnFlare(to, 2.2 * intensity * toM.body, 0.7, colors.core, 0.08);
+        this.spawnShockRing(to, _up, 2.0 * toM.silhouette, 0.6, colors, 0.05);
+        this.spawnLightFlash(from, 2.0 * intensity, 0.5, colors.outer, 0);
+        this.spawnLightFlash(to, 2.0 * intensity, 0.5, colors.outer, 0.06);
+        break;
+    }
   }
 
   playCaptureBurst(
@@ -2497,8 +2792,10 @@ export class AbilityVfxSystem {
 
       const t = activeAge / item.life;
       for (const m of item.materials) {
-        if (m.uniforms.uTime) m.uniforms.uTime.value = this.clockTime;
-        if (m.uniforms.uProgress) m.uniforms.uProgress.value = t;
+        if (m instanceof THREE.ShaderMaterial) {
+          if (m.uniforms.uTime) m.uniforms.uTime.value = this.clockTime;
+          if (m.uniforms.uProgress) m.uniforms.uProgress.value = t;
+        }
       }
       item.onUpdate(t, dt);
     }

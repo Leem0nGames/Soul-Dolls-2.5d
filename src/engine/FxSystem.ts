@@ -14,6 +14,7 @@ import {
   type MoveVfxOptions,
 } from './AbilityVfxSystem.ts';
 import { DisposableRegistry } from './Disposables.ts';
+import { getMoveVfxStyle, type MoveVfxStyle } from './moveVfxProfiles.ts';
 
 const _dummy = new THREE.Object3D();
 const _color = new THREE.Color();
@@ -480,6 +481,371 @@ export class FxSystem {
           gravity: -1.5 * toScale,
           spreadScale: toScale,
         });
+        break;
+    }
+
+    const style = opts?.moveId
+      ? getMoveVfxStyle(opts.moveId, category, opts.effectKind, opts.effectTarget)
+      : null;
+    if (style) {
+      this.emitMoveStyleParticles(style, from, to, hex, toScale, category);
+    }
+  }
+
+  private emitMoveStyleParticles(
+    style: MoveVfxStyle,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    hex: number,
+    scale: number,
+    category: MoveCategory
+  ): void {
+    const gold = hexToNumber(PALETTE.paleGold);
+    const white = hexToNumber(PALETTE.warmWhite);
+    const dust = hexToNumber(PALETTE.sandDesert);
+    const ember = hexToNumber(PALETTE.coralRed);
+    const violet = hexToNumber(PALETTE.soulViolet);
+
+    switch (style) {
+      case 'impact':
+        this.burst(to, {
+          count: 14,
+          speedMin: 0.9 * scale,
+          speedMax: 2.2 * scale,
+          lifeMin: 0.28,
+          lifeMax: 0.52,
+          sizeStart: 0.26 * scale,
+          sizeEnd: 0.04 * scale,
+          colorHex: dust,
+          gravity: -2.4 * scale,
+          spreadScale: scale,
+        });
+        this.burst(to, {
+          count: 10,
+          speedMin: 2.4 * scale,
+          speedMax: 4.6 * scale,
+          lifeMin: 0.16,
+          lifeMax: 0.3,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: white,
+          gravity: 0,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'slash':
+        this.stream(from, to, 14, white, 0.18, 0.16 * scale, scale);
+        this.burst(to, {
+          count: 10,
+          speedMin: 2.0 * scale,
+          speedMax: 4.0 * scale,
+          lifeMin: 0.16,
+          lifeMax: 0.32,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: gold,
+          gravity: 0.4 * scale,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'pierce':
+        this.stream(from, to, 18, white, 0.14, 0.12 * scale, scale);
+        this.burst(to, {
+          count: 8,
+          speedMin: 2.2 * scale,
+          speedMax: 4.2 * scale,
+          lifeMin: 0.14,
+          lifeMax: 0.26,
+          sizeStart: 0.16 * scale,
+          sizeEnd: 0.02 * scale,
+          colorHex: gold,
+          gravity: 1.0 * scale,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'bite':
+        this.burst(to, {
+          count: 12,
+          speedMin: 1.8 * scale,
+          speedMax: 3.6 * scale,
+          lifeMin: 0.2,
+          lifeMax: 0.36,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: ember,
+          gravity: 1.6 * scale,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'barrage':
+        this.burst(to, {
+          count: 16,
+          speedMin: 1.4 * scale,
+          speedMax: 3.2 * scale,
+          lifeMin: 0.22,
+          lifeMax: 0.4,
+          sizeStart: 0.22 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: gold,
+          gravity: 0.4 * scale,
+          spreadScale: scale,
+        });
+        this.ring(to, {
+          count: 12,
+          radius: 0.2 * scale,
+          speed: 2.4 * scale,
+          life: 0.3,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: hex,
+          vy: 0.3 * scale,
+        });
+        break;
+
+      case 'projectile':
+      case 'beam':
+        this.ring(to, {
+          count: 16,
+          radius: 0.18 * scale,
+          speed: 2.8 * scale,
+          life: 0.34,
+          sizeStart: 0.22 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: white,
+          vy: 0.2 * scale,
+        });
+        break;
+
+      case 'meteor':
+        this.burst(to, {
+          count: 16,
+          speedMin: 1.2 * scale,
+          speedMax: 2.8 * scale,
+          lifeMin: 0.4,
+          lifeMax: 0.8,
+          sizeStart: 0.34 * scale,
+          sizeEnd: 0.08 * scale,
+          colorHex: dust,
+          gravity: -1.2 * scale,
+          spreadScale: scale,
+        });
+        this.burst(to, {
+          count: 10,
+          speedMin: 2.0 * scale,
+          speedMax: 4.0 * scale,
+          lifeMin: 0.24,
+          lifeMax: 0.5,
+          sizeStart: 0.24 * scale,
+          sizeEnd: 0.04 * scale,
+          colorHex: ember,
+          gravity: 2.8 * scale,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'quake':
+        this.ring(to, {
+          count: 18,
+          radius: 0.3 * scale,
+          speed: 3.4 * scale,
+          life: 0.4,
+          sizeStart: 0.26 * scale,
+          sizeEnd: 0.05 * scale,
+          colorHex: dust,
+          vy: 0.1 * scale,
+        });
+        this.burst(to, {
+          count: 12,
+          speedMin: 0.8 * scale,
+          speedMax: 2.0 * scale,
+          lifeMin: 0.4,
+          lifeMax: 0.7,
+          sizeStart: 0.3 * scale,
+          sizeEnd: 0.07 * scale,
+          colorHex: dust,
+          gravity: -1.8 * scale,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'cyclone':
+        this.ring(to, {
+          count: 18,
+          radius: 0.35 * scale,
+          speed: 3.6 * scale,
+          life: 0.34,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: white,
+          vy: 0.9 * scale,
+        });
+        break;
+
+      case 'nova':
+        this.burst(to, {
+          count: 22,
+          speedMin: 2.2 * scale,
+          speedMax: 5.0 * scale,
+          lifeMin: 0.24,
+          lifeMax: 0.55,
+          sizeStart: 0.3 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: gold,
+          gravity: 0.6 * scale,
+          spreadScale: scale,
+        });
+        this.ring(to, {
+          count: 18,
+          radius: 0.28 * scale,
+          speed: 4.2 * scale,
+          life: 0.4,
+          sizeStart: 0.28 * scale,
+          sizeEnd: 0.04 * scale,
+          colorHex: white,
+          vy: 0.4 * scale,
+        });
+        break;
+
+      case 'lightning':
+        this.burst(to, {
+          count: 18,
+          speedMin: 3.0 * scale,
+          speedMax: 6.0 * scale,
+          lifeMin: 0.12,
+          lifeMax: 0.26,
+          sizeStart: 0.18 * scale,
+          sizeEnd: 0.02 * scale,
+          colorHex: gold,
+          gravity: 0,
+          spreadScale: scale,
+        });
+        break;
+
+      case 'void':
+        this.ring(to, {
+          count: 14,
+          radius: 0.7 * scale,
+          speed: -2.6 * scale,
+          life: 0.42,
+          sizeStart: 0.28 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: violet,
+          vy: 0.2 * scale,
+        });
+        break;
+
+      case 'haze':
+        this.ring(to, {
+          count: 12,
+          radius: 0.25 * scale,
+          speed: 0.7 * scale,
+          life: 0.75,
+          sizeStart: 0.24 * scale,
+          sizeEnd: 0.12 * scale,
+          colorHex: hex,
+          vy: 0.25 * scale,
+        });
+        break;
+
+      case 'drain':
+        this.stream(to, from, 14, hex, 0.42, 0.2 * scale, scale);
+        break;
+
+      case 'heal':
+        this.ring(from, {
+          count: 16,
+          radius: 0.3 * scale,
+          speed: -0.6 * scale,
+          life: 0.8,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.05 * scale,
+          colorHex: hex,
+          vy: 1.4 * scale,
+        });
+        break;
+
+      case 'shield':
+        this.ring(from, {
+          count: 16,
+          radius: 0.65 * scale,
+          speed: -0.9 * scale,
+          life: 0.6,
+          sizeStart: 0.22 * scale,
+          sizeEnd: 0.05 * scale,
+          colorHex: hex,
+          vy: 0.5 * scale,
+        });
+        break;
+
+      case 'buff':
+        this.ring(from, {
+          count: 14,
+          radius: 0.25 * scale,
+          speed: 0.8 * scale,
+          life: 0.7,
+          sizeStart: 0.2 * scale,
+          sizeEnd: 0.04 * scale,
+          colorHex: gold,
+          vy: 1.6 * scale,
+        });
+        break;
+
+      case 'debuff':
+        this.ring(to, {
+          count: 14,
+          radius: 0.4 * scale,
+          speed: -1.1 * scale,
+          life: 0.55,
+          sizeStart: 0.22 * scale,
+          sizeEnd: 0.04 * scale,
+          colorHex: violet,
+          vy: -0.4 * scale,
+        });
+        break;
+
+      case 'sonic':
+        this.ring(to, {
+          count: 18,
+          radius: 0.2 * scale,
+          speed: 3.8 * scale,
+          life: 0.36,
+          sizeStart: 0.22 * scale,
+          sizeEnd: 0.03 * scale,
+          colorHex: white,
+          vy: 0.2 * scale,
+        });
+        break;
+
+      case 'weather':
+        this.ring(to, {
+          count: 18,
+          radius: 0.4 * scale,
+          speed: 1.2 * scale,
+          life: 0.9,
+          sizeStart: 0.24 * scale,
+          sizeEnd: 0.06 * scale,
+          colorHex: hex,
+          vy: 0.7 * scale,
+        });
+        if (category === 'status') {
+          this.ring(from, {
+            count: 12,
+            radius: 0.3 * scale,
+            speed: 0.8 * scale,
+            life: 0.8,
+            sizeStart: 0.2 * scale,
+            sizeEnd: 0.05 * scale,
+            colorHex: hex,
+            vy: 0.5 * scale,
+          });
+        }
+        break;
+
+      case 'elemental':
         break;
     }
   }

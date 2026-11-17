@@ -11,6 +11,9 @@ import {
   type BiomeVisualProfile,
   type PostFxOptions,
 } from './BiomeGradeShader.ts';
+import type { MoveImpactProfile } from './moveVfxProfiles.ts';
+
+const _impactColor = new THREE.Color();
 
 export const ImpactShockwaveShader = {
   uniforms: {
@@ -30,6 +33,10 @@ export const ImpactShockwaveShader = {
     uSaturation: { value: 1.08 },
     uGradeMix: { value: 1.0 },
     uVignette: { value: 0.1 },
+    uImpactTint: { value: new THREE.Vector3(1, 1, 1) },
+    uImpactFlash: { value: 0 },
+    uSpeedLines: { value: 0 },
+    uSpeedLinePhase: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -55,6 +62,10 @@ export const ImpactShockwaveShader = {
     uniform float uSaturation;
     uniform float uGradeMix;
     uniform float uVignette;
+    uniform vec3 uImpactTint;
+    uniform float uImpactFlash;
+    uniform float uSpeedLines;
+    uniform float uSpeedLinePhase;
     varying vec2 vUv;
 
     vec3 sampleTiltOrRaw(vec2 uv, float blurAmt) {
@@ -123,6 +134,22 @@ export const ImpactShockwaveShader = {
       graded = mix(vec3(luma), graded, uSaturation);
       col = mix(rawCol, graded, uGradeMix);
 
+      if (uSpeedLines > 0.0001) {
+        vec2 sp = vUv - uCenter;
+        sp.x *= uAspect;
+        float sr = length(sp);
+        float ang = atan(sp.y, sp.x);
+        float spokes = pow(max(0.0, sin(ang * 22.0 + uSpeedLinePhase + sin(ang * 5.0) * 1.4)), 14.0);
+        float fall = smoothstep(0.16, 0.82, sr) * (1.0 - smoothstep(0.72, 1.12, sr));
+        col += uImpactTint * spokes * fall * uSpeedLines;
+      }
+
+      if (uImpactFlash > 0.0001) {
+        float flashLuma = clamp(uImpactFlash, 0.0, 1.0);
+        col = mix(col, uImpactTint, flashLuma * 0.42);
+        col += vec3(1.0) * flashLuma * 0.08;
+      }
+
       float vigDist = length((vUv - 0.5) * vec2(1.15, 1.0));
       float baseVig = smoothstep(0.48, 1.05, vigDist) * uVignette;
       float dimVig = uDimAmount > 0.001 ? smoothstep(0.54, 1.02, length(vUv - 0.5)) * uDimAmount : 0.0;
@@ -171,6 +198,16 @@ export class BattlePostFx {
   private dimElapsed = 0;
   private dimDuration = 0.5;
   private dimPeak = 0;
+
+  private flashElapsed = 0;
+  private flashDuration = 0.2;
+  private flashPeak = 0;
+  private speedElapsed = 0;
+  private speedDuration = 0.3;
+  private speedPeak = 0;
+  private bloomPulseElapsed = 0;
+  private bloomPulseDuration = 0.5;
+  private bloomPulsePeak = 0;
 
   private readonly handleContextRestored = (): void => {
     this.disposeComposer();
@@ -263,11 +300,16 @@ export class BattlePostFx {
     this.applyProfileUniforms();
   }
 
+  private getBaseBloomStrength(): number {
+    const intensity = Math.max(0, Math.min(2, this.postFxOptions.bloomIntensity));
+    const baseStrength = this.pixelEffect ? 0.16 : 0.22;
+    return baseStrength * intensity;
+  }
+
   private applyProfileUniforms(): void {
     if (this.bloomPass) {
       const intensity = Math.max(0, Math.min(2, this.postFxOptions.bloomIntensity));
-      const baseStrength = this.pixelEffect ? 0.16 : 0.22;
-      this.bloomPass.strength = baseStrength * intensity;
+      this.bloomPass.strength = this.getBaseBloomStrength();
       this.bloomPass.enabled =
         this.qualityTier !== 'low' && this.postFxOptions.bloom && intensity > 0.02;
     }
@@ -306,6 +348,53 @@ export class BattlePostFx {
     this.dimPeak = Math.min(0.24, Math.max(0, peak));
   }
 
+  triggerMoveImpact(
+    profile: MoveImpactProfile,
+    tintHex: number,
+    screenX: number,
+    screenY: number
+  ): void {
+    const sx = THREE.MathUtils.clamp(screenX, 0.06, 0.94);
+    const sy = THREE.MathUtils.clamp(screenY, 0.06, 0.94);
+
+    if (profile.distortion > 0.0001) {
+      this.triggerShockwave(sx, sy, profile.distortion, profile.shockDuration);
+    }
+
+    _impactColor.setHex(tintHex);
+    if (this.impactPass) {
+      this.impactPass.uniforms.uCenter.value.set(sx, sy);
+      this.impactPass.uniforms.uImpactTint.value.set(
+        _impactColor.r,
+        _impactColor.g,
+        _impactColor.b
+      );
+    }
+
+    if (profile.flash > 0.001) {
+      this.flashElapsed = 0.001;
+      this.flashDuration = Math.max(0.06, profile.flashMs / 1000);
+      this.flashPeak = Math.min(0.65, profile.flash);
+    }
+
+    if (profile.speedLines > 0.001 && this.qualityTier !== 'low') {
+      this.speedElapsed = 0.001;
+      this.speedDuration = Math.max(0.12, profile.speedDuration);
+      this.speedPeak =
+        Math.min(0.55, profile.speedLines) * (this.qualityTier === 'high' ? 1 : 0.6);
+    }
+
+    if (profile.bloom > 0.001 && this.qualityTier !== 'low') {
+      this.bloomPulseElapsed = 0.001;
+      this.bloomPulseDuration = Math.max(0.2, profile.bloomDuration);
+      this.bloomPulsePeak = Math.min(0.65, profile.bloom);
+    }
+
+    if (profile.dim > 0.001) {
+      this.pulseArenaDim(profile.dim, profile.dimDuration);
+    }
+  }
+
   update(dt: number): void {
     if (!this.impactPass || dt <= 0) return;
 
@@ -331,6 +420,42 @@ export class BattlePostFx {
         this.impactPass.uniforms.uDimAmount.value = this.dimPeak * Math.max(0, env);
       }
     }
+
+    if (this.flashElapsed > 0) {
+      this.flashElapsed += dt;
+      if (this.flashElapsed >= this.flashDuration) {
+        this.flashElapsed = 0;
+        this.impactPass.uniforms.uImpactFlash.value = 0;
+      } else {
+        const t = this.flashElapsed / this.flashDuration;
+        this.impactPass.uniforms.uImpactFlash.value =
+          this.flashPeak * Math.pow(1 - t, 2.2);
+      }
+    }
+
+    if (this.speedElapsed > 0) {
+      this.speedElapsed += dt;
+      this.impactPass.uniforms.uSpeedLinePhase.value += dt * 18;
+      if (this.speedElapsed >= this.speedDuration) {
+        this.speedElapsed = 0;
+        this.impactPass.uniforms.uSpeedLines.value = 0;
+      } else {
+        const t = this.speedElapsed / this.speedDuration;
+        this.impactPass.uniforms.uSpeedLines.value = this.speedPeak * Math.pow(1 - t, 1.4);
+      }
+    }
+
+    if (this.bloomPulseElapsed > 0 && this.bloomPass) {
+      this.bloomPulseElapsed += dt;
+      if (this.bloomPulseElapsed >= this.bloomPulseDuration) {
+        this.bloomPulseElapsed = 0;
+        this.bloomPass.strength = this.getBaseBloomStrength();
+      } else {
+        const t = this.bloomPulseElapsed / this.bloomPulseDuration;
+        this.bloomPass.strength =
+          this.getBaseBloomStrength() + this.bloomPulsePeak * Math.pow(1 - t, 1.8);
+      }
+    }
   }
 
   render(): void {
@@ -343,6 +468,9 @@ export class BattlePostFx {
     const anyPostFx =
       this.shockElapsed > 0 ||
       this.dimElapsed > 0 ||
+      this.flashElapsed > 0 ||
+      this.speedElapsed > 0 ||
+      this.bloomPulseElapsed > 0 ||
       (this.qualityTier !== 'low' && this.postFxOptions.bloom) ||
       (this.qualityTier === 'high' && !this.pixelEffect && this.postFxOptions.tiltShift) ||
       this.postFxOptions.colorGrading ||

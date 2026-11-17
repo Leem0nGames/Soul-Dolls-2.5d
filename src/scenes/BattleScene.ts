@@ -30,6 +30,7 @@ import type {
   BattleEvent,
   CharacterRole,
   CreatureInstance,
+  MoveDef,
   TrainerDef,
 } from '../domain/types.ts';
 import { BattleCamera } from '../engine/BattleCamera.ts';
@@ -47,6 +48,7 @@ import { createBottomPivotPlaneGeometry } from '../engine/BillboardBatch.ts';
 import { computeVfxScaleMetrics } from '../engine/AbilityVfxSystem.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { FxSystem } from '../engine/FxSystem.ts';
+import { getMoveImpactProfile, getMoveVfxStyle } from '../engine/moveVfxProfiles.ts';
 import {
   createMeleeStabMaterial,
   loadAttackSheetTexture,
@@ -454,6 +456,42 @@ export class BattleScene implements Scene {
     }
   }
 
+  private triggerMoveImpactFx(
+    move: MoveDef,
+    accentNum: number,
+    at: THREE.Vector3,
+    scale = 1
+  ): void {
+    const style = getMoveVfxStyle(
+      move.id,
+      move.category,
+      move.effect.kind,
+      move.effect.target
+    );
+    const profile = getMoveImpactProfile(style, move.power, move.category);
+    _projVec.copy(at).project(this.game.cameraRig.camera);
+    const sx = (_projVec.x + 1) * 0.5;
+    const sy = (_projVec.y + 1) * 0.5;
+
+    this.postFx.triggerMoveImpact(profile, accentNum, sx, sy);
+
+    const shake = profile.shake * scale;
+    if (shake > 0.01) {
+      this.battleCamera.triggerShake(shake, profile.shakeDecay);
+    }
+    const hitStop = profile.hitStop * scale;
+    if (hitStop > 0.001) {
+      this.battleCamera.triggerHitStop(hitStop);
+    }
+    const flash = profile.flash * scale;
+    if (flash > 0.02) {
+      const r = (accentNum >> 16) & 0xff;
+      const g = (accentNum >> 8) & 0xff;
+      const b = accentNum & 0xff;
+      this.fx.flash(`rgba(${r}, ${g}, ${b}, ${Math.min(0.55, flash)})`, profile.flashMs);
+    }
+  }
+
   private getGroundedY(side: 'player' | 'enemy'): number {
     const stationY = side === 'player' ? PLAYER_STATION_POS.y : ENEMY_STATION_POS.y;
     const scale = side === 'player' ? this.playerScale : this.enemyScale;
@@ -734,6 +772,8 @@ export class BattleScene implements Scene {
 
         const fromFx = computeVfxScaleMetrics(baseScale).silhouette;
         const toFx = computeVfxScaleMetrics(targetScale).silhouette;
+        const typePal = TYPE_PALETTES[move.type];
+        const elemAccentNum = hexToNumber(typePal.accent);
 
         if (move.category === 'physical') {
           let impactFired = false;
@@ -755,12 +795,10 @@ export class BattleScene implements Scene {
             ? customAttack.totalDuration
             : MELEE_STAB_TOTAL_DURATION;
 
-          const typePal = TYPE_PALETTES[move.type];
           const elemAccentHex = typePal.accent;
           const elemBaseHex = typePal.base;
           const elemLightHex = typePal.light;
           const elemNum = hexToNumber(elemBaseHex);
-          const elemAccentNum = hexToNumber(elemAccentHex);
           const elemLightNum = hexToNumber(elemLightHex);
           const stabHeight = customAttack
             ? targetScale * customAttack.heightScale
@@ -867,26 +905,11 @@ export class BattleScene implements Scene {
                     0.42,
                     true
                   );
-                  this.battleCamera.triggerHitStop(0.048);
-                  this.battleCamera.triggerShake(move.power >= 75 ? 0.28 : 0.2, 8.0);
                   targetRig.injectImpulse(isPlayer ? 0.46 : -0.46, -0.64, 0.22);
 
-                  // Arena dim + radial shockwave centered on enemy torso
-                  this.postFx.pulseArenaDim(0.24, 0.44);
+                  // Style-driven camera, screen-space distortion, speed lines and flash
                   _projVec.set(target.x, target.y + targetScale * 0.5, target.z);
-                  _projVec.project(this.game.cameraRig.camera);
-                  this.postFx.triggerShockwave(
-                    (_projVec.x + 1) * 0.5,
-                    (_projVec.y + 1) * 0.5,
-                    0.022,
-                    0.3
-                  );
-
-                  // Elemental flash tint on screen
-                  const r = (elemAccentNum >> 16) & 0xff;
-                  const g = (elemAccentNum >> 8) & 0xff;
-                  const b = elemAccentNum & 0xff;
-                  this.fx.flash(`rgba(${r}, ${g}, ${b}, 0.30)`, 120);
+                  this.triggerMoveImpactFx(move, elemAccentNum, _projVec, 1);
 
                   // Elemental VFX + stab spark burst & expanding ring right where the blade strikes
                   const tipDir = attackFromLeft ? 1 : -1;
@@ -974,6 +997,7 @@ export class BattleScene implements Scene {
                   effectKind: move.effect.kind,
                   effectTarget: move.effect.target,
                 });
+                this.triggerMoveImpactFx(move, elemAccentNum, _toPos, 0.85);
               }
             },
             finishMoveAnim
@@ -990,6 +1014,12 @@ export class BattleScene implements Scene {
             effectKind: move.effect.kind,
             effectTarget: move.effect.target,
           });
+          this.triggerMoveImpactFx(
+            move,
+            elemAccentNum,
+            move.effect.target === 'self' ? _fromPos : _toPos,
+            0.5
+          );
           this.tweens.start(
             0.36,
             (t) => {

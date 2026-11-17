@@ -64,7 +64,12 @@ describe('Visual FX & HD-2D Pipeline', () => {
     expect(ImpactShockwaveShader.uniforms.uTiltStrength.value).toBeGreaterThan(0);
     expect(ImpactShockwaveShader.uniforms.uGradeMix.value).toBe(1);
     expect(ImpactShockwaveShader.uniforms.uTint.value).toBeInstanceOf(THREE.Vector3);
+    expect(ImpactShockwaveShader.uniforms.uImpactTint.value).toBeInstanceOf(THREE.Vector3);
+    expect(ImpactShockwaveShader.uniforms.uImpactFlash.value).toBe(0);
+    expect(ImpactShockwaveShader.uniforms.uSpeedLines.value).toBe(0);
     expect(ImpactShockwaveShader.fragmentShader).toContain('radialBlur');
+    expect(ImpactShockwaveShader.fragmentShader).toContain('uSpeedLines');
+    expect(ImpactShockwaveShader.fragmentShader).toContain('uImpactFlash');
     expect(ImpactShockwaveShader.fragmentShader).toContain('uGradeMix');
     expect(typeof BattlePostFx).toBe('function');
   });
