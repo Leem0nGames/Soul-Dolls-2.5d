@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { FxQualityTier } from '../domain/FxPool.ts';
-import type { CreatureType, MoveCategory } from '../domain/types.ts';
+import type { CreatureType, MoveCategory, MoveEffect } from '../domain/types.ts';
 import { DisposableRegistry } from './Disposables.ts';
+import { getMoveVfxStyle, type MoveVfxStyle } from './moveVfxProfiles.ts';
 
 const _dir = new THREE.Vector3();
 const _mid = new THREE.Vector3();
@@ -76,6 +77,21 @@ export interface MoveVfxOptions {
   toGroundY?: number;
   fromScale?: number;
   toScale?: number;
+  moveId?: string;
+  effectKind?: MoveEffect['kind'];
+  effectTarget?: MoveEffect['target'];
+  style?: MoveVfxStyle;
+}
+
+interface MoveVfxContext {
+  intensity: number;
+  isHeavy: boolean;
+  impactDelay: number;
+  avgSilhouette: number;
+  fromM: VfxScaleMetrics;
+  toM: VfxScaleMetrics;
+  fromGroundY: number;
+  toGroundY: number;
 }
 
 interface TypeColorPair {
@@ -1295,6 +1311,26 @@ export class AbilityVfxSystem {
     const fromGroundY = opts?.fromGroundY ?? Math.max(0, from.y - fromScale * 0.48);
     const toGroundY = opts?.toGroundY ?? Math.max(0, to.y - toScale * 0.48);
 
+    const style =
+      opts?.style ??
+      (opts?.moveId
+        ? getMoveVfxStyle(opts.moveId, category, opts.effectKind, opts.effectTarget)
+        : null);
+
+    if (style && style !== 'elemental') {
+      this.playMoveStyle(style, from, to, colors, {
+        intensity,
+        isHeavy,
+        impactDelay: category === 'special' ? 0.16 : 0.04,
+        avgSilhouette,
+        fromM,
+        toM,
+        fromGroundY,
+        toGroundY,
+      });
+      return;
+    }
+
     if (category === 'status') {
       this.spawnGroundDecal(
         from.x,
@@ -1533,6 +1569,833 @@ export class AbilityVfxSystem {
           this.spawnGroundDecal(to.x, toGroundY, to.z, 2.1 * intensity * toM.ground, 0.46, colors, 'shockwave', 1.2, impactDelay);
           this.spawnLightPool(to.x, toGroundY, to.z, 2.0 * intensity * toM.ground, 0.36, colors.outer, impactDelay);
         }
+        break;
+    }
+  }
+
+  private playMoveStyle(
+    style: Exclude<MoveVfxStyle, 'elemental'>,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    colors: TypeColorPair,
+    ctx: MoveVfxContext
+  ): void {
+    const {
+      intensity,
+      isHeavy,
+      impactDelay,
+      avgSilhouette,
+      fromM,
+      toM,
+      fromGroundY,
+      toGroundY,
+    } = ctx;
+
+    switch (style) {
+      case 'impact':
+        this.spawnSlashArc(to, 1.24 * intensity * toM.silhouette, 0.55, -0.4, 0.3, colors, 0);
+        this.spawnSlashArc(to, 1.16 * intensity * toM.silhouette, -0.55, 0.4, 0.32, colors, 0.04);
+        this.spawnImpactSphere(to, 1.15 * intensity * toM.body, 0.34, colors, false, 0.02);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.15 * intensity * toM.ground,
+          0.5,
+          colors,
+          'shockwave',
+          1.4,
+          impactDelay
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.0 * intensity * toM.ground,
+          0.4,
+          colors.outer,
+          impactDelay
+        );
+        if (isHeavy) {
+          this.spawnDebrisShards(
+            to.x,
+            toGroundY,
+            to.z,
+            6,
+            0.5,
+            colors,
+            impactDelay + 0.03,
+            toM.silhouette,
+            toM.body
+          );
+        }
+        break;
+
+      case 'slash':
+        this.spawnSlashArc(to, 1.32 * intensity * toM.silhouette, 0.68, -0.52, 0.34, colors, 0);
+        this.spawnSlashArc(to, 1.3 * intensity * toM.silhouette, -0.68, 0.52, 0.36, colors, 0.06);
+        this.spawnSlashArc(to, 1.18 * intensity * toM.silhouette, 0.12, 0.08, 0.32, colors, 0.11);
+        if (isHeavy) {
+          this.spawnSlashArc(to, 1.4 * intensity * toM.silhouette, -0.2, -0.15, 0.38, colors, 0.16);
+        }
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.1 * intensity * toM.ground,
+          0.42,
+          colors.outer,
+          0.06
+        );
+        break;
+
+      case 'pierce':
+        this.spawnLinearBeam(
+          from,
+          to,
+          0.24 * intensity * avgSilhouette,
+          0.22,
+          colors,
+          15,
+          0,
+          false
+        );
+        this.spawnSlashArc(to, 0.96 * intensity * toM.silhouette, 0.1, -0.22, 0.24, colors, 0.03);
+        this.spawnImpactSphere(to, 0.72 * intensity * toM.body, 0.24, colors, false, 0.03);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          1.7 * intensity * toM.ground,
+          0.4,
+          colors,
+          'shockwave',
+          1.8,
+          impactDelay
+        );
+        break;
+
+      case 'bite':
+        this.spawnSlashArc(to, 1.22 * intensity * toM.silhouette, 0.9, 0.5, 0.26, colors, 0);
+        this.spawnSlashArc(to, 1.22 * intensity * toM.silhouette, -0.9, -0.5, 0.26, colors, 0.03);
+        this.spawnImpactSphere(to, 0.92 * intensity * toM.body, 0.3, colors, false, 0.05);
+        this.spawnDebrisShards(
+          to.x,
+          toGroundY,
+          to.z,
+          5,
+          0.42,
+          colors,
+          impactDelay + 0.02,
+          toM.silhouette,
+          toM.body
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          1.9 * intensity * toM.ground,
+          0.38,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'barrage': {
+        const shots = this.qualityTier === 'low' ? 3 : 5;
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.3 * intensity * toM.ground,
+          0.62,
+          colors,
+          'shockwave',
+          1.6,
+          impactDelay + 0.1
+        );
+        for (let i = 0; i < shots; i++) {
+          const stagger = i * 0.055;
+          this.spawnProjectileOrb(
+            from,
+            to,
+            0.19 * intensity * avgSilhouette,
+            0.34,
+            colors,
+            0.4 * avgSilhouette,
+            false,
+            stagger
+          );
+          this.spawnImpactSphere(
+            to,
+            0.55 * intensity * toM.body,
+            0.24,
+            colors,
+            false,
+            impactDelay + stagger
+          );
+        }
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.4 * intensity * toM.ground,
+          0.5,
+          colors.outer,
+          impactDelay
+        );
+        break;
+      }
+
+      case 'projectile':
+        this.spawnProjectileOrb(
+          from,
+          to,
+          0.42 * intensity * avgSilhouette,
+          0.44,
+          colors,
+          0.55 * avgSilhouette,
+          false,
+          0.02
+        );
+        this.spawnLinearBeam(
+          from,
+          to,
+          0.36 * intensity * avgSilhouette,
+          0.4,
+          colors,
+          10,
+          0.02,
+          true
+        );
+        this.spawnImpactSphere(to, 0.95 * intensity * toM.body, 0.32, colors, false, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.15 * intensity * toM.ground,
+          0.52,
+          colors,
+          'shockwave',
+          1.5,
+          impactDelay
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.0 * intensity * toM.ground,
+          0.42,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'beam':
+        this.spawnLinearBeam(
+          from,
+          to,
+          1.22 * intensity * avgSilhouette,
+          0.52,
+          colors,
+          9.8,
+          0.02,
+          true
+        );
+        this.spawnGateRings(from, to, 3, 0.68 * intensity * avgSilhouette, 0.38, colors, 0.02);
+        this.spawnImpactSphere(to, 1.0 * intensity * toM.body, 0.36, colors, false, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.5 * intensity * toM.ground,
+          0.6,
+          colors,
+          'shockwave',
+          1.6,
+          impactDelay
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.4 * intensity * toM.ground,
+          0.48,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'meteor':
+        _tmpStart.set(
+          to.x - 1.2 * toM.silhouette,
+          to.y + 4.4 * toM.ground,
+          to.z + 0.8 * toM.silhouette
+        );
+        this.spawnProjectileOrb(
+          _tmpStart,
+          to,
+          0.55 * intensity * toM.silhouette,
+          0.36,
+          colors,
+          0.25 * toM.silhouette,
+          false,
+          0.04
+        );
+        this.spawnLinearBeam(
+          _tmpStart,
+          to,
+          1.25 * intensity * toM.silhouette,
+          0.42,
+          colors,
+          10.5,
+          0.06,
+          true
+        );
+        this.spawnScorchCrater(to.x, toGroundY, to.z, 2.8 * intensity * toM.ground, 0.88, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.95 * intensity * toM.ground,
+          0.74,
+          colors,
+          'fissure',
+          0.3,
+          impactDelay
+        );
+        this.spawnImpactSphere(to, 1.3 * intensity * toM.body, 0.44, colors, false, impactDelay);
+        this.spawnDebrisShards(
+          to.x,
+          toGroundY,
+          to.z,
+          8,
+          0.62,
+          colors,
+          impactDelay + 0.03,
+          toM.silhouette,
+          toM.body
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          3.0 * intensity * toM.ground,
+          0.58,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'quake':
+        this.spawnScorchCrater(to.x, toGroundY, to.z, 2.75 * intensity * toM.ground, 0.92, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.95 * intensity * toM.ground,
+          0.78,
+          colors,
+          'fissure',
+          0.2,
+          impactDelay
+        );
+        this.spawnEruptingSpires(
+          to.x,
+          toGroundY,
+          to.z,
+          7,
+          1.65 * intensity * toM.body,
+          0.75 * toM.silhouette,
+          0.76,
+          colors,
+          impactDelay,
+          toM.silhouette
+        );
+        this.spawnDebrisShards(
+          to.x,
+          toGroundY,
+          to.z,
+          9,
+          0.65,
+          colors,
+          impactDelay + 0.03,
+          toM.silhouette,
+          toM.body
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.6 * intensity * toM.ground,
+          0.5,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'cyclone':
+        this.spawnVortexCone(
+          to.x,
+          toGroundY,
+          to.z,
+          1.2 * intensity * toM.silhouette,
+          2.15 * intensity * toM.body,
+          0.68,
+          colors,
+          0.04
+        );
+        this.spawnSlashArc(to, 1.3 * intensity * toM.silhouette, 0.68, -0.52, 0.32, colors, 0);
+        this.spawnSlashArc(to, 1.28 * intensity * toM.silhouette, -0.62, 0.55, 0.34, colors, 0.07);
+        this.spawnSlashArc(to, 1.16 * intensity * toM.silhouette, 0.08, -0.1, 0.3, colors, 0.14);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.6 * intensity * toM.ground,
+          0.62,
+          colors,
+          'shockwave',
+          2.4,
+          impactDelay
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.3 * intensity * toM.ground,
+          0.46,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'nova':
+        this.spawnImpactSphere(to, 1.6 * intensity * toM.body, 0.62, colors, false, impactDelay);
+        this.spawnAccretionDisk(to, 1.7 * intensity * toM.silhouette, 0.7, colors, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          3.1 * intensity * toM.ground,
+          0.82,
+          colors,
+          'rune',
+          -2,
+          impactDelay
+        );
+        this.spawnScorchCrater(to.x, toGroundY, to.z, 3.0 * intensity * toM.ground, 0.92, impactDelay);
+        this.spawnDebrisShards(
+          to.x,
+          toGroundY,
+          to.z,
+          12,
+          0.72,
+          colors,
+          impactDelay + 0.04,
+          toM.silhouette,
+          toM.body
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          3.4 * intensity * toM.ground,
+          0.66,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'lightning':
+        this.spawnLightningBolt(from, to, 0.36, colors, 3, 0.01, avgSilhouette);
+        _tmpStart.set(to.x + 0.9 * toM.silhouette, to.y + 4.6 * toM.ground, to.z - 0.6 * toM.silhouette);
+        this.spawnLightningBolt(_tmpStart, to, 0.42, colors, 3, impactDelay * 0.7, toM.silhouette);
+        this.spawnScorchCrater(to.x, toGroundY, to.z, 2.5 * intensity * toM.ground, 0.75, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.85 * intensity * toM.ground,
+          0.6,
+          colors,
+          'shockwave',
+          2.8,
+          impactDelay
+        );
+        this.spawnImpactSphere(to, 1.05 * intensity * toM.body, 0.32, colors, false, impactDelay);
+        this.spawnDebrisShards(
+          to.x,
+          toGroundY,
+          to.z,
+          6,
+          0.44,
+          colors,
+          impactDelay,
+          toM.silhouette,
+          toM.body
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          3.0 * intensity * toM.ground,
+          0.48,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'void':
+        this.spawnLinearBeam(
+          from,
+          to,
+          1.12 * intensity * avgSilhouette,
+          0.5,
+          colors,
+          8.2,
+          0.03,
+          true
+        );
+        this.spawnScorchCrater(to.x, toGroundY, to.z, 2.7 * intensity * toM.ground, 0.9, impactDelay);
+        this.spawnImpactSphere(to, 1.15 * intensity * toM.body, 0.62, colors, true, impactDelay);
+        this.spawnAccretionDisk(to, 1.45 * intensity * toM.silhouette, 0.66, colors, impactDelay);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.8 * intensity * toM.ground,
+          0.72,
+          colors,
+          'rune',
+          -2.6,
+          impactDelay
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.8 * intensity * toM.ground,
+          0.58,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'haze':
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.65 * intensity * toM.ground,
+          0.82,
+          colors,
+          'rune',
+          -1.4,
+          0
+        );
+        this.spawnVortexCone(
+          to.x,
+          toGroundY,
+          to.z,
+          1.05 * intensity * toM.silhouette,
+          1.55 * intensity * toM.body,
+          0.7,
+          colors,
+          0.04
+        );
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          3.4 * intensity * toM.ground,
+          0.72,
+          colors,
+          'shockwave',
+          0.8,
+          0.08
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.3 * intensity * toM.ground,
+          0.62,
+          colors.outer,
+          0.02
+        );
+        break;
+
+      case 'drain':
+        this.spawnLinearBeam(to, from, 0.66 * intensity * avgSilhouette, 0.55, colors, 7.5, 0);
+        this.spawnProjectileOrb(
+          to,
+          from,
+          0.34 * intensity * avgSilhouette,
+          0.5,
+          colors,
+          0.42 * avgSilhouette,
+          true,
+          0.02
+        );
+        this.spawnGateRings(to, from, 3, 0.55 * intensity * avgSilhouette, 0.4, colors, 0.03);
+        this.spawnImpactSphere(to, 0.82 * intensity * toM.body, 0.3, colors, true, 0);
+        this.spawnLightPool(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.0 * intensity * fromM.ground,
+          0.6,
+          colors.outer,
+          0.1
+        );
+        break;
+
+      case 'heal':
+        this.spawnGroundDecal(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.5 * fromM.ground,
+          0.9,
+          colors,
+          'rune',
+          1.8,
+          0
+        );
+        this.spawnLightPool(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.2 * fromM.ground,
+          0.8,
+          colors.outer,
+          0
+        );
+        this.spawnVortexCone(
+          from.x,
+          fromGroundY,
+          from.z,
+          0.9 * fromM.silhouette,
+          2.0 * fromM.body,
+          0.85,
+          colors,
+          0.05
+        );
+        this.spawnEruptingSpires(
+          from.x,
+          fromGroundY,
+          from.z,
+          5,
+          0.9 * intensity * fromM.body,
+          0.6 * fromM.silhouette,
+          0.7,
+          colors,
+          0.08,
+          fromM.silhouette
+        );
+        break;
+
+      case 'shield':
+        this.spawnGroundDecal(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.4 * fromM.ground,
+          0.9,
+          colors,
+          'rune',
+          3.2,
+          0
+        );
+        this.spawnLightPool(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.2 * fromM.ground,
+          0.9,
+          colors.outer,
+          0
+        );
+        this.spawnImpactSphere(from, 1.25 * fromM.body, 0.72, colors, false, 0.02);
+        this.spawnVortexCone(
+          from.x,
+          fromGroundY,
+          from.z,
+          1.0 * fromM.silhouette,
+          2.1 * fromM.body,
+          0.8,
+          colors,
+          0.04
+        );
+        this.spawnGroundDecal(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.2 * fromM.ground,
+          0.58,
+          colors,
+          'shockwave',
+          1.4,
+          0.1
+        );
+        break;
+
+      case 'buff':
+        this.spawnGroundDecal(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.2 * fromM.ground,
+          0.85,
+          colors,
+          'rune',
+          2.4,
+          0
+        );
+        this.spawnVortexCone(
+          from.x,
+          fromGroundY,
+          from.z,
+          0.85 * fromM.silhouette,
+          1.85 * fromM.body,
+          0.8,
+          colors,
+          0.03
+        );
+        this.spawnLightPool(
+          from.x,
+          fromGroundY,
+          from.z,
+          2.0 * fromM.ground,
+          0.7,
+          colors.outer,
+          0
+        );
+        this.spawnGateRings(
+          _tmpStart.set(from.x, fromGroundY + 0.15, from.z),
+          _tmpEnd.set(from.x, fromGroundY + 2.2 * fromM.body, from.z),
+          2,
+          0.8 * fromM.silhouette,
+          0.6,
+          colors,
+          0.04
+        );
+        break;
+
+      case 'debuff':
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          2.4 * toM.ground,
+          0.85,
+          colors,
+          'rune',
+          -2.2,
+          0
+        );
+        this.spawnVortexCone(
+          to.x,
+          toGroundY,
+          to.z,
+          1.0 * toM.silhouette,
+          1.75 * toM.body,
+          0.78,
+          colors,
+          0.04
+        );
+        _tmpStart.set(to.x, to.y + 3.4 * toM.ground, to.z);
+        this.spawnProjectileOrb(
+          _tmpStart,
+          to,
+          0.3 * toM.silhouette,
+          0.34,
+          colors,
+          0.1 * toM.silhouette,
+          true,
+          0.02
+        );
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          1.9 * toM.ground,
+          0.55,
+          colors,
+          'shockwave',
+          2.0,
+          0.1
+        );
+        break;
+
+      case 'sonic':
+        this.spawnGateRings(from, to, 4, 0.9 * intensity * avgSilhouette, 0.5, colors, 0.02);
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          3.2 * intensity * toM.ground,
+          0.66,
+          colors,
+          'shockwave',
+          3.4,
+          impactDelay
+        );
+        this.spawnImpactSphere(to, 0.9 * intensity * toM.body, 0.3, colors, false, impactDelay);
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          2.3 * intensity * toM.ground,
+          0.46,
+          colors.outer,
+          impactDelay
+        );
+        break;
+
+      case 'weather':
+        this.spawnGroundDecal(
+          from.x,
+          fromGroundY,
+          from.z,
+          4.0 * fromM.ground,
+          1.1,
+          colors,
+          'rune',
+          0.8,
+          0
+        );
+        this.spawnGroundDecal(
+          to.x,
+          toGroundY,
+          to.z,
+          4.0 * toM.ground,
+          1.1,
+          colors,
+          'shockwave',
+          -0.6,
+          0.06
+        );
+        this.spawnGateRings(from, to, 3, 1.0 * avgSilhouette, 0.85, colors, 0.1);
+        this.spawnLightPool(
+          from.x,
+          fromGroundY,
+          from.z,
+          3.4 * fromM.ground,
+          0.9,
+          colors.outer,
+          0
+        );
+        this.spawnLightPool(
+          to.x,
+          toGroundY,
+          to.z,
+          3.4 * toM.ground,
+          0.9,
+          colors.outer,
+          0.06
+        );
         break;
     }
   }

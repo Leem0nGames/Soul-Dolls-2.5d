@@ -901,6 +901,9 @@ export class BattleScene implements Scene {
                     toGroundY: target.y,
                     fromScale: stabHeight,
                     toScale: targetScale,
+                    moveId: move.id,
+                    effectKind: move.effect.kind,
+                    effectTarget: move.effect.target,
                   });
                   this.fx.burst(_toPos, {
                     count: 24,
@@ -967,6 +970,9 @@ export class BattleScene implements Scene {
                   toGroundY: target.y,
                   fromScale: baseScale,
                   toScale: targetScale,
+                  moveId: move.id,
+                  effectKind: move.effect.kind,
+                  effectTarget: move.effect.target,
                 });
               }
             },
@@ -980,6 +986,9 @@ export class BattleScene implements Scene {
             toGroundY: target.y,
             fromScale: baseScale,
             toScale: targetScale,
+            moveId: move.id,
+            effectKind: move.effect.kind,
+            effectTarget: move.effect.target,
           });
           this.tweens.start(
             0.36,

@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { MOVES } from '../src/data/moves.ts';
 import type { CreatureType, MoveCategory } from '../src/domain/types.ts';
 import {
   AbilityVfxSystem,
   computeVfxScaleMetrics,
   DEFAULT_VFX_SPRITE_SCALE,
 } from '../src/engine/AbilityVfxSystem.ts';
+import { getMoveVfxStyle } from '../src/engine/moveVfxProfiles.ts';
 
 const ALL_TYPES: CreatureType[] = [
   'brasa',
@@ -94,6 +96,79 @@ describe('AbilityVfxSystem Procedural GLSL 3D Effects', () => {
     const refHeight = measureVortexHeight(DEFAULT_VFX_SPRITE_SCALE);
     const largeHeight = measureVortexHeight(3.1);
     expect(largeHeight / refHeight).toBeCloseTo(enemyMetrics.body, 2);
+  });
+
+  it('assigns a distinct non-elemental style to every known move', () => {
+    const styles = new Set<string>();
+    for (const move of Object.values(MOVES)) {
+      const style = getMoveVfxStyle(
+        move.id,
+        move.category,
+        move.effect.kind,
+        move.effect.target
+      );
+      expect(style, `move ${move.id}`).not.toBe('elemental');
+      styles.add(style);
+    }
+    expect(styles.size).toBeGreaterThanOrEqual(15);
+  });
+
+  it('spawns signature VFX compositions for different moves of the same type and category', () => {
+    const spawnCount = (moveId: string): number => {
+      const scene = new THREE.Scene();
+      const vfx = new AbilityVfxSystem(scene);
+      const move = MOVES[moveId];
+      const from = new THREE.Vector3(-2.15, 1.5, 2.0);
+      const to = new THREE.Vector3(2.25, 2.0, -2.35);
+
+      vfx.playMove(move.type, from, to, move.category, {
+        power: move.power,
+        fromGroundY: 0.28,
+        toGroundY: 0.62,
+        fromScale: 2.59,
+        toScale: 3.1,
+        moveId: move.id,
+        effectKind: move.effect.kind,
+        effectTarget: move.effect.target,
+      });
+
+      const count = vfx.getActiveCount();
+      vfx.dispose();
+      return count;
+    };
+
+    const impactCount = spawnCount('placaje');
+    const pierceCount = spawnCount('golpe_rapido');
+    const barrageCount = spawnCount('doble_bofeton');
+
+    expect(impactCount).toBeGreaterThan(0);
+    expect(barrageCount).toBeGreaterThan(impactCount);
+    expect(pierceCount).not.toBe(impactCount);
+  });
+
+  it('plays and cleans up every move-defined VFX style', () => {
+    const scene = new THREE.Scene();
+    const vfx = new AbilityVfxSystem(scene);
+    const from = new THREE.Vector3(-2.15, 1.5, 2.0);
+    const to = new THREE.Vector3(2.25, 2.0, -2.35);
+
+    for (const move of Object.values(MOVES)) {
+      vfx.playMove(move.type, from, to, move.category, {
+        power: move.power,
+        fromGroundY: 0.28,
+        toGroundY: 0.62,
+        fromScale: 2.59,
+        toScale: 3.1,
+        moveId: move.id,
+        effectKind: move.effect.kind,
+        effectTarget: move.effect.target,
+      });
+      expect(vfx.getActiveCount(), `move ${move.id}`).toBeGreaterThan(0);
+      for (let i = 0; i < 30; i++) vfx.update(0.05);
+      expect(vfx.getActiveCount(), `cleanup ${move.id}`).toBe(0);
+    }
+
+    vfx.dispose();
   });
 });
 
