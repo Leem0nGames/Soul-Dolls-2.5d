@@ -1667,7 +1667,7 @@ export class BattleScene implements Scene {
             item.dustGained = res.dustGained;
             this.game.battleHud.updateSoulDust(res.soulDust);
             this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
             showResultOverlay();
           } else if (res.reason === 'all_socketed') {
             this.game.showToast(ES.cards.dismantleAllSocketed);
@@ -1696,7 +1696,7 @@ export class BattleScene implements Scene {
             () => {
               this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
               this.game.battleHud.updateSoulDust(getSoulDust(this.game.saveData));
-              this.game.saveManager.save(this.game.saveData);
+              this.game.saveGame();
             }
           );
         };
@@ -1734,7 +1734,7 @@ export class BattleScene implements Scene {
               liveTarget,
               (evolved) => {
                 if (evolved) {
-                  this.game.saveManager.save(this.game.saveData);
+                  this.game.saveGame();
                 }
                 runNextEvolution();
               },

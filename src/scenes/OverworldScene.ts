@@ -403,7 +403,7 @@ export class OverworldScene implements Scene {
       });
     } else if (!save.flags.isekai_intro_seen) {
       save.flags.isekai_intro_seen = true;
-      this.game.saveManager.save(save);
+      this.game.saveGame();
       this.game.dialog.show(ES.dialogs.isekai_intro_1, () => {
         this.game.dialog.show(ES.dialogs.isekai_intro_2);
       });
@@ -441,7 +441,7 @@ export class OverworldScene implements Scene {
         label: 'Iré por mi cuenta',
         onSelect: () => {
           this.game.saveData.flags.village_tour_done = true;
-          this.game.saveManager.save(this.game.saveData);
+          this.game.saveGame();
           const steps = expandGridWaypoints(
             guideNpc.behavior.gridX,
             guideNpc.behavior.gridY,
@@ -499,7 +499,7 @@ export class OverworldScene implements Scene {
               this.game.dialog.show(ES.dialogs.guide_tour_professor, () => {
                 this.game.saveData.flags.village_tour_done = true;
                 this.game.saveData.flags.lab_tour_pending = true;
-                this.game.saveManager.save(this.game.saveData);
+                this.game.saveGame();
                 this.startWarpTransition({
                   x: 19,
                   y: 18,
@@ -531,7 +531,7 @@ export class OverworldScene implements Scene {
 
     if (!save.flags.prof_intro_talked) {
       save.flags.prof_intro_talked = true;
-      this.game.saveManager.save(save);
+      this.game.saveGame();
       const profNpc = this.findNpcById('prof_robledo');
       if (profNpc) {
         engageNpcLook(profNpc.behavior, this.gridX, this.gridY, true);
@@ -579,7 +579,7 @@ export class OverworldScene implements Scene {
             playerMove: null,
             speed: 3.6,
             onDone: () => {
-              this.game.saveManager.save(this.game.saveData);
+              this.game.saveGame();
               this.game.dialog.show(ES.dialogs.guide_choose_starter);
             },
           };
@@ -786,7 +786,7 @@ export class OverworldScene implements Scene {
 
     this.game.saveData.questIndex = res.nextIndex;
     this.refreshQuestHud(true);
-    this.game.saveManager.save(this.game.saveData);
+    this.game.saveGame();
     this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
 
     const nextQuest = getActiveQuest(res.nextIndex);
@@ -1596,7 +1596,7 @@ export class OverworldScene implements Scene {
     this.justTeleported = true;
 
     if (autoSave) {
-      this.game.saveManager.save(this.game.saveData);
+      this.game.autosave();
     }
   }
 
@@ -2307,7 +2307,7 @@ export class OverworldScene implements Scene {
           this.handleBlackout();
         } else {
           if (outcome === 'win' || outcome === 'caught') {
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
           }
           this.refreshSideQuestMarkers();
         }
@@ -2347,7 +2347,7 @@ export class OverworldScene implements Scene {
             const lootMsg = this.awardTrainerContainerLoot(trainer.isBoss || trainer.isRival);
             this.refreshNpcVisibility();
             this.updateBadge();
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
             if (lootMsg) {
               this.game.showToast(lootMsg);
             }
@@ -2469,7 +2469,7 @@ export class OverworldScene implements Scene {
             }
             this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
             this.updateBadge();
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
             this.game.showToast(`¡Compraste ${house.name}!`);
             this.game.dialog.show(ES.housing.boughtMsg(house.name), () => {
               if (enterWarp) {
@@ -2488,7 +2488,7 @@ export class OverworldScene implements Scene {
       healPartyFull(this.game.saveData.party);
       this.recordHealPoint();
       this.game.bus.emit('audio:sfx', { sfx: 'heal' });
-      this.game.saveManager.save(this.game.saveData);
+      this.game.saveGame();
       this.game.dialog.show(ES.dialogs.bed_rest);
       return;
     }
@@ -2499,7 +2499,7 @@ export class OverworldScene implements Scene {
         () => {},
         () => {
           this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-          this.game.saveManager.save(this.game.saveData);
+          this.game.saveGame();
         }
       );
       return;
@@ -2598,7 +2598,7 @@ export class OverworldScene implements Scene {
     }
     addItem(this.game.saveData.bag, pickup.itemId, pickup.quantity);
     this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
-    this.game.saveManager.save(this.game.saveData);
+    this.game.saveGame();
     const itemName = getItem(pickup.itemId).name;
     this.game.dialog.show(`¡Encontraste ${pickup.quantity}× ${itemName}!`);
   }
@@ -2655,7 +2655,7 @@ export class OverworldScene implements Scene {
               addItem(this.game.saveData.bag, 'capsula', 2);
               this.refreshNpcVisibility();
               this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
-              this.game.saveManager.save(this.game.saveData);
+              this.game.saveGame();
               this.game.dialog.show(ES.dialogs.starter_chosen(spec.name));
             },
           },
@@ -2713,7 +2713,7 @@ export class OverworldScene implements Scene {
             const itemName = getItem(m.rewardItemId).name;
             this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
             this.updateBadge();
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
             this.game.dialog.show(
               ES.dialogs.prof_milestone_reward(label, itemName, m.rewardQty, m.rewardMoney)
             );
@@ -2723,7 +2723,7 @@ export class OverworldScene implements Scene {
         healPartyFull(this.game.saveData.party);
         this.recordHealPoint();
         this.game.bus.emit('audio:sfx', { sfx: 'heal' });
-        this.game.saveManager.save(this.game.saveData);
+        this.game.saveGame();
         this.game.dialog.show(ES.dialogs.prof_healed);
         return;
       }
@@ -2732,7 +2732,7 @@ export class OverworldScene implements Scene {
         healPartyFull(this.game.saveData.party);
         this.recordHealPoint();
         this.game.bus.emit('audio:sfx', { sfx: 'heal' });
-        this.game.saveManager.save(this.game.saveData);
+        this.game.saveGame();
         this.game.dialog.show(ES.dialogs.heal_machine_use);
         return;
       }
@@ -2744,7 +2744,7 @@ export class OverworldScene implements Scene {
             healPartyFull(this.game.saveData.party);
             this.recordHealPoint();
             this.game.bus.emit('audio:sfx', { sfx: 'heal' });
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
             const msg =
               ((ES.dialogs as Record<string, unknown>)[npc.dialogKey] as string) ??
               ES.dialogs.healer_clara;
@@ -2755,7 +2755,7 @@ export class OverworldScene implements Scene {
           label: 'Cajas PC',
           onSelect: () => {
             this.game.storageScreen.open(this.game.saveData, () => {
-              this.game.saveManager.save(this.game.saveData);
+              this.game.saveGame();
             });
           },
         },
@@ -2772,7 +2772,7 @@ export class OverworldScene implements Scene {
             healPartyFull(this.game.saveData.party);
             this.recordHealPoint();
             this.game.bus.emit('audio:sfx', { sfx: 'heal' });
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
             this.game.dialog.show(ES.dialogs.iris_healed);
           },
         },
@@ -2840,7 +2840,7 @@ export class OverworldScene implements Scene {
           this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
           this.updateBadge();
           this.refreshSideQuestMarkers();
-          this.game.saveManager.save(this.game.saveData);
+          this.game.saveGame();
           this.game.dialog.show(sideState.quest.completeDialogue, () => {
             this.game.showToast(
               `Recompensa: +${reward.rewardGold} Oro y ${reward.blueprint.name}`
@@ -2858,7 +2858,7 @@ export class OverworldScene implements Scene {
             if (acceptSideQuest(this.game.saveData, sideState.quest.id)) {
               this.game.bus.emit('audio:sfx', { sfx: 'quest_accept' });
               this.refreshSideQuestMarkers();
-              this.game.saveManager.save(this.game.saveData);
+              this.game.saveGame();
               this.game.showToast(`Misión aceptada: ${sideState.quest.title}`);
             }
           },
@@ -2912,7 +2912,7 @@ export class OverworldScene implements Scene {
           this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
           this.updateBadge();
           this.refreshSideQuestMarkers();
-          this.game.saveManager.save(this.game.saveData);
+          this.game.saveGame();
           this.game.dialog.show(quest.completeDialogue, () => {
             this.game.showToast(
               `Recompensa: +${reward.rewardGold} Oro y ${reward.blueprint.name}`
@@ -2929,7 +2929,7 @@ export class OverworldScene implements Scene {
               if (acceptSideQuest(this.game.saveData, quest.id)) {
                 this.game.bus.emit('audio:sfx', { sfx: 'quest_accept' });
                 this.refreshSideQuestMarkers();
-                this.game.saveManager.save(this.game.saveData);
+                this.game.saveGame();
                 this.game.showToast(`Misión aceptada: ${quest.title}`);
               }
             },
@@ -2975,7 +2975,7 @@ export class OverworldScene implements Scene {
           this.game.saveData.party,
           { kind: 'manage', bag: this.game.saveData.bag, save: this.game.saveData },
           () => {
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
           }
         );
       },
@@ -2994,7 +2994,7 @@ export class OverworldScene implements Scene {
           () => {},
           () => {
             this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-            this.game.saveManager.save(this.game.saveData);
+            this.game.saveGame();
           }
         );
       },
@@ -3002,7 +3002,7 @@ export class OverworldScene implements Scene {
         this.openQuestJournal();
       },
       onSave: () => {
-        const ok = this.game.saveManager.save(this.game.saveData);
+        const ok = this.game.saveGame();
         if (ok) this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
         return ok;
       },
@@ -3011,6 +3011,7 @@ export class OverworldScene implements Scene {
         this.game.persistOptions();
       },
       onClose: () => {},
+      slotLabel: this.game.getCurrentSlotLabel(),
     });
   }
 
@@ -3020,7 +3021,7 @@ export class OverworldScene implements Scene {
       this.game.rng,
       () => {
         this.updateBadge();
-        this.game.saveManager.save(this.game.saveData);
+        this.game.saveGame();
       },
       () => {},
       () => {
@@ -3035,7 +3036,7 @@ export class OverworldScene implements Scene {
       this.game.saveData,
       () => {
         this.updateBadge();
-        this.game.saveManager.save(this.game.saveData);
+        this.game.saveGame();
       },
       () => {},
       () => {
@@ -3051,7 +3052,7 @@ export class OverworldScene implements Scene {
   private openSkillShop(): void {
     this.game.openShop(TALLER_SKILL_SHOP_STOCK, () => {
       this.updateBadge();
-      this.game.saveManager.save(this.game.saveData);
+      this.game.saveGame();
     });
   }
 
@@ -3067,7 +3068,7 @@ export class OverworldScene implements Scene {
             this.game.rng,
             () => {
               this.updateBadge();
-              this.game.saveManager.save(this.game.saveData);
+              this.game.saveGame();
             },
             () => {}
           );
@@ -3105,7 +3106,7 @@ export class OverworldScene implements Scene {
                   if (res.applied) {
                     removeItem(this.game.saveData.bag, itemId, 1);
                     this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
-                    this.game.saveManager.save(this.game.saveData);
+                    this.game.saveGame();
                     this.game.dialog.show(
                       ES.battle.learnedMove(dollName, res.moveName ?? item.name)
                     );
@@ -3124,7 +3125,7 @@ export class OverworldScene implements Scene {
                             if (rep.applied) {
                               removeItem(this.game.saveData.bag, itemId, 1);
                               this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
-                              this.game.saveManager.save(this.game.saveData);
+                              this.game.saveGame();
                               this.game.dialog.show(
                                 ES.battle.forgotAndLearned(
                                   dollName,
@@ -3171,7 +3172,7 @@ export class OverworldScene implements Scene {
                     if (!evolved) {
                       addItem(this.game.saveData.bag, itemId, 1);
                     } else {
-                      this.game.saveManager.save(this.game.saveData);
+                      this.game.saveGame();
                     }
                     this.updateBadge();
                   });
@@ -3184,7 +3185,7 @@ export class OverworldScene implements Scene {
                 }
                 removeItem(this.game.saveData.bag, itemId, 1);
                 this.game.bus.emit('audio:sfx', { sfx: 'heal' });
-                this.game.saveManager.save(this.game.saveData);
+                this.game.saveGame();
                 if (applied.addedEv && applied.vitaminStat) {
                   this.game.dialog.show(
                     `¡${getCreatureDisplayName(creature)} ganó +${applied.addedEv} EV en ${ES.stats[applied.vitaminStat]}!`

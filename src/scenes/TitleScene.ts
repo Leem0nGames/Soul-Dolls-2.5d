@@ -11,6 +11,11 @@ import { createGradientSkyTexture } from '../engine/SkyBackdrop.ts';
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
+import {
+  SAVE_SLOT_IDS,
+  type SaveSlotId,
+  type SaveSlotSummary,
+} from '../save/SaveManager.ts';
 
 interface StarterSlot {
   speciesId: number;
@@ -31,6 +36,26 @@ interface WispState {
 }
 
 const STARTER_ORDER = [1, 4, 7] as const;
+
+function formatPlaytime(totalSeconds: number): string {
+  const total = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  return hours > 0
+    ? `${hours}h ${minutes.toString().padStart(2, '0')}m`
+    : `${minutes}m`;
+}
+
+function formatSavedAt(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '—';
+  return new Date(timestamp).toLocaleString('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 function createSoftGlowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -136,6 +161,9 @@ export class TitleScene implements Scene {
   private lastAspect = -1;
   private time = 0;
   private unsubCreatureLoad: (() => void) | null = null;
+  private slotPanel: HTMLDivElement | null = null;
+  private slotPanelMode: 'load' | 'new' = 'load';
+  private pendingSlotAction: { kind: 'delete' | 'overwrite'; slot: SaveSlotId } | null = null;
   private reducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -449,7 +477,10 @@ export class TitleScene implements Scene {
   }
 
   private renderUi(): void {
-    const hasSave = this.game.saveManager.hasSave();
+    this.closeSlotPanel();
+    const slotSummaries = this.game.saveManager.listSlots();
+    const hasPlayableSave = slotSummaries.some((slot) => slot.exists && !slot.corrupted);
+    const hasAnySave = slotSummaries.some((slot) => slot.exists);
     const showInstall =
       !this.game.isStandalone() && (this.game.canInstallPwa() || this.game.isIos());
     const showFullscreen =
@@ -520,10 +551,12 @@ export class TitleScene implements Scene {
       <footer class="-mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 pb-5 bg-crypt-ink border-t-2 border-old-bronze shadow-[inset_0_2px_0_#3B2B1A] flex flex-col items-center gap-2.5">
         <div class="pointer-events-auto w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5">
           ${
-            hasSave
-              ? `<button data-continue class="flex-1 min-h-[50px] px-6 px-btn px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.continueGame}</button>
-                 <button data-new class="flex-1 min-h-[50px] px-6 px-btn px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.newGame}</button>`
-              : `<button data-new class="w-full sm:w-auto sm:min-w-[240px] min-h-[50px] px-8 px-btn px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.newGame}</button>`
+            hasPlayableSave
+              ? `<button data-continue class="flex-1 min-h-[50px] px-4 px-btn px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.continueGame}</button>
+                 <button data-slots class="flex-1 min-h-[50px] px-4 px-btn px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.slots}</button>
+                 <button data-new class="flex-1 min-h-[50px] px-4 px-btn px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.newGame}</button>`
+              : `<button data-new class="flex-1 min-h-[50px] px-6 px-btn px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.newGame}</button>
+                 ${hasAnySave ? `<button data-slots class="flex-1 min-h-[50px] px-6 px-btn px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.slots}</button>` : ''}`
           }
         </div>
         <div class="text-[11px] text-bone-gray text-center">
@@ -533,14 +566,17 @@ export class TitleScene implements Scene {
     `;
 
     this.overlay.querySelector('[data-new]')?.addEventListener('click', () => {
-      this.game.synth.unlock();
-      this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-      this.game.startNewGame();
+      if (hasAnySave) {
+        this.openSlotPanel('new');
+      } else {
+        this.beginNewGame('slot1');
+      }
     });
     this.overlay.querySelector('[data-continue]')?.addEventListener('click', () => {
-      this.game.synth.unlock();
-      this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-      this.game.continueGame();
+      this.beginLoad();
+    });
+    this.overlay.querySelector('[data-slots]')?.addEventListener('click', () => {
+      this.openSlotPanel('load');
     });
     this.overlay.querySelector('[data-mute]')?.addEventListener('click', () => {
       this.game.synth.unlock();
@@ -583,6 +619,185 @@ export class TitleScene implements Scene {
         this.game.showToast(ES.app.installIosHint);
       }
     });
+  }
+
+  private slotName(id: SaveSlotId): string {
+    return id === 'auto' ? ES.app.autosave : `${ES.app.slot} ${id.slice(-1)}`;
+  }
+
+  private beginNewGame(slot: SaveSlotId): void {
+    this.closeSlotPanel();
+    this.game.synth.unlock();
+    this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+    this.game.startNewGame(slot);
+  }
+
+  private beginLoad(slot?: SaveSlotId): void {
+    this.closeSlotPanel();
+    this.game.synth.unlock();
+    this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+    this.game.continueGame(slot);
+  }
+
+  private openSlotPanel(mode: 'load' | 'new'): void {
+    this.game.synth.unlock();
+    this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+    this.closeSlotPanel();
+    this.slotPanelMode = mode;
+    const panel = document.createElement('div');
+    panel.className =
+      'pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-abyss-ink p-4';
+    this.overlay.appendChild(panel);
+    this.slotPanel = panel;
+    this.renderSlotPanel();
+  }
+
+  private closeSlotPanel(): void {
+    this.slotPanel?.remove();
+    this.slotPanel = null;
+    this.pendingSlotAction = null;
+  }
+
+  private renderSlotPanel(): void {
+    const panel = this.slotPanel;
+    if (!panel) return;
+    const summaries = this.game.saveManager.listSlots();
+    const rows = SAVE_SLOT_IDS.map((id) => {
+      const summary = summaries.find((slot) => slot.id === id);
+      return summary ? this.renderSlotRow(summary) : '';
+    }).join('');
+
+    panel.innerHTML = `
+      <div class="w-full max-w-lg px-panel px-panel-cyan px-panel-ornate p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <h2 class="text-sm sm:text-base font-extrabold tracking-[0.16em] uppercase text-resonant-gold">
+            ${ES.app.slots}
+          </h2>
+          <button data-slots-close class="min-h-[36px] px-3 px-btn px-btn-ghost text-xs font-bold text-porcelain">
+            ${ES.app.cancel}
+          </button>
+        </div>
+        <div class="flex flex-col gap-2">${rows}</div>
+      </div>
+    `;
+
+    panel.querySelector('[data-slots-close]')?.addEventListener('click', () => {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.closeSlotPanel();
+    });
+
+    panel.querySelectorAll<HTMLElement>('[data-slot-load]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.slotLoad as SaveSlotId | undefined;
+        if (id) this.beginLoad(id);
+      });
+    });
+
+    panel.querySelectorAll<HTMLElement>('[data-slot-pick]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.slotPick as SaveSlotId | undefined;
+        if (!id || id === 'auto') return;
+        const summary = summaries.find((slot) => slot.id === id);
+        const needsConfirm = Boolean(summary?.exists && !summary.corrupted);
+        const confirming =
+          this.pendingSlotAction?.kind === 'overwrite' &&
+          this.pendingSlotAction.slot === id;
+        if (needsConfirm && !confirming) {
+          this.pendingSlotAction = { kind: 'overwrite', slot: id };
+          this.renderSlotPanel();
+          return;
+        }
+        this.beginNewGame(id);
+      });
+    });
+
+    panel.querySelectorAll<HTMLElement>('[data-slot-delete]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.slotDelete as SaveSlotId | undefined;
+        if (!id) return;
+        const confirming =
+          this.pendingSlotAction?.kind === 'delete' &&
+          this.pendingSlotAction.slot === id;
+        if (confirming) {
+          this.game.saveManager.deleteSlot(id);
+          this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+          this.pendingSlotAction = null;
+          this.renderSlotPanel();
+        } else {
+          this.pendingSlotAction = { kind: 'delete', slot: id };
+          this.renderSlotPanel();
+        }
+      });
+    });
+  }
+
+  private renderSlotRow(summary: SaveSlotSummary): string {
+    const id = summary.id;
+    const isNewMode = this.slotPanelMode === 'new';
+    const isAuto = id === 'auto';
+    const pendingOverwrite =
+      this.pendingSlotAction?.kind === 'overwrite' &&
+      this.pendingSlotAction.slot === id;
+    const pendingDelete =
+      this.pendingSlotAction?.kind === 'delete' &&
+      this.pendingSlotAction.slot === id;
+
+    let body: string;
+    if (summary.corrupted) {
+      body = `<div class="text-xs font-bold text-red-400">${ES.app.corruptedSave}</div>`;
+    } else if (!summary.exists || !summary.meta) {
+      body = `<div class="text-xs text-bone-gray">${ES.app.emptySlot}</div>`;
+    } else {
+      const meta = summary.meta;
+      const mapName = ES.maps[meta.mapId] ?? meta.mapId;
+      body = `
+        <div class="text-xs text-porcelain font-bold truncate">${mapName}</div>
+        <div class="text-[11px] text-bone-gray mt-0.5 tabular-nums">
+          ${ES.app.playTime}: ${formatPlaytime(meta.playTimeSec)} · Nv. ${meta.topLevel} · ${meta.money} ◈ · ${meta.badges}/4
+        </div>
+        <div class="text-[10px] text-bone-gray mt-0.5">
+          ${ES.app.lastSaved}: ${formatSavedAt(meta.savedAt)}
+        </div>
+      `;
+    }
+
+    const actions: string[] = [];
+    if (isNewMode) {
+      if (!isAuto) {
+        actions.push(
+          `<button data-slot-pick="${id}" class="min-h-[36px] px-3 px-btn ${
+            pendingOverwrite ? 'px-btn-danger' : 'px-btn-primary'
+          } text-xs font-bold whitespace-nowrap">${
+            pendingOverwrite ? ES.app.confirmOverwrite : ES.app.newGameHere
+          }</button>`
+        );
+      }
+    } else if (summary.exists && !summary.corrupted) {
+      actions.push(
+        `<button data-slot-load="${id}" class="min-h-[36px] px-3 px-btn px-btn-primary text-xs font-bold whitespace-nowrap">${ES.app.loadSlot}</button>`
+      );
+    }
+    if (summary.exists) {
+      actions.push(
+        `<button data-slot-delete="${id}" class="min-h-[36px] px-3 px-btn ${
+          pendingDelete ? 'px-btn-danger' : 'px-btn-ghost'
+        } text-xs font-bold whitespace-nowrap">${
+          pendingDelete ? ES.app.confirmDelete : ES.app.deleteSlot
+        }</button>`
+      );
+    }
+
+    return `
+      <div class="px-panel px-hud-box p-2.5 flex items-center justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="text-[10px] font-bold tracking-wider uppercase text-ki-cyan mb-0.5">${this.slotName(id)}</div>
+          ${body}
+        </div>
+        <div class="flex flex-col items-stretch gap-1 shrink-0">
+          ${actions.join('')}
+        </div>
+      </div>
+    `;
   }
 
   fixedUpdate(dt: number): void {
@@ -635,10 +850,22 @@ export class TitleScene implements Scene {
     const swayX = this.reducedMotion ? 0 : Math.sin(this.time * 0.35) * 0.65;
     this.game.cameraRig.follow(swayX, 0, 0, dt);
 
-    if (!this.game.menu.isOpen() && this.game.input.justPressed('a')) {
+    if (
+      this.slotPanel &&
+      (this.game.input.justPressed('b') || this.game.input.justPressed('start'))
+    ) {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.closeSlotPanel();
+    }
+
+    if (
+      !this.slotPanel &&
+      !this.game.menu.isOpen() &&
+      this.game.input.justPressed('a')
+    ) {
       this.game.synth.unlock();
       this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-      if (this.game.saveManager.hasSave()) this.game.continueGame();
+      if (this.game.saveManager.hasPlayableSave()) this.game.continueGame();
       else this.game.startNewGame();
     }
   }
@@ -651,6 +878,7 @@ export class TitleScene implements Scene {
     this.unsubCreatureLoad?.();
     this.unsubCreatureLoad = null;
     this.game.renderer.canvas.removeEventListener('pointerdown', this.handleStageTap);
+    this.closeSlotPanel();
     this.overlay.remove();
     this.disposables.disposeAll();
   }

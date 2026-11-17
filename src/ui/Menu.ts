@@ -21,6 +21,7 @@ export interface MenuCallbacks {
   onSave: () => boolean;
   onOptionsChanged: (options: GameOptions) => void;
   onClose: () => void;
+  slotLabel?: string;
 }
 
 export interface OptionsOnlyCallbacks {
@@ -127,6 +128,7 @@ export class PauseMenu {
         key: `${optionsOnly ? 'opts' : 'main'}-${this.renderNonce}`,
         save,
         assets: this.assets,
+        slotLabel: callbacks.slotLabel,
         optionsOnly,
         initialOptionsTab: this.activeOptionsTab,
         onOptionsTabChange: (tab) => {

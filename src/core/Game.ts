@@ -2,7 +2,7 @@ import { Synth } from '../audio/Synth.ts';
 import { CameraRig } from '../engine/CameraRig.ts';
 import { PixelRenderer } from '../engine/Renderer.ts';
 import { ProceduralAssetProvider, type AssetProvider } from '../gfx/AssetProvider.ts';
-import { SaveManager } from '../save/SaveManager.ts';
+import { SaveManager, type SaveSlotId } from '../save/SaveManager.ts';
 import { AchievementsScreen } from '../ui/AchievementsScreen.ts';
 import { ArGachaModal } from '../ui/ArGachaModal.ts';
 import { BagScreen } from '../ui/BagScreen.ts';
@@ -83,6 +83,7 @@ export class Game {
   readonly achievementsScreen: AchievementsScreen;
 
   saveData: SaveData;
+  private currentSlot: SaveSlotId | null = null;
   private deferredInstall: BeforeInstallPromptEvent | null = null;
   private toastEl: HTMLDivElement;
   private toastTimer = 0;
@@ -94,9 +95,12 @@ export class Game {
     this.synth = new Synth();
     this.saveManager = new SaveManager();
     this.saveData = this.saveManager.createNew();
-    const existingSave = this.saveManager.load();
-    if (existingSave) {
-      this.saveData.options = { ...existingSave.options };
+    const storedOptions = this.saveManager.loadOptions();
+    const existingSave = this.saveManager.loadLatest();
+    if (storedOptions) {
+      this.saveData.options = { ...storedOptions };
+    } else if (existingSave) {
+      this.saveData.options = { ...existingSave.data.options };
     }
     this.rng = createRng(Date.now() >>> 0);
     this.assets = new ProceduralAssetProvider();
@@ -227,13 +231,32 @@ export class Game {
   }
 
   persistOptions(): void {
-    const existing = this.saveManager.load();
-    if (existing) {
-      existing.options = { ...this.saveData.options };
-      this.saveManager.save(existing);
-    } else if (this.saveData.flags.starter_chosen) {
-      this.saveManager.save(this.saveData);
+    this.saveManager.saveOptions(this.saveData.options);
+  }
+
+  saveGame(): boolean {
+    const ok = this.saveManager.save(this.saveData);
+    if (!ok) {
+      const reason = this.saveManager.getLastError();
+      this.showToast(
+        reason === 'quota' ? ES.app.saveQuotaError : ES.app.saveError
+      );
     }
+    return ok;
+  }
+
+  autosave(): void {
+    if (!this.saveData.flags.starter_chosen) return;
+    this.saveManager.saveAuto(this.saveData);
+  }
+
+  getCurrentSlot(): SaveSlotId | null {
+    return this.currentSlot;
+  }
+
+  getCurrentSlotLabel(): string {
+    if (!this.currentSlot || this.currentSlot === 'auto') return ES.app.autosave;
+    return `${ES.app.slot} ${this.currentSlot.slice(-1)}`;
   }
 
   showToast(message: string): void {
@@ -287,20 +310,37 @@ export class Game {
     this.scenes.replace(new TitleScene(this));
   }
 
-  startNewGame(): void {
+  startNewGame(slot: SaveSlotId = 'slot1'): void {
+    const target: SaveSlotId = slot === 'auto' ? 'slot1' : slot;
     const prevOptions = { ...this.saveData.options };
+    this.saveManager.deleteSlot(target);
     this.saveData = this.saveManager.createNew();
     this.saveData.options = prevOptions;
+    this.currentSlot = target;
+    this.saveManager.setActiveSlot(target);
     this.applyOptions();
     this.scenes.replace(new TutorialScene(this));
   }
 
-  continueGame(): void {
-    const loaded = this.saveManager.load();
+  continueGame(slot?: SaveSlotId): void {
+    const loaded = slot
+      ? (() => {
+          const data = this.saveManager.loadSlot(slot);
+          return data ? { id: slot, data } : null;
+        })()
+      : this.saveManager.loadLatest();
     if (loaded) {
-      this.saveData = loaded;
+      this.currentSlot = loaded.id;
+      this.saveData = loaded.data;
+      const storedOptions = this.saveManager.loadOptions();
+      if (storedOptions) this.saveData.options = { ...storedOptions };
+      this.saveManager.setActiveSlot(loaded.id);
     } else {
+      this.currentSlot = null;
       this.saveData = this.saveManager.createNew();
+    }
+    if (this.saveManager.wasLastLoadRecovered()) {
+      this.showToast(ES.app.saveRecovered);
     }
     this.applyOptions();
     this.scenes.replace(new OverworldScene(this));
@@ -312,7 +352,16 @@ export class Game {
     biome?: BattleBiome;
     onDone: (outcome: 'win' | 'lose' | 'caught' | 'ran') => void;
   }): void {
-    this.scenes.push(new BattleScene(this, params));
+    const onDone = params.onDone;
+    this.scenes.push(
+      new BattleScene(this, {
+        ...params,
+        onDone: (outcome) => {
+          onDone(outcome);
+          this.autosave();
+        },
+      })
+    );
   }
 
   startEvolution(

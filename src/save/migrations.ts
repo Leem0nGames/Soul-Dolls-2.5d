@@ -43,6 +43,47 @@ export function defaultOptions(): GameOptions {
   };
 }
 
+export function normalizeGameOptions(
+  raw: unknown,
+  version = CURRENT_SAVE_VERSION
+): GameOptions {
+  const def = defaultOptions();
+  if (!raw || typeof raw !== 'object') return def;
+  const opt = raw as Record<string, unknown>;
+  const q = opt.graphicsQuality;
+  return {
+    volume: typeof opt.volume === 'number' ? Math.max(0, Math.min(1, opt.volume)) : def.volume,
+    musicVolume:
+      typeof opt.musicVolume === 'number'
+        ? Math.max(0, Math.min(1, opt.musicVolume))
+        : def.musicVolume,
+    sfxVolume:
+      typeof opt.sfxVolume === 'number'
+        ? Math.max(0, Math.min(1, opt.sfxVolume))
+        : def.sfxVolume,
+    muted: typeof opt.muted === 'boolean' ? opt.muted : def.muted,
+    batterySaver: typeof opt.batterySaver === 'boolean' ? opt.batterySaver : def.batterySaver,
+    pixelEffect:
+      version >= 6 && typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : def.pixelEffect,
+    graphicsQuality:
+      q === 'auto' || q === 'low' || q === 'medium' || q === 'high' ? q : def.graphicsQuality,
+    shadows: typeof opt.shadows === 'boolean' ? opt.shadows : def.shadows,
+    ambientParticles:
+      typeof opt.ambientParticles === 'boolean' ? opt.ambientParticles : def.ambientParticles,
+    bloom: typeof opt.bloom === 'boolean' ? opt.bloom : def.bloom,
+    bloomIntensity:
+      typeof opt.bloomIntensity === 'number'
+        ? Math.max(0.4, Math.min(1.6, opt.bloomIntensity))
+        : def.bloomIntensity,
+    tiltShift: typeof opt.tiltShift === 'boolean' ? opt.tiltShift : def.tiltShift,
+    colorGrading:
+      typeof opt.colorGrading === 'boolean' ? opt.colorGrading : def.colorGrading,
+    vignette: typeof opt.vignette === 'boolean' ? opt.vignette : def.vignette,
+    textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
+    cameraMode: opt.cameraMode === 'free_orbit' ? 'free_orbit' : def.cameraMode,
+  };
+}
+
 export function createInitialSave(): SaveData {
   return {
     version: CURRENT_SAVE_VERSION,
@@ -429,42 +470,7 @@ export function migrateSaveData(raw: unknown): SaveData | null {
     };
   }
 
-  if (obj.options && typeof obj.options === 'object') {
-    const opt = obj.options as Record<string, unknown>;
-    const def = defaultOptions();
-    const q = opt.graphicsQuality;
-    migrated.options = {
-      volume: typeof opt.volume === 'number' ? Math.max(0, Math.min(1, opt.volume)) : def.volume,
-      musicVolume:
-        typeof opt.musicVolume === 'number'
-          ? Math.max(0, Math.min(1, opt.musicVolume))
-          : def.musicVolume,
-      sfxVolume:
-        typeof opt.sfxVolume === 'number'
-          ? Math.max(0, Math.min(1, opt.sfxVolume))
-          : def.sfxVolume,
-      muted: typeof opt.muted === 'boolean' ? opt.muted : def.muted,
-      batterySaver: typeof opt.batterySaver === 'boolean' ? opt.batterySaver : def.batterySaver,
-      pixelEffect:
-        version >= 6 && typeof opt.pixelEffect === 'boolean' ? opt.pixelEffect : def.pixelEffect,
-      graphicsQuality:
-        q === 'auto' || q === 'low' || q === 'medium' || q === 'high' ? q : def.graphicsQuality,
-      shadows: typeof opt.shadows === 'boolean' ? opt.shadows : def.shadows,
-      ambientParticles:
-        typeof opt.ambientParticles === 'boolean' ? opt.ambientParticles : def.ambientParticles,
-      bloom: typeof opt.bloom === 'boolean' ? opt.bloom : def.bloom,
-      bloomIntensity:
-        typeof opt.bloomIntensity === 'number'
-          ? Math.max(0.4, Math.min(1.6, opt.bloomIntensity))
-          : def.bloomIntensity,
-      tiltShift: typeof opt.tiltShift === 'boolean' ? opt.tiltShift : def.tiltShift,
-      colorGrading:
-        typeof opt.colorGrading === 'boolean' ? opt.colorGrading : def.colorGrading,
-      vignette: typeof opt.vignette === 'boolean' ? opt.vignette : def.vignette,
-      textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
-      cameraMode: opt.cameraMode === 'free_orbit' ? 'free_orbit' : def.cameraMode,
-    };
-  }
+  migrated.options = normalizeGameOptions(obj.options, version);
 
   return migrated;
 }

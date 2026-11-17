@@ -37,6 +37,7 @@ export interface PauseMenuViewCallbacks {
 export interface PauseMenuViewProps {
   save: SaveData;
   assets: AssetProvider;
+  slotLabel?: string;
   optionsOnly?: boolean;
   initialView?: 'main' | 'dex' | 'options';
   initialOptionsTab?: PauseOptionsTab;
@@ -62,6 +63,7 @@ const PxToggleRow: React.FC<ToggleRowProps> = ({ label, enabled, onToggle }) => 
 export const PauseMenuView: React.FC<PauseMenuViewProps> = ({
   save,
   assets,
+  slotLabel,
   optionsOnly = false,
   initialView = optionsOnly ? 'options' : 'main',
   initialOptionsTab = 'sound',
@@ -500,6 +502,11 @@ export const PauseMenuView: React.FC<PauseMenuViewProps> = ({
           {ES.menu.repelActive}: {save.repelSteps}
         </div>
       )}
+      {slotLabel && (
+        <div className="text-[11px] text-bone-gray mb-1">
+          {ES.menu.slotLabel}: <span className="text-pale-gold font-bold">{slotLabel}</span>
+        </div>
+      )}
       {notice && (
         <PxNotice tone="info" className="mb-2">
           {notice}
@@ -566,7 +573,7 @@ export const PauseMenuView: React.FC<PauseMenuViewProps> = ({
           align="start"
           onClick={() => {
             const ok = callbacks.onSave();
-            if (ok) setNotice(ES.menu.savedOk);
+            setNotice(ok ? ES.menu.savedOk : ES.menu.saveFailed);
           }}
         >
           {ES.menu.save}
