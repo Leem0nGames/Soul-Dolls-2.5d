@@ -76,7 +76,7 @@ export class BestiaryScreen extends ModalOverlay {
       const filterBtns = filters
         .map(
           (f) =>
-            `<button data-filter="${f.id}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+            `<button data-filter="${f.id}" class="px-btn min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
               this.filter === f.id ? 'px-btn-primary' : 'px-btn-secondary'
             }">${f.label}</button>`
         )
@@ -110,7 +110,7 @@ export class BestiaryScreen extends ModalOverlay {
           const typesHtml = seen ? renderTypeBadges(spec.types, 'sm') : '';
 
           return `
-            <button data-species="${id}" class="px-card text-left ${
+            <button data-species="${id}" class="px-panel px-card text-left ${
               caught
                 ? 'border-resonant-gold bg-crypt-ink'
                 : seen
@@ -130,12 +130,15 @@ export class BestiaryScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
-            <div>
-              <div class="font-bold text-resonant-gold">${ES.bestiary.title}</div>
-              <div class="text-xs text-bone-gray tabular-nums">${ES.bestiary.seen}: ${counts.seen}/${counts.total} · ${ES.bestiary.caught}: ${counts.caught}/${counts.total}</div>
+          <div class="mb-3">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <div class="font-bold text-resonant-gold">${ES.bestiary.title}</div>
+                <div class="text-xs text-bone-gray tabular-nums">${ES.bestiary.seen}: ${counts.seen}/${counts.total} · ${ES.bestiary.caught}: ${counts.caught}/${counts.total}</div>
+              </div>
+              <button data-close class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
             </div>
-            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
           <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 mb-3">${filterBtns}</div>
           <div class="touch-scroll overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pr-1">
@@ -178,9 +181,12 @@ export class BestiaryScreen extends ModalOverlay {
     if (!seen) {
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-lg max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-4">
-            <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.bestiary.unknown}</div>
-            <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
+          <div class="mb-4">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.bestiary.unknown}</div>
+              <button data-back class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
+            </div>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
           <div class="flex flex-col items-center py-6 gap-4 text-center">
             <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain" alt="${ES.bestiary.unknown}" />
@@ -201,8 +207,9 @@ export class BestiaryScreen extends ModalOverlay {
         <div class="flex items-center gap-2 text-xs tabular-nums">
           <span class="w-8 font-bold text-bone-gray">${ES.stats[stat]}</span>
           <span class="w-8 text-right font-bold">${val}</span>
-          <div class="flex-1 h-2.5 rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
+          <div class="relative flex-1 h-2.5 rounded-none border border-ash-purple bg-ui-ink overflow-hidden shadow-[inset_0_1px_0_#050505]">
             <div class="h-full bg-resonant-gold" style="width:${pct}%"></div>
+            <div class="pointer-events-none absolute inset-0 px-meter-segmented"></div>
           </div>
         </div>
       `;
@@ -235,14 +242,17 @@ export class BestiaryScreen extends ModalOverlay {
 
     this.root.innerHTML = `
       <div class="px-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 text-porcelain">
-        <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
-          <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${spec.name} ${caught ? '★' : ''}</div>
-          <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
+        <div class="mb-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${spec.name} ${caught ? '★' : ''}</div>
+            <button data-back class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bestiary.back}</button>
+          </div>
+          <div class="px-divider mt-2" aria-hidden="true"></div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="space-y-3">
-            <div class="px-card flex items-center gap-3 p-3">
+            <div class="px-panel px-card flex items-center gap-3 p-3">
               <div data-anim-portrait class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center"></div>
               <div>
                 <div class="text-lg font-bold">${spec.name}</div>
@@ -255,30 +265,30 @@ export class BestiaryScreen extends ModalOverlay {
               </div>
             </div>
 
-            <div class="px-card p-3 text-xs text-porcelain leading-relaxed">
+            <div class="px-panel px-card p-3 text-xs text-porcelain leading-relaxed">
               ${spec.description}
             </div>
 
-            <div class="px-card p-3 space-y-1.5">
+            <div class="px-panel px-card p-3 space-y-1.5">
               <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.baseStats}</div>
               ${statBars}
             </div>
           </div>
 
           <div class="space-y-3">
-            <div class="px-card p-3 space-y-1.5">
+            <div class="px-panel px-card p-3 space-y-1.5">
               <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.abilities}</div>
               ${abilitiesHtml}
             </div>
 
-            <div class="px-card p-3 space-y-1 text-xs">
+            <div class="px-panel px-card p-3 space-y-1 text-xs">
               <div class="font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.habitats}</div>
               <div class="text-porcelain">${habitatsText}</div>
               <div class="pt-2 font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.locations}</div>
               <div class="text-porcelain">${locationsText}</div>
             </div>
 
-            <div class="px-card p-3 space-y-1">
+            <div class="px-panel px-card p-3 space-y-1">
               <div class="text-xs font-bold uppercase tracking-wider text-bone-gray">${ES.bestiary.evolutions}</div>
               ${evosHtml}
             </div>

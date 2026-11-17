@@ -104,7 +104,7 @@ export class ChestScreen extends ModalOverlay {
       const sectionTabsHtml = sectionTabs
         .map((t) => {
           const active = this.section === t.id;
-          return `<button data-chest-section="${t.id}" class="min-h-[44px] px-2.5 flex items-center justify-center gap-1.5 text-xs font-bold whitespace-nowrap ${
+          return `<button data-chest-section="${t.id}" class="px-btn px-btn-no-caret min-h-[44px] px-2.5 flex items-center justify-center gap-1.5 text-xs font-bold whitespace-nowrap ${
             active ? 'px-btn-primary' : 'px-btn-secondary'
           }">
             <span>${t.label}</span>
@@ -121,12 +121,15 @@ export class ChestScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-4xl max-h-[calc(100dvh-1.25rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-ash-purple pb-2 mb-2.5">
-            <div class="min-w-0">
-              <div class="text-base font-bold text-resonant-gold truncate">${ES.housing.chestTitle}</div>
-              <div class="text-xs text-ki-cyan tabular-nums">${headerSummary}</div>
+          <div class="mb-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-base font-bold text-resonant-gold truncate">${ES.housing.chestTitle}</div>
+                <div class="text-xs text-ki-cyan tabular-nums">${headerSummary}</div>
+              </div>
+              <button data-chest-close class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.housing.close}</button>
             </div>
-            <button data-chest-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.housing.close}</button>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
 
           <div class="grid grid-cols-3 gap-1.5 mb-2.5">${sectionTabsHtml}</div>
@@ -140,10 +143,10 @@ export class ChestScreen extends ModalOverlay {
           }
 
           <div class="grid grid-cols-2 gap-1.5 mb-2 md:hidden">
-            <button data-mobile-pane="active" class="min-h-[44px] px-2 text-xs font-bold whitespace-nowrap ${
+            <button data-mobile-pane="active" class="px-btn px-btn-no-caret min-h-[44px] px-2 text-xs font-bold whitespace-nowrap ${
               this.mobilePane === 'active' ? 'px-btn-primary' : 'px-btn-secondary'
             }">${ES.housing.activePane} (${activeCountLabel})</button>
-            <button data-mobile-pane="chest" class="min-h-[44px] px-2 text-xs font-bold whitespace-nowrap ${
+            <button data-mobile-pane="chest" class="px-btn px-btn-no-caret min-h-[44px] px-2 text-xs font-bold whitespace-nowrap ${
               this.mobilePane === 'chest' ? 'px-btn-primary' : 'px-btn-secondary'
             }">${ES.housing.chestPane} (${chestCountLabel})</button>
           </div>
@@ -186,7 +189,7 @@ export class ChestScreen extends ModalOverlay {
         const active = this.itemCategory === cat;
         const label =
           cat === 'all' ? ES.housing.allCategories : ES.bag.categories[cat];
-        return `<button data-item-cat="${cat}" class="min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap ${
+        return `<button data-item-cat="${cat}" class="px-btn min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap ${
           active ? 'px-btn-primary' : 'px-btn-secondary'
         }">${label}</button>`;
       }).join('');
@@ -221,7 +224,7 @@ export class ChestScreen extends ModalOverlay {
     const filterBtns = soulFilters
       .map(
         (f) =>
-          `<button data-soul-filter="${f.id}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+          `<button data-soul-filter="${f.id}" class="px-btn min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
             this.soulFilter === f.id ? 'px-btn-primary' : 'px-btn-secondary'
           }">${f.label}</button>`
       )
@@ -235,7 +238,7 @@ export class ChestScreen extends ModalOverlay {
             ${save.storageBoxes
               .map(
                 (box, idx) =>
-                  `<button data-target-box="${idx}" class="min-h-[44px] px-2.5 text-[11px] font-bold shrink-0 whitespace-nowrap ${
+                  `<button data-target-box="${idx}" class="px-btn min-h-[44px] px-2.5 text-[11px] font-bold shrink-0 whitespace-nowrap ${
                     idx === this.targetBoxIndex ? 'px-btn-arcane' : 'px-btn-secondary'
                   }">${box.name}</button>`
               )
@@ -288,7 +291,7 @@ export class ChestScreen extends ModalOverlay {
       const oneLabel = dir === 'deposit' ? ES.housing.depositOne : ES.housing.withdrawOne;
       const allLabel = dir === 'deposit' ? ES.housing.depositAll : ES.housing.withdrawAll;
       return `
-        <div class="px-card flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2">
+        <div class="px-panel px-card flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2">
           <div class="flex items-center gap-2 min-w-0 flex-1">
             <img src="${iconUrl}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="${def.name}" />
             <div class="min-w-0">
@@ -300,10 +303,10 @@ export class ChestScreen extends ModalOverlay {
             </div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
-            <button ${oneAttr}="${def.id}" class="px-btn-success min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${oneLabel}</button>
+            <button ${oneAttr}="${def.id}" class="px-btn px-btn-success min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${oneLabel}</button>
             ${
               slot.quantity > 1
-                ? `<button ${allAttr}="${def.id}" class="px-btn-primary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${allLabel}</button>`
+                ? `<button ${allAttr}="${def.id}" class="px-btn px-btn-primary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${allLabel}</button>`
                 : ''
             }
           </div>
@@ -369,7 +372,7 @@ export class ChestScreen extends ModalOverlay {
                   : `Copias: ${entry.count}`;
 
               return `
-                <div class="px-card ${style.border} p-2 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+                <div class="px-panel px-card ${style.border} p-2 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
                   <div class="flex items-center gap-2 min-w-0 flex-1">
                     <img src="${this.assets.getCreatureDataUrl(id, 'front')}" data-souldoll-id="${id}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
                     <div class="min-w-0">
@@ -381,10 +384,10 @@ export class ChestScreen extends ModalOverlay {
                   <div class="flex items-center gap-1 shrink-0">
                     ${
                       avail > 0
-                        ? `<button data-card-dep-one="${id}" class="px-btn-success min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.depositOne}</button>
+                        ? `<button data-card-dep-one="${id}" class="px-btn px-btn-success min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.depositOne}</button>
                            ${
                              avail > 1
-                               ? `<button data-card-dep-all="${id}" class="px-btn-primary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.depositAll}</button>`
+                               ? `<button data-card-dep-all="${id}" class="px-btn px-btn-primary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.depositAll}</button>`
                                : ''
                            }`
                         : `<span class="text-[11px] font-bold text-bone-gray px-2 whitespace-nowrap">${ES.housing.allSocketed}</span>`
@@ -407,7 +410,7 @@ export class ChestScreen extends ModalOverlay {
               const upgSuffix = def.upgradeLevel > 0 ? ` +${def.upgradeLevel}` : '';
               const metaLine = `${ES.cards.rarity[def.rarity]}${upgSuffix} · ${formatCardBonuses(def.bonuses)}`;
               return `
-                <div class="px-card ${style.border} p-2 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+                <div class="px-panel px-card ${style.border} p-2 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
                   <div class="flex items-center gap-2 min-w-0 flex-1">
                     <img src="${this.assets.getCreatureDataUrl(id, 'front')}" data-souldoll-id="${id}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
                     <div class="min-w-0">
@@ -419,10 +422,10 @@ export class ChestScreen extends ModalOverlay {
                     </div>
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
-                    <button data-card-wd-one="${id}" class="px-btn-success min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.withdrawOne}</button>
+                    <button data-card-wd-one="${id}" class="px-btn px-btn-success min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.withdrawOne}</button>
                     ${
                       entry.count > 1
-                        ? `<button data-card-wd-all="${id}" class="px-btn-primary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.withdrawAll}</button>`
+                        ? `<button data-card-wd-all="${id}" class="px-btn px-btn-primary min-h-[44px] px-2.5 text-xs font-bold whitespace-nowrap">${ES.housing.withdrawAll}</button>`
                         : ''
                     }
                   </div>
@@ -476,7 +479,7 @@ export class ChestScreen extends ModalOverlay {
       for (const soul of reserve) {
         const spec = getSpecies(soul.speciesId);
         activeChunks.push(`
-          <div class="px-card p-2 flex items-center justify-between gap-2">
+          <div class="px-panel px-card p-2 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
               <div class="min-w-0">
@@ -484,7 +487,7 @@ export class ChestScreen extends ModalOverlay {
                 <div class="text-[11px] text-bone-gray tabular-nums">${ES.party.lv}${soul.level} · Sin cuerpo</div>
               </div>
             </div>
-            <button data-soul-dep="${soul.uid}" class="px-btn-success min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.storeSoul}</button>
+            <button data-soul-dep="${soul.uid}" class="px-btn px-btn-success min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.storeSoul}</button>
           </div>
         `);
       }
@@ -500,7 +503,7 @@ export class ChestScreen extends ModalOverlay {
       party.forEach((mon, idx) => {
         const containerLabel = formatSoulContainerLabel(mon.containerId);
         activeChunks.push(`
-          <div class="px-card p-2 flex items-center justify-between gap-2">
+          <div class="px-panel px-card p-2 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <img src="${this.assets.getCreatureDataUrl(mon.speciesId, 'front')}" data-souldoll-id="${mon.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${getCreatureDisplayName(mon)}" />
               <div class="min-w-0">
@@ -510,7 +513,7 @@ export class ChestScreen extends ModalOverlay {
             </div>
             ${
               canDepositParty
-                ? `<button data-doll-dep="${idx}" class="px-btn-arcane min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.storeDoll} (${boxName})</button>`
+                ? `<button data-doll-dep="${idx}" class="px-btn px-btn-arcane min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.storeDoll} (${boxName})</button>`
                 : `<span class="text-[11px] font-bold text-bone-gray px-2 shrink-0 whitespace-nowrap">${ES.housing.lastPartyBlock}</span>`
             }
           </div>
@@ -529,7 +532,7 @@ export class ChestScreen extends ModalOverlay {
       for (const soul of chestSouls) {
         const spec = getSpecies(soul.speciesId);
         chestChunks.push(`
-          <div class="px-card p-2 flex items-center justify-between gap-2">
+          <div class="px-panel px-card p-2 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
               <div class="min-w-0">
@@ -537,7 +540,7 @@ export class ChestScreen extends ModalOverlay {
                 <div class="text-[11px] text-bone-gray tabular-nums">${ES.party.lv}${soul.level} · Guardada</div>
               </div>
             </div>
-            <button data-soul-wd="${soul.uid}" class="px-btn-success min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.restoreSoul}</button>
+            <button data-soul-wd="${soul.uid}" class="px-btn px-btn-success min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.restoreSoul}</button>
           </div>
         `);
       }
@@ -552,7 +555,7 @@ export class ChestScreen extends ModalOverlay {
       for (const item of boxed) {
         const mon = item.doll;
         chestChunks.push(`
-          <div class="px-card p-2 flex items-center justify-between gap-2">
+          <div class="px-panel px-card p-2 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <img src="${this.assets.getCreatureDataUrl(mon.speciesId, 'front')}" data-souldoll-id="${mon.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${getCreatureDisplayName(mon)}" />
               <div class="min-w-0">
@@ -562,7 +565,7 @@ export class ChestScreen extends ModalOverlay {
             </div>
             ${
               canWithdraw
-                ? `<button data-doll-wd-box="${item.boxIndex}" data-doll-wd-slot="${item.slotIndex}" class="px-btn-arcane min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.restoreDoll}</button>`
+                ? `<button data-doll-wd-box="${item.boxIndex}" data-doll-wd-slot="${item.slotIndex}" class="px-btn px-btn-arcane min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap">${ES.housing.restoreDoll}</button>`
                 : `<span class="text-[11px] font-bold text-bone-gray px-2 shrink-0 whitespace-nowrap">${ES.housing.partyFullBlock}</span>`
             }
           </div>

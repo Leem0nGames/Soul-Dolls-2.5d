@@ -115,13 +115,18 @@ export function recalculateCreatureStats(creature: CreatureInstance): void {
     creature.socketedCardId !== undefined
       ? (creature.socketedCardBonuses ?? getCardBonuses(creature.socketedCardId))
       : undefined;
-  const nextStats = calculateStats(
+  const baseStats = calculateStats(
     spec.baseStats,
     creature.ivs,
     creature.level,
     creature.evBonuses,
     cardBonuses
   );
+  const temperLevel = Math.max(0, Math.min(3, Math.floor(creature.vesselCalibration?.temperLevel ?? 0)));
+  const temperHpBonus =
+    temperLevel > 0 ? Math.max(temperLevel, Math.round(baseStats.hp * temperLevel * 0.04)) : 0;
+  const nextStats =
+    temperHpBonus > 0 ? { ...baseStats, hp: baseStats.hp + temperHpBonus } : baseStats;
   const hpGain = Math.max(0, nextStats.hp - prevMax);
   creature.stats = nextStats;
   if (creature.currentHp > 0) {
@@ -134,6 +139,7 @@ export function recalculateCreatureStats(creature: CreatureInstance): void {
     containerId,
     creature.ivs,
     creature.evBonuses,
-    creature.currentHp
+    creature.currentHp,
+    creature.vesselCalibration
   );
 }

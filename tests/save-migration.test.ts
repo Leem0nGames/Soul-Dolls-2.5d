@@ -51,6 +51,7 @@ describe('Save migrations', () => {
         colorGrading: false,
         vignette: false,
         textSpeed: 'fast',
+        cameraMode: 'free_orbit',
       },
     });
 
@@ -70,6 +71,7 @@ describe('Save migrations', () => {
       colorGrading: false,
       vignette: false,
       textSpeed: 'fast',
+      cameraMode: 'free_orbit',
     });
   });
 
@@ -82,6 +84,7 @@ describe('Save migrations', () => {
         sfxVolume: 2,
         bloomIntensity: 9,
         graphicsQuality: 'ultra',
+        cameraMode: 'pitch_free',
       },
     });
 
@@ -90,6 +93,7 @@ describe('Save migrations', () => {
     expect(migrated?.options.sfxVolume).toBe(1);
     expect(migrated?.options.bloomIntensity).toBe(1.6);
     expect(migrated?.options.graphicsQuality).toBe('auto');
+    expect(migrated?.options.cameraMode).toBe('fixed');
   });
 
   it('returns null for invalid payloads', () => {

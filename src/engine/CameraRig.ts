@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import {
+  normalizeYawStep,
+  QUARTER_TURN_RAD,
+  snapYawToNearestStep,
+} from '../domain/CameraOrbit.ts';
+import type { CameraMode } from '../domain/types.ts';
 
 const _target = new THREE.Vector3();
 
@@ -12,6 +18,7 @@ export class CameraRig {
   private currentYaw = 0;
   private targetYaw = 0;
   private mode: 'overworld' | 'battle' = 'overworld';
+  private cameraMode: CameraMode = 'fixed';
 
   private baseFov = 58;
 
@@ -55,9 +62,32 @@ export class CameraRig {
     this.applyAdaptiveFov();
   }
 
+  setCameraMode(mode: CameraMode): void {
+    if (this.cameraMode === mode) return;
+    this.cameraMode = mode;
+    if (mode === 'fixed') {
+      const snapped = snapYawToNearestStep(this.targetYaw);
+      this.yawStep = snapped.yawStep;
+      this.targetYaw = snapped.targetYaw;
+    }
+  }
+
+  getCameraMode(): CameraMode {
+    return this.cameraMode;
+  }
+
   rotateStep(delta: -1 | 1): void {
-    this.yawStep = ((this.yawStep + delta) % 4 + 4) % 4;
-    this.targetYaw += delta * (Math.PI * 0.5);
+    const baseStep = Math.round(this.targetYaw / QUARTER_TURN_RAD);
+    const nextStep = baseStep + delta;
+    this.yawStep = ((nextStep % 4) + 4) % 4;
+    this.targetYaw = nextStep * QUARTER_TURN_RAD;
+  }
+
+  /** Horizontal-only continuous orbital rotation around the focus point (no vertical pitch). */
+  orbitYaw(deltaRad: number): void {
+    if (!Number.isFinite(deltaRad) || deltaRad === 0) return;
+    this.targetYaw += deltaRad;
+    this.yawStep = normalizeYawStep(this.targetYaw);
   }
 
   getYawStep(): number {
@@ -66,6 +96,10 @@ export class CameraRig {
 
   getCurrentYaw(): number {
     return this.currentYaw;
+  }
+
+  getTargetYaw(): number {
+    return this.targetYaw;
   }
 
   resetYaw(): void {
@@ -97,7 +131,8 @@ export class CameraRig {
     this.focusX = THREE.MathUtils.damp(this.focusX, x, 10, dt);
     this.focusY = THREE.MathUtils.damp(this.focusY, y, 10, dt);
     this.focusZ = THREE.MathUtils.damp(this.focusZ, z, 10, dt);
-    this.currentYaw = THREE.MathUtils.damp(this.currentYaw, this.targetYaw, 12, dt);
+    const yawDamp = this.cameraMode === 'free_orbit' ? 16 : 12;
+    this.currentYaw = THREE.MathUtils.damp(this.currentYaw, this.targetYaw, yawDamp, dt);
     this.applyCameraTransform(this.focusX, this.focusY, this.focusZ, sampleTerrainY);
   }
 

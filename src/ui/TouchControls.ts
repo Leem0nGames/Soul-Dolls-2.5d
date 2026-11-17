@@ -1,4 +1,14 @@
 import type { Input, LogicalButton } from '../core/Input.ts';
+import {
+  beginCameraTouch,
+  createCameraTouchGestureState,
+  endCameraTouch,
+  moveCameraTouch,
+  resetCameraTouch,
+  setCameraTouchGestureMode,
+  type CameraTouchGestureState,
+} from '../domain/CameraOrbit.ts';
+import type { CameraMode } from '../domain/types.ts';
 
 type DpadDir = 'up' | 'down' | 'left' | 'right';
 const DPAD_DIRS: readonly DpadDir[] = ['up', 'down', 'left', 'right'];
@@ -8,39 +18,40 @@ const BTN_IDLE_CLS =
 const BTN_ACTIVE_CLS =
   'min-w-[40px] min-h-[40px] rounded-none border-2 border-pale-gold bg-resonant-gold text-ui-ink font-bold text-base flex items-center justify-center pointer-events-none select-none';
 
+export interface CameraTouchHandlers {
+  onStep: (delta: -1 | 1) => void;
+  onOrbit: (deltaRad: number) => void;
+}
+
 export class TouchControls {
   readonly root: HTMLDivElement;
+  readonly cameraTouchEl: HTMLDivElement;
   private visible = false;
+  private cameraTouchEnabled = true;
   private controlsLayer: HTMLDivElement;
   private dpadEl: HTMLDivElement;
   private dpadBtns = new Map<DpadDir, HTMLDivElement>();
   private activeDpadPointerId: number | null = null;
   private activeDpadDir: DpadDir | null = null;
 
+  private cameraGesture: CameraTouchGestureState = createCameraTouchGestureState('fixed');
+  private cameraHandlers: CameraTouchHandlers | null = null;
+
   constructor(parent: HTMLElement, private readonly input: Input) {
+    // Full-viewport horizontal touch surface sitting behind Overworld HUD (z-15) and TouchControls (z-20)
+    this.cameraTouchEl = document.createElement('div');
+    this.cameraTouchEl.className = 'pointer-events-auto fixed inset-0 z-10 touch-none select-none';
+    this.cameraTouchEl.setAttribute('aria-label', 'Zona táctil de rotación de cámara');
+    this.cameraTouchEl.style.display = 'none';
+    parent.appendChild(this.cameraTouchEl);
+    this.bindCameraTouch();
+
     this.root = document.createElement('div');
     this.root.className = 'pointer-events-none fixed inset-0 z-20 safe-pad';
 
     this.controlsLayer = document.createElement('div');
     this.controlsLayer.className =
-      'pointer-events-none flex h-full w-full flex-col justify-between p-2.5 sm:p-3';
-
-    // Top-right camera yaw shoulder buttons (keeps top-left clear for Overworld location HUD)
-    const shoulderRow = document.createElement('div');
-    shoulderRow.className = 'flex items-start justify-end gap-2 w-full';
-
-    const makeShoulder = (label: string, btn: LogicalButton) => {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.textContent = label;
-      el.className =
-        'pointer-events-auto min-w-[52px] min-h-[44px] px-3 rounded-none border-2 border-ki-cyan bg-crypt-ink text-ice-cyan font-bold text-xs shadow-[2px_2px_0_#050505] active:bg-ki-cyan active:text-ui-ink touch-none';
-      this.bindPointer(el, btn);
-      return el;
-    };
-
-    shoulderRow.appendChild(makeShoulder('↺ L', 'camLeft'));
-    shoulderRow.appendChild(makeShoulder('R ↻', 'camRight'));
+      'pointer-events-none flex h-full w-full flex-col justify-end p-2.5 sm:p-3';
 
     // Bottom D-pad (left) + Menu & A/B cluster (right)
     const bottomRow = document.createElement('div');
@@ -48,7 +59,7 @@ export class TouchControls {
 
     this.dpadEl = document.createElement('div');
     this.dpadEl.className =
-      'pointer-events-auto grid grid-cols-3 grid-rows-3 gap-1 w-32 h-32 sm:w-36 sm:h-36 p-1 rounded-none border-2 border-ash-purple bg-crypt-ink touch-none shadow-[3px_3px_0_#050505]';
+      'pointer-events-auto grid grid-cols-3 grid-rows-3 gap-1 w-32 h-32 sm:w-36 sm:h-36 p-1 px-panel px-hud-box border-ash-purple touch-none';
 
     const makePadVisual = (label: string, dir: DpadDir, gridPos: string) => {
       const el = document.createElement('div');
@@ -62,7 +73,8 @@ export class TouchControls {
     this.dpadEl.appendChild(makePadVisual('▲', 'up', 'col-start-2 row-start-1'));
     this.dpadEl.appendChild(makePadVisual('◀', 'left', 'col-start-1 row-start-2'));
     const centerDot = document.createElement('div');
-    centerDot.className = 'col-start-2 row-start-2 rounded-none border border-ash-purple bg-smoked-wood pointer-events-none';
+    centerDot.className =
+      'col-start-2 row-start-2 rounded-none border border-ash-purple bg-smoked-wood pointer-events-none';
     this.dpadEl.appendChild(centerDot);
     this.dpadEl.appendChild(makePadVisual('▶', 'right', 'col-start-3 row-start-2'));
     this.dpadEl.appendChild(makePadVisual('▼', 'down', 'col-start-2 row-start-3'));
@@ -76,7 +88,7 @@ export class TouchControls {
     startBtn.type = 'button';
     startBtn.textContent = 'MENÚ';
     startBtn.className =
-      'pointer-events-auto min-w-[64px] min-h-[44px] px-3 rounded-none border-2 border-cold-stone bg-crypt-ink text-porcelain text-xs font-bold shadow-[2px_2px_0_#050505] active:bg-cold-stone touch-none';
+      'pointer-events-auto min-w-[64px] min-h-[44px] px-3 px-btn px-btn-ghost px-btn-no-caret text-xs font-bold touch-none';
     this.bindPointer(startBtn, 'start');
 
     const abRow = document.createElement('div');
@@ -88,14 +100,14 @@ export class TouchControls {
     bBtn.innerHTML =
       '<span class="block text-base leading-none">B</span><span class="block text-[8px] leading-none tracking-wider text-pale-rose mt-0.5">CORRER</span>';
     bBtn.className =
-      'w-[54px] h-[54px] min-w-[54px] min-h-[54px] flex flex-col items-center justify-center px-btn-danger font-bold touch-none';
+      'w-[54px] h-[54px] min-w-[54px] min-h-[54px] flex flex-col items-center justify-center px-btn px-btn-danger px-btn-no-caret font-bold touch-none';
     this.bindPointer(bBtn, 'b');
 
     const aBtn = document.createElement('button');
     aBtn.type = 'button';
     aBtn.textContent = 'A';
     aBtn.className =
-      'w-[56px] h-[56px] min-w-[56px] min-h-[56px] -translate-y-2 px-btn-success font-bold text-lg touch-none';
+      'w-[56px] h-[56px] min-w-[56px] min-h-[56px] -translate-y-2 px-btn px-btn-success px-btn-no-caret font-bold text-lg touch-none';
     this.bindPointer(aBtn, 'a');
 
     abRow.appendChild(bBtn);
@@ -107,12 +119,69 @@ export class TouchControls {
     bottomRow.appendChild(this.dpadEl);
     bottomRow.appendChild(rightCluster);
 
-    this.controlsLayer.appendChild(shoulderRow);
     this.controlsLayer.appendChild(bottomRow);
     this.root.appendChild(this.controlsLayer);
 
     this.setVisible(false);
     parent.appendChild(this.root);
+  }
+
+  setCameraMode(mode: CameraMode): void {
+    setCameraTouchGestureMode(this.cameraGesture, mode);
+  }
+
+  setCameraHandlers(handlers: CameraTouchHandlers | null): void {
+    this.cameraHandlers = handlers;
+    if (!handlers) {
+      resetCameraTouch(this.cameraGesture);
+    }
+  }
+
+  setCameraTouchEnabled(enabled: boolean): void {
+    this.cameraTouchEnabled = enabled;
+    if (!enabled) {
+      resetCameraTouch(this.cameraGesture);
+    }
+    this.syncCameraSurfaceVisibility();
+  }
+
+  private syncCameraSurfaceVisibility(): void {
+    this.cameraTouchEl.style.display =
+      this.visible && this.cameraTouchEnabled ? 'block' : 'none';
+  }
+
+  private bindCameraTouch(): void {
+    this.cameraTouchEl.addEventListener('pointerdown', (e) => {
+      if (!this.visible || !this.cameraTouchEnabled || !this.cameraHandlers) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (beginCameraTouch(this.cameraGesture, e.pointerId, e.clientX)) {
+        try {
+          this.cameraTouchEl.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore if synthetic event cannot capture
+        }
+      }
+    });
+
+    this.cameraTouchEl.addEventListener('pointermove', (e) => {
+      if (!this.visible || !this.cameraTouchEnabled || !this.cameraHandlers) return;
+      const res = moveCameraTouch(this.cameraGesture, e.pointerId, e.clientX);
+      if (res.stepDelta !== 0) {
+        e.preventDefault();
+        this.cameraHandlers.onStep(res.stepDelta);
+      } else if (res.orbitDeltaRad !== 0) {
+        e.preventDefault();
+        this.cameraHandlers.onOrbit(res.orbitDeltaRad);
+      }
+    });
+
+    const release = (e: PointerEvent) => {
+      endCameraTouch(this.cameraGesture, e.pointerId);
+    };
+
+    this.cameraTouchEl.addEventListener('pointerup', release);
+    this.cameraTouchEl.addEventListener('pointercancel', release);
+    this.cameraTouchEl.addEventListener('lostpointercapture', release);
   }
 
   private setDpadDirection(next: DpadDir | null): void {
@@ -199,7 +268,9 @@ export class TouchControls {
   setVisible(show: boolean): void {
     this.visible = show;
     this.controlsLayer.style.display = show ? 'flex' : 'none';
+    this.syncCameraSurfaceVisibility();
     if (!show) {
+      resetCameraTouch(this.cameraGesture);
       this.activeDpadPointerId = null;
       this.setDpadDirection(null);
       for (const dir of DPAD_DIRS) {
@@ -214,6 +285,8 @@ export class TouchControls {
 
   dispose(): void {
     this.setVisible(false);
+    this.cameraHandlers = null;
+    this.cameraTouchEl.remove();
     this.root.remove();
   }
 }

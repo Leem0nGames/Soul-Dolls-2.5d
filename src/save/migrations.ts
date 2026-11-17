@@ -1,3 +1,4 @@
+import { ABILITIES } from '../data/abilities.ts';
 import { CARD_RARITY_ORDER, MAX_CARD_STAT_UPGRADE_LEVEL } from '../data/cards.ts';
 import { SPECIES } from '../data/species.ts';
 import { resolveDeterministicAbility } from '../domain/Abilities.ts';
@@ -6,7 +7,9 @@ import { getEffectiveCardBonuses } from '../domain/Cards.ts';
 import { recalculateCreatureStats } from '../domain/Creature.ts';
 import { ensureHousingState } from '../domain/Housing.ts';
 import { clampQuestIndex } from '../domain/Quests.ts';
+import { MAX_EV_PER_STAT } from '../domain/SkillForge.ts';
 import { createDefaultStorageBoxes, normalizeStorageBoxes } from '../domain/Storage.ts';
+import { DEFAULT_WORLD_CLOCK_MINUTES, normalizeWorldMinutes } from '../domain/TimeOfDay.ts';
 import type {
   BestiaryEntry,
   CapturedSoul,
@@ -36,6 +39,7 @@ export function defaultOptions(): GameOptions {
     colorGrading: true,
     vignette: true,
     textSpeed: 'normal',
+    cameraMode: 'fixed',
   };
 }
 
@@ -46,6 +50,8 @@ export function createInitialSave(): SaveData {
     playerX: 24,
     playerY: 26,
     playerDir: 'up',
+    lastHealPoint: { mapId: 'villa_origen', x: 24, y: 26, dir: 'up' },
+    worldClockMinutes: DEFAULT_WORLD_CLOCK_MINUTES,
     money: 500,
     repelSteps: 0,
     party: [],
@@ -88,13 +94,67 @@ export function createInitialSave(): SaveData {
   };
 }
 
+const VALID_BODY_PARTS = new Set(['head', 'torso', 'arms', 'legs']);
+const VALID_TYPES = new Set(['brasa', 'marea', 'flora', 'chispa', 'roca', 'brisa', 'umbra', 'comun']);
+
 function hydrateCreature(c: CreatureInstance, indexSeed: number): CreatureInstance {
-  if (!c.abilityId) {
+  if (!c.abilityId || !ABILITIES[c.abilityId]) {
     c.abilityId = resolveDeterministicAbility(c.speciesId, indexSeed);
+  }
+  if (Array.isArray(c.unlockedAbilities)) {
+    const valid = Array.from(
+      new Set(c.unlockedAbilities.filter((id) => typeof id === 'string' && Boolean(ABILITIES[id])))
+    );
+    if (c.abilityId && !valid.includes(c.abilityId)) valid.unshift(c.abilityId);
+    if (valid.length > 0) c.unlockedAbilities = valid;
+    else delete c.unlockedAbilities;
+  }
+  let shouldRecalc = false;
+  if (c.evBonuses && typeof c.evBonuses === 'object') {
+    const cleanEv: Partial<Record<'hp' | 'atk' | 'def' | 'spa' | 'spd' | 'spe', number>> = {};
+    for (const k of ['hp', 'atk', 'def', 'spa', 'spd', 'spe'] as const) {
+      const v = c.evBonuses[k];
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        cleanEv[k] = Math.min(MAX_EV_PER_STAT, Math.floor(v));
+        shouldRecalc = true;
+      }
+    }
+    if (Object.keys(cleanEv).length > 0) c.evBonuses = cleanEv;
+    else delete c.evBonuses;
   }
   if (c.socketedCardId !== undefined && !SPECIES[c.socketedCardId]) {
     delete c.socketedCardId;
     delete c.socketedCardBonuses;
+  }
+  if (c.vesselCalibration && typeof c.vesselCalibration === 'object') {
+    const rawCal = c.vesselCalibration;
+    const focusPart =
+      typeof rawCal.focusPart === 'string' && VALID_BODY_PARTS.has(rawCal.focusPart)
+        ? rawCal.focusPart
+        : undefined;
+    const temperLevel =
+      typeof rawCal.temperLevel === 'number' && Number.isFinite(rawCal.temperLevel)
+        ? Math.max(0, Math.min(3, Math.floor(rawCal.temperLevel)))
+        : 0;
+    const affinityOverride =
+      typeof rawCal.affinityOverride === 'string' && VALID_TYPES.has(rawCal.affinityOverride)
+        ? rawCal.affinityOverride
+        : undefined;
+    if (focusPart || temperLevel > 0 || affinityOverride) {
+      c.vesselCalibration = {
+        ...(focusPart ? { focusPart } : {}),
+        ...(temperLevel > 0 ? { temperLevel } : {}),
+        ...(affinityOverride ? { affinityOverride } : {}),
+      };
+      if (temperLevel > 0) {
+        shouldRecalc = true;
+      }
+    } else {
+      delete c.vesselCalibration;
+    }
+  }
+  if (shouldRecalc) {
+    recalculateCreatureStats(c);
   }
   ensureBodyParts(c);
   return c;
@@ -142,6 +202,29 @@ export function migrateSaveData(raw: unknown): SaveData | null {
       obj.playerDir === 'right'
         ? obj.playerDir
         : base.playerDir,
+    lastHealPoint:
+      obj.lastHealPoint &&
+      typeof obj.lastHealPoint === 'object' &&
+      typeof (obj.lastHealPoint as Record<string, unknown>).mapId === 'string' &&
+      typeof (obj.lastHealPoint as Record<string, unknown>).x === 'number' &&
+      typeof (obj.lastHealPoint as Record<string, unknown>).y === 'number'
+        ? {
+            mapId: (obj.lastHealPoint as Record<string, unknown>).mapId as string,
+            x: (obj.lastHealPoint as Record<string, unknown>).x as number,
+            y: (obj.lastHealPoint as Record<string, unknown>).y as number,
+            dir:
+              (obj.lastHealPoint as Record<string, unknown>).dir === 'up' ||
+              (obj.lastHealPoint as Record<string, unknown>).dir === 'down' ||
+              (obj.lastHealPoint as Record<string, unknown>).dir === 'left' ||
+              (obj.lastHealPoint as Record<string, unknown>).dir === 'right'
+                ? ((obj.lastHealPoint as Record<string, unknown>).dir as SaveData['playerDir'])
+                : 'down',
+          }
+        : base.lastHealPoint,
+    worldClockMinutes:
+      typeof obj.worldClockMinutes === 'number' && Number.isFinite(obj.worldClockMinutes)
+        ? normalizeWorldMinutes(obj.worldClockMinutes)
+        : DEFAULT_WORLD_CLOCK_MINUTES,
     money: typeof obj.money === 'number' ? obj.money : base.money,
     repelSteps: typeof obj.repelSteps === 'number' ? obj.repelSteps : 0,
     party: Array.isArray(obj.party)
@@ -379,6 +462,7 @@ export function migrateSaveData(raw: unknown): SaveData | null {
         typeof opt.colorGrading === 'boolean' ? opt.colorGrading : def.colorGrading,
       vignette: typeof opt.vignette === 'boolean' ? opt.vignette : def.vignette,
       textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
+      cameraMode: opt.cameraMode === 'free_orbit' ? 'free_orbit' : def.cameraMode,
     };
   }
 

@@ -16,6 +16,7 @@ import { EndingModal } from '../ui/EndingModal.ts';
 import { PauseMenu } from '../ui/Menu.ts';
 import { PartyScreen } from '../ui/PartyScreen.ts';
 import { QuestJournalModal } from '../ui/QuestJournalModal.ts';
+import { SkillAcademyScreen } from '../ui/SkillAcademyScreen.ts';
 import { StorageScreen } from '../ui/StorageScreen.ts';
 import { SummaryScreen } from '../ui/SummaryScreen.ts';
 import { TouchControls } from '../ui/TouchControls.ts';
@@ -76,6 +77,7 @@ export class Game {
   readonly endingModal: EndingModal;
   readonly arGachaModal: ArGachaModal;
   readonly vesselScreen: VesselScreen;
+  readonly skillAcademyScreen: SkillAcademyScreen;
   readonly questJournal: QuestJournalModal;
   readonly chestScreen: ChestScreen;
   readonly achievementsScreen: AchievementsScreen;
@@ -122,15 +124,17 @@ export class Game {
     this.endingModal = new EndingModal(this.uiLayer, this.assets);
     this.arGachaModal = new ArGachaModal(this.uiLayer, this.assets);
     this.vesselScreen = new VesselScreen(this.uiLayer, this.assets);
+    this.skillAcademyScreen = new SkillAcademyScreen(this.uiLayer, this.assets);
     this.questJournal = new QuestJournalModal(this.uiLayer);
     this.chestScreen = new ChestScreen(this.uiLayer, this.assets);
     this.achievementsScreen = new AchievementsScreen(this.uiLayer);
 
     this.toastEl = document.createElement('div');
     this.toastEl.className =
-      'pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-50 hidden rounded-none border-2 border-resonant-gold bg-crypt-ink px-3 py-1.5 text-xs font-bold text-pale-gold shadow-[3px_3px_0_#050505]';
+      'pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-50 hidden px-panel px-hud-box px-3 py-1.5 text-xs font-bold text-pale-gold';
     this.uiLayer.appendChild(this.toastEl);
 
+    this.uiLayers.register('touchCamera', this.touchControls.cameraTouchEl);
     this.uiLayers.register('touchControls', this.touchControls.root);
     this.uiLayers.register('battleHud', this.battleHud.root);
     this.uiLayers.register('battleFx', this.battleHud.fxOverlay, this.battleTransition.fxRoot);
@@ -148,6 +152,7 @@ export class Game {
       this.endingModal.root,
       this.arGachaModal.root,
       this.vesselScreen.root,
+      this.skillAcademyScreen.root,
       this.questJournal.root,
       this.chestScreen.root,
       this.achievementsScreen.root
@@ -205,6 +210,8 @@ export class Game {
     this.synth.setMuted(opt.muted);
     this.loop.setBatterySaver(opt.batterySaver);
     this.dialog.setFastMode(opt.textSpeed === 'fast');
+    this.cameraRig.setCameraMode(opt.cameraMode);
+    this.touchControls.setCameraMode(opt.cameraMode);
     this.renderer.setPixelEffect(opt.pixelEffect);
     this.renderer.setQualityMode(opt.graphicsQuality);
     this.renderer.setShadowsEnabled(opt.shadows);
@@ -373,6 +380,7 @@ export class Game {
     this.battleHud.dispose();
     this.arGachaModal.dispose();
     this.vesselScreen.dispose();
+    this.skillAcademyScreen.dispose();
     this.questJournal.dispose();
     this.chestScreen.dispose();
     this.achievementsScreen.dispose();

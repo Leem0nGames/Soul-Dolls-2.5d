@@ -15,7 +15,7 @@ export const ES = {
     installApp: 'Instalar App',
     installIosHint: 'En Safari pulsa Compartir y luego "Añadir a pantalla de inicio".',
     controlsHint: 'Flechas/WASD Mover · Shift/X Correr · Q/E Girar cámara · Z/Enter A · M Menú',
-    touchControlsHint: 'Cruceta Mover · L/R Girar cámara · A Acción · B Correr/Atrás',
+    touchControlsHint: 'Cruceta Mover · Desliza para girar cámara · A Acción · B Correr/Atrás',
     fullscreen: 'Pantalla completa',
     portraitHintTitle: 'Gira tu dispositivo',
     portraitHintBody: 'SoulDolls se disfruta mejor en modo horizontal.',
@@ -72,7 +72,7 @@ export const ES = {
     title: 'MENÚ',
     party: 'Equipo',
     bag: 'Mochila',
-    vessels: 'Contenedores',
+    vessels: 'Taller / Cuerpos',
     dex: 'Grimorio',
     cards: 'Álbum de Cartas',
     quests: 'Diario de Misiones',
@@ -91,19 +91,21 @@ export const ES = {
     legs: 'Piernas',
   },
   vessels: {
-    title: 'TALLER DE CONTENEDORES',
+    title: 'TALLER DE MARIONETAS',
+    forgeTab: 'Forja y Planos',
+    createTab: 'Crear / Moldear',
+    shardsTab: 'Piezas / Desmantelar',
+    containersTab: 'Stock de Cuerpos',
     reserveTab: 'Almas en Reserva',
-    containersTab: 'Cuerpos Completos',
-    shardsTab: 'Piezas / Planos',
     bindSoul: 'Vincular a Cuerpo',
     equipContainer: 'Cambiar Cuerpo a Equipo',
     noSouls: 'No hay Almas esperando cuerpo contenedor. Sella almas salvajes con Soulpots.',
-    noContainers: 'No tienes Cuerpos Contenedores disponibles. Derrota Soultrainers, compra en tiendas o junta 5 piezas en AR.',
-    noShards: 'Aún no has reunido piezas de cuerpo. Lucha contra Soultrainers o usa Fragmento de Alma.',
+    noContainers: 'No tienes Cuerpos Contenedores en reserva. Fórjalos aquí en el Taller o junta 5 piezas.',
+    noShards: 'Aún no has reunido piezas de cuerpo. Lucha contra Soultrainers, sintetiza con Polvo o desmantela armazones.',
     boundSuccess: (name: string, container: string) =>
       `¡El alma de ${name} despertó dentro de ${container}!`,
     reboundSuccess: (name: string, container: string) =>
-      `${name} fue transferida al armazón ${container}.`,
+      `${name} fue transferida y calibrada en ${container}.`,
     back: 'Volver',
   },
   arGacha: {
@@ -151,6 +153,10 @@ export const ES = {
     textSpeed: 'Velocidad de texto',
     normal: 'Normal',
     fast: 'Rápida',
+    cameraMode: 'Modo de cámara',
+    cameraFixed: 'Fija (90°)',
+    cameraFreeOrbit: 'Libre orbital',
+    cameraModeHint: 'Desliza horizontalmente en pantalla para rotar la cámara (solo giro orbital).',
     yes: 'Sí',
     no: 'No',
     resetDefaults: 'Restablecer',
@@ -328,8 +334,27 @@ export const ES = {
     brokeFree: '¡Oh no! ¡El alma escapó del Soulpot!',
     cantCatchTrainer: '¡No puedes sellar marionetas de otro Soultrainer!',
     cantRunTrainer: '¡No puedes huir de un duelo contra un Soultrainer!',
+    cantEscapeTrapped: '¡Está atrapada por las ataduras y no puede escapar ni cambiar!',
     ranAway: '¡Escapaste sin problemas!',
     runFailed: '¡No lograste escapar!',
+    weatherLabel: {
+      none: 'Despejado',
+      sun: 'Sol Intenso',
+      rain: 'Lluvia',
+      sandstorm: 'Tormenta Arena',
+      snow: 'Ventisca',
+    },
+    weatherStart: {
+      sun: '¡La luz del sol brilla con intensidad abrasadora!',
+      rain: '¡Comenzó a caer un aguacero sobre la arena!',
+      sandstorm: '¡Se desató una furiosa tormenta de arena!',
+      snow: '¡Empezó a caer granizo helado del cielo!',
+    },
+    weatherTick: {
+      sandstorm: (name: string) => `${name} sufre el azote de la tormenta de arena.`,
+      snow: (name: string) => `${name} recibe daño por el granizo helado.`,
+    },
+    weatherClear: 'El clima volvió a la normalidad.',
     gainedXp: (name: string, xp: number) => `${name} ganó ${xp} puntos de EXP.`,
     leveledUp: (name: string, lv: number) => `¡${name} subió al nivel ${lv}!`,
     learnedMove: (name: string, move: string) => `¡${name} aprendió ${move}!`,
@@ -343,7 +368,8 @@ export const ES = {
     wonMoney: (amt: number) => `Obtuviste ${amt} monedas.`,
     cardDropped: (name: string) =>
       `¡${name} dejó caer su Carta SoulDoll! Se guardó en tu Álbum de Cartas.`,
-    lostBattle: 'Tus marionetas perdieron sus fuerzas... Volviste al centro de curación.',
+    lostBattle: 'Tus marionetas perdieron sus fuerzas... Volviste al último punto seguro.',
+    blackoutWake: 'Regresaste apresuradamente al último refugio seguro para restaurar a tus SoulDolls.',
   },
   evolution: {
     evolving: (name: string) => `¡Anda! ¡${name} está evolucionando!`,
@@ -366,6 +392,8 @@ export const ES = {
   },
   maps: {
     villa_origen: 'Villa Origen',
+    laboratorio_origen: 'Laboratorio del Prof. Robledo',
+    taller_origen: 'Taller de Marionetas',
     ruta_1: 'Ruta 1 · Sendero Verde',
     pueblo_bruma: 'Pueblo Bruma',
     ruta_2: 'Ruta 2 · Paso Rocoso',
@@ -392,27 +420,27 @@ export const ES = {
     isekai_intro_1:
       'Despiertas bajo un cielo violeta tras cruzar un umbral dimensional... Ya no estás en tu mundo: has renacido como un viajero en la tierra de SoulDolls.',
     isekai_intro_2:
-      'Aquí los guerreros luchan vinculando Almas salvajes con Cuerpos Contenedores mediante Ki y armas arcanas. ¡Habla con el Prof. Robledo frente al laboratorio para recibir tu primera marioneta!',
+      'Aquí los guerreros luchan vinculando Almas salvajes con Cuerpos Contenedores mediante Ki y armas arcanas. ¡Visita el Laboratorio del Prof. Robledo para recibir tu primera marioneta!',
     guide_welcome:
-      '¡Hola, viajero! Soy Lía, guía de Villa Origen. ¿Quieres que te acompañe por la villa hasta hablar con el Prof. Robledo y elegir tu SoulDoll inicial?',
+      '¡Hola, viajero! Soy Lía, guía de Villa Origen. ¿Quieres que te acompañe hasta el Laboratorio del Prof. Robledo para conocerle y elegir tu SoulDoll inicial?',
     guide_skip_tour:
-      '¡De acuerdo! El Prof. Robledo y los tres Soulpots iniciales te esperan al norte de la plaza. ¡Habla conmigo si necesitas orientación!',
+      '¡De acuerdo! La puerta del Laboratorio del Prof. Robledo está justo al norte de la plaza; entra para hablar con el Profesor y elegir tu compañera. ¡Habla conmigo si necesitas ayuda!',
     guide_tour_plaza:
-      'Esta es la plaza de Villa Origen. Aquí descansan los vecinos y el Artesano Gael; cuando estés listo, el sendero norte lleva a la Ruta 1.',
+      'Esta es la plaza de Villa Origen. Al este tienes el Taller de Marionetas para forjar cuerpos y habilidades, y hacia el norte espera la Ruta 1.',
     guide_tour_professor:
-      '¡Llegamos frente al laboratorio! Aquí está el Prof. Robledo para recibirte. Déjame presentarte con él.',
+      '¡Llegamos a la puerta del Laboratorio del Prof. Robledo! Pasa adentro conmigo para que el Profesor te muestre los pedestales iniciales.',
     guide_choose_starter:
-      '¡Mira a la derecha sobre los pedestales! Acércate a los Soulpots de Brasa, Marea o Flora y pulsa A (Z/Enter) para despertar a tu SoulDoll inicial.',
+      '¡Mira los tres pedestales de investigación: Soulpot Brasa, Marea y Flora! Acércate justo frente al que prefieras y pulsa A (Z/Enter) para despertar a tu SoulDoll inicial.',
     guide_remind_prof:
-      'Habla primero con el Prof. Robledo aquí al lado del laboratorio y luego elige tu SoulDoll en los pedestales de la derecha.',
+      'Entra al Laboratorio del Prof. Robledo justo aquí detrás: el Profesor y los tres pedestales iniciales te aguardan adentro.',
     guide_remind_starter:
-      'El Prof. Robledo ya te dio permiso. ¡Acércate a uno de los 3 pedestales de Soulpot aquí a la derecha y pulsa A para elegir tu compañera!',
+      'El Prof. Robledo ya te espera dentro del Laboratorio frente a los tres pedestales. ¡Entra, acércate a un Soulpot y pulsa A para elegir tu compañera!',
     guide_after_starter:
-      '¡Gran elección! Tu nueva SoulDoll ya está lista. Toma el camino empedrado hacia el norte para comenzar tu aventura por la Ruta 1.',
+      '¡Gran elección! Tu nueva SoulDoll ya está lista. Visita el Taller de Marionetas al este cuando quieras forjar cuerpos o técnicas, y toma el camino norte hacia la Ruta 1.',
     prof_welcome:
-      '¡Bienvenido a Villa Origen, viajero! Soy el Prof. Robledo. Elige uno de los 3 Soulpots iniciales sobre los pedestales para despertar a tu primera SoulDoll hacia la Arena Cumbre.',
+      '¡Bienvenido a mi Laboratorio, viajero! Soy el Prof. Robledo. Sobre esos tres pedestales descansan tres Soulpots iniciales: Brasa, Marea y Flora. ¡Acércate y elige a tu primera SoulDoll!',
     prof_after_starter:
-      '¡Cuida bien las partes del cuerpo de tu SoulDoll! Si sus almas se fatigan antes de llegar a Pueblo Bruma, habla conmigo y las restauraré.',
+      '¡Cuida bien las partes del cuerpo de tu SoulDoll! Si sus almas se fatigan antes de llegar a Pueblo Bruma, ven a verme al Laboratorio y las restauraré.',
     prof_healed: '¡Listo! El Ki de tus SoulDolls vuelve a fluir por cabeza, torso, brazos y piernas.',
     prof_milestone_reward: (label: string, itemName: string, qty: number, money: number) =>
       `¡Impresionante progreso en tu Grimorio (${label})! Toma ${qty}× ${itemName} y ${money} monedas como recompensa.`,
@@ -421,10 +449,32 @@ export const ES = {
     starter_chosen: (name: string) =>
       `¡Has despertado a ${name}! Recibiste 5 Soulpots, 2 Elixires Ki, 1 Cuerpo Madera Ki de repuesto y 1 Fragmento de Alma AR.`,
     starter_already: 'Ya despertaste a tu SoulDoll inicial. ¡Explora la Ruta 1 al norte!',
+    lab_console_prompt:
+      'Terminal de Investigación del Prof. Robledo: registros de resonancia Ki, Soulpots y Grimorio de especies.',
+    lab_console_notes:
+      'Informe del Laboratorio: las SoulDolls selladas sin armazón esperan en Reserva hasta vincularlas en el Taller de Marionetas. Cuanto más completes tu Grimorio, más recompensas te otorgará el Prof. Robledo.',
     villager_origen:
       'Las almas salvajes vagan por la hierba alta. Recuerda: tras sellarlas en un Soulpot necesitan un Cuerpo Contenedor para combatir.',
     artesano_gael:
-      'Soy Gael, el forjador de armazones. Trae experiencia en combate y te enseñaré mis planos secretos de crafteo.',
+      'Soy Gael, el maestro forjador del Taller. ¿Quieres templar armazones en la fragua o revisar tus planos de crafteo?',
+    gael_workshop_greeting:
+      '¡La fragua arde al rojo vivo! Puedes forjar nuevos cuerpos con Oro o combinar Polvo de Alma para ahorrar monedas.',
+    gael_resonance_tip:
+      'Resonancia de Armazón: cuando el tipo elemental de una SoulDoll coincide con el armazón (o grabas una Runa Elemental), resiste mejor el cansancio cuando tiene las piernas quebradas y refuerza su vínculo.',
+    aprendiz_taller:
+      '¡Bienvenido al Taller de Marionetas! Adentro te esperan el Artesano Gael en la fragua y Forjadora Iris en la mesa de ensamblaje para crear cuerpos, templar armaduras y reparar tu equipo.',
+    iris_workshop_greeting:
+      'Soy Iris, ensambladora de almas. ¿Quieres que repare por completo las extremidades de tus SoulDolls o pasamos a la Mesa de Creación?',
+    iris_healed:
+      '¡Listo! Sellamos cada grieta de sus cuerpos y restauramos todo su Ki al 100%.',
+    lyra_workshop_greeting:
+      'Soy Lyra, Maestra de Técnicas y Ki en el Ala Arcana del Taller. ¿Quieres forjar habilidades y técnicas, entrenar atributos EV/IV o explorar mi comercio de Discos MT y Tónicos?',
+    lyra_skill_guide:
+      'Las SoulDolls aprenden técnicas al subir de nivel, en el Recordador, grabando Discos MT, invocando poderes con Fragmentos AR o forjándolas aquí con Oro y Polvo de Alma. Además, una Runa Elemental en su armazón abre nuevas técnicas y pasivas de ese elemento.',
+    sign_taller:
+      'Taller de Marionetas · Forja de Armazones, Templado Rúnico y Ensamblaje de Almas.',
+    mannequin_rack_flavor:
+      'Maniquíes de exhibición del taller: muestran armazones articulados listos para recibir almas selladas.',
     healer_clara:
       '¡Bienvenido al Centro de Curación! Déjame reparar los armazones de tus SoulDolls... ¡Listo, al 100%!',
     healer_menu: '¡Bienvenido al Centro de Curación! ¿En qué puedo ayudarte hoy?',

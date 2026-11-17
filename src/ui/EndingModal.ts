@@ -26,7 +26,7 @@ export class EndingModal extends ModalOverlay {
     const teamHtml = save.party
       .map(
         (c) => `
-          <div class="px-card border-old-bronze flex flex-col items-center p-2">
+          <div class="px-panel px-card border-old-bronze flex flex-col items-center p-2">
             <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-16 h-16 object-contain" alt="" />
             <div class="text-xs font-bold truncate max-w-[80px]">${getCreatureDisplayName(c)}</div>
             <div class="text-[11px] text-resonant-gold tabular-nums">${ES.party.lv}${c.level}</div>
@@ -36,19 +36,20 @@ export class EndingModal extends ModalOverlay {
       .join('');
 
     this.root.innerHTML = `
-      <div class="px-panel w-full max-w-xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 sm:p-5 text-porcelain text-center">
-        <div class="text-lg sm:text-xl font-extrabold text-resonant-gold px-text-shadow">${ES.ending.title}</div>
+      <div class="px-panel px-panel-ornate w-full max-w-xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 sm:p-5 text-porcelain text-center">
+        <div class="text-lg sm:text-xl font-extrabold text-resonant-gold px-text-shadow">◆ ${ES.ending.title} ◆</div>
         <div class="mt-1 text-xs sm:text-sm text-bone-gray">${ES.ending.subtitle}</div>
+        <div class="px-divider mt-3" aria-hidden="true"></div>
         <div class="mt-4 grid grid-cols-3 sm:grid-cols-6 gap-2">${teamHtml}</div>
-        <div class="px-card mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 text-xs tabular-nums text-left">
+        <div class="px-panel px-card mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 text-xs tabular-nums text-left">
           <div class="flex justify-between"><span>${ES.ending.time}:</span><span class="font-bold">${formatPlayTime(save.stats.playTimeSec)}</span></div>
           <div class="flex justify-between"><span>${ES.ending.battles}:</span><span class="font-bold">${save.stats.battlesWon}</span></div>
           <div class="flex justify-between"><span>${ES.ending.caught}:</span><span class="font-bold">${save.caughtSpecies.length}</span></div>
           <div class="flex justify-between"><span>${ES.ending.money}:</span><span class="font-bold text-resonant-gold">${save.money} ◈</span></div>
         </div>
         <div class="mt-5 flex flex-wrap justify-center gap-3">
-          <button data-keep class="px-btn-success min-h-[44px] px-5 font-bold text-sm whitespace-nowrap">${ES.ending.keepPlaying}</button>
-          <button data-title class="px-btn-secondary min-h-[44px] px-5 font-bold text-sm whitespace-nowrap">${ES.ending.backTitle}</button>
+          <button data-keep class="px-btn px-btn-success min-h-[44px] px-5 font-bold text-sm whitespace-nowrap">${ES.ending.keepPlaying}</button>
+          <button data-title class="px-btn px-btn-secondary min-h-[44px] px-5 font-bold text-sm whitespace-nowrap">${ES.ending.backTitle}</button>
         </div>
       </div>
     `;

@@ -466,7 +466,7 @@ export class TitleScene implements Scene {
         <div class="pointer-events-auto">
           <button
             data-mute
-            class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-porcelain whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+            class="min-h-[44px] px-3.5 px-btn px-btn-ghost text-xs font-bold text-porcelain whitespace-nowrap shrink-0"
           >
             ${this.game.synth.getMuted() ? 'Audio: OFF' : 'Audio: ON'}
           </button>
@@ -474,26 +474,26 @@ export class TitleScene implements Scene {
         <div class="pointer-events-auto flex items-center gap-2">
           <button
             data-options
-            class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-resonant-gold whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+            class="min-h-[44px] px-3.5 px-btn px-btn-ghost text-xs font-bold text-resonant-gold whitespace-nowrap shrink-0"
           >
             ${ES.menu.options}
           </button>
           ${
             showFullscreen
-              ? `<button data-fs class="min-h-[44px] px-3.5 rounded-none border-2 border-cold-stone bg-crypt-ink hover:border-ki-cyan text-xs font-bold text-ice-cyan whitespace-nowrap shrink-0 shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">${document.fullscreenElement ? 'Salir' : ES.app.fullscreen}</button>`
+              ? `<button data-fs class="min-h-[44px] px-3.5 px-btn px-btn-ghost text-xs font-bold text-ice-cyan whitespace-nowrap shrink-0">${document.fullscreenElement ? 'Salir' : ES.app.fullscreen}</button>`
               : ''
           }
           ${
             showInstall
-              ? `<button data-install class="min-h-[44px] px-3.5 px-btn-primary text-xs font-bold whitespace-nowrap shrink-0">${ES.app.installApp}</button>`
+              ? `<button data-install class="min-h-[44px] px-3.5 px-btn px-btn-primary text-xs font-bold whitespace-nowrap shrink-0">${ES.app.installApp}</button>`
               : ''
           }
         </div>
       </header>
 
       <div class="pt-3 sm:pt-4 flex flex-col items-center text-center">
-        <div class="inline-block bg-crypt-ink border-2 border-ki-cyan px-3 py-1 text-[11px] font-bold tracking-[0.2em] uppercase text-ki-cyan shadow-[2px_2px_0_#050505]">
-          RPG Táctico 2.5D · 50 Marionetas
+        <div class="inline-block px-panel px-panel-cyan px-panel-ornate px-4 py-1 text-[11px] font-bold tracking-[0.2em] uppercase text-ki-cyan">
+          ◆ RPG Táctico 2.5D · 50 Marionetas ◆
         </div>
         <svg viewBox="0 0 388 84" shape-rendering="crispEdges" class="mt-1.5 w-[min(88vw,400px)] h-auto" aria-label="SoulDolls">
           <defs>
@@ -506,9 +506,11 @@ export class TitleScene implements Scene {
           <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.resonantGold}">${ES.app.title}</text>
           <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.paleGold}" clip-path="url(#pxTitleTopClip)">${ES.app.title}</text>
         </svg>
-        <div class="mt-1 flex items-center justify-center gap-2.5 text-xs sm:text-sm font-bold tracking-wider text-porcelain px-text-outline">
+        <div class="mt-1 flex items-center justify-center gap-2 text-xs sm:text-sm font-bold tracking-wider text-porcelain px-text-outline">
           <span class="h-[2px] w-6 bg-resonant-gold"></span>
+          <span class="text-bright-brass text-[10px]" aria-hidden="true">◆</span>
           <span>${ES.app.subtitle}</span>
+          <span class="text-bright-brass text-[10px]" aria-hidden="true">◆</span>
           <span class="h-[2px] w-6 bg-resonant-gold"></span>
         </div>
       </div>
@@ -519,9 +521,9 @@ export class TitleScene implements Scene {
         <div class="pointer-events-auto w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5">
           ${
             hasSave
-              ? `<button data-continue class="flex-1 min-h-[50px] px-6 px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.continueGame}</button>
-                 <button data-new class="flex-1 min-h-[50px] px-6 px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.newGame}</button>`
-              : `<button data-new class="w-full sm:w-auto sm:min-w-[240px] min-h-[50px] px-8 px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.newGame}</button>`
+              ? `<button data-continue class="flex-1 min-h-[50px] px-6 px-btn px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.continueGame}</button>
+                 <button data-new class="flex-1 min-h-[50px] px-6 px-btn px-btn-secondary font-bold text-base whitespace-nowrap">${ES.app.newGame}</button>`
+              : `<button data-new class="w-full sm:w-auto sm:min-w-[240px] min-h-[50px] px-8 px-btn px-btn-primary font-extrabold text-base whitespace-nowrap">${ES.app.newGame}</button>`
           }
         </div>
         <div class="text-[11px] text-bone-gray text-center">

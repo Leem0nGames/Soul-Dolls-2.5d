@@ -1,4 +1,5 @@
 export type UiLayerName =
+  | 'touchCamera'
   | 'overworldHud'
   | 'touchControls'
   | 'battleHud'
@@ -9,6 +10,7 @@ export type UiLayerName =
   | 'toast';
 
 const LAYER_Z_ORDER: Record<UiLayerName, number> = {
+  touchCamera: 12,
   overworldHud: 15,
   touchControls: 20,
   battleHud: 22,

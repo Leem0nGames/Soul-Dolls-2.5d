@@ -52,12 +52,12 @@ export const TUTORIAL_STEPS: readonly TutorialStepDef[] = [
     badge: 'LECCIÓN 2/4 · EXPLORACIÓN',
     title: 'Mecánica de Movimiento',
     dialog:
-      'Desplázate paso a paso por el mundo, administra tu Estamina al correr y gira la cámara para descubrir senderos, objetos ocultos y entrenadores.',
+      'Desplázate paso a paso por el mundo, cruza puertas de edificios como el Laboratorio o el Taller, administra tu Estamina al correr y gira la cámara para explorar cada rincón.',
     facts: [
       {
         badge: 'WASD / ✚',
         label: 'Desplazamiento',
-        detail: 'Usa Flechas, WASD o la cruceta táctil para caminar por casillas y cruzar portales.',
+        detail: 'Usa Flechas, WASD o la cruceta táctil para caminar por casillas y entrar a edificios.',
         tone: 'cyan',
       },
       {
@@ -69,7 +69,7 @@ export const TUTORIAL_STEPS: readonly TutorialStepDef[] = [
       {
         badge: 'Q / E · L / R',
         label: 'Cámara 3D',
-        detail: 'Rota el ángulo 90° en cualquier momento. La dirección de movimiento se adapta sola.',
+        detail: 'Rota el ángulo orbital en cualquier momento o desliza en modo táctil para mirar alrededor.',
         tone: 'violet',
       },
       {
@@ -109,27 +109,27 @@ export const TUTORIAL_STEPS: readonly TutorialStepDef[] = [
   },
   {
     id: 'capture',
-    badge: 'LECCIÓN 4/4 · TALLER',
-    title: 'Soulpots, Cuerpos y Cartas',
+    badge: 'LECCIÓN 4/4 · LABORATORIO Y TALLER',
+    title: 'Laboratorio, Cuerpos y Habilidades',
     dialog:
-      'Debilita a las SoulDolls salvajes para sellarlas en Soulpots, ensambla nuevos Cuerpos Contenedores y engarza Cartas. En Villa Origen te espera una guía para llevarte ante el Profesor.',
+      'En Villa Origen te espera Guía Lía para acompañarte hasta el interior del Laboratorio del Prof. Robledo, donde elegirás tu primera marioneta. Luego forja cuerpos y técnicas en el Taller.',
     facts: [
       {
-        badge: 'SOULPOT',
-        label: 'Sellado en Batalla',
-        detail: 'Reduce sus PS o aplica estados como Sueño/Parálisis antes de lanzar un Soulpot desde Mochila.',
+        badge: 'LABORATORIO',
+        label: 'Guía y Pedestales Iniciales',
+        detail: 'Sigue a Guía Lía hasta la puerta del Laboratorio para hablar con el Profesor y despertar a tu inicial.',
         tone: 'cyan',
       },
       {
-        badge: 'AR / PIEZAS',
-        label: 'Cuerpos Contenedores',
-        detail: 'Si capturas un alma sin armazón libre, espera en Reserva hasta vincularla en Contenedores.',
+        badge: 'SOULPOT',
+        label: 'Sellado en Batalla',
+        detail: 'Debilita almas salvajes y lánzales un Soulpot. Si no llevas armazón libre, esperan en Reserva.',
         tone: 'violet',
       },
       {
-        badge: 'CARTAS',
-        label: 'Álbum y Engarce',
-        detail: 'Las SoulDolls derrotadas pueden soltar su Carta; engárzala en Datos para potenciar estadísticas.',
+        badge: 'TALLER / FORJA',
+        label: 'Cuerpos, Cartas y Habilidades',
+        detail: 'Visita el Taller de Marionetas para crear armazones, engarzar Cartas, forjar técnicas y entrenar EV/IV.',
         tone: 'gold',
       },
     ],
@@ -196,35 +196,65 @@ export const VILLA_TOUR_PLAZA_PLAYER_WAYPOINTS: readonly WaypointCoord[] = [
   { x: 24, y: 22 },
 ];
 
-// Segment 2: Guide escorts player west & north straight to Prof. Robledo's lab entrance (19, 20)
+// Segment 2: Guide escorts player west & north straight to Prof. Robledo's Lab doorway (19, 19) facing door (19, 18)
 export const VILLA_TOUR_LAB_GUIDE_WAYPOINTS: readonly WaypointCoord[] = [
   { x: 23, y: 21 },
   { x: 19, y: 21 },
-  { x: 19, y: 20 },
-  { x: 20, y: 20 },
+  { x: 19, y: 19 },
+  { x: 20, y: 19 },
 ];
 
 export const VILLA_TOUR_LAB_PLAYER_WAYPOINTS: readonly WaypointCoord[] = [
   { x: 24, y: 21 },
   { x: 19, y: 21 },
-  { x: 19, y: 20 },
-];
-
-// Segment 3: Guide moves beside the 3 starter pedestals (25..27, 19) avoiding lamp_wood at (22, 20)
-export const VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS: readonly WaypointCoord[] = [
-  { x: 20, y: 21 },
-  { x: 24, y: 21 },
-  { x: 24, y: 20 },
+  { x: 19, y: 19 },
 ];
 
 export const VILLA_GUIDE_REST_BEFORE_STARTER: { x: number; y: number; dir: Direction } = {
-  x: 24,
-  y: 20,
-  dir: 'right',
+  x: 20,
+  y: 19,
+  dir: 'down',
 };
 
 export const VILLA_GUIDE_REST_AFTER_STARTER: { x: number; y: number; dir: Direction } = {
   x: 21,
   y: 20,
   dir: 'down',
+};
+
+// Interior Lab Escort (laboratorio_origen): Guía Lía leads player up to Prof. Robledo (6, 4) and then beside pedestals (10, 12, 14; z=4)
+export const LAB_GUIDE_NPC_ID = 'guia_lab';
+
+export const LAB_GUIDE_SPAWN = {
+  x: 9,
+  y: 10,
+  dir: 'up' as Direction,
+};
+
+export const LAB_PLAYER_SPAWN = {
+  x: 8,
+  y: 10,
+  dir: 'up' as Direction,
+};
+
+export const LAB_TOUR_PROF_GUIDE_WAYPOINTS: readonly WaypointCoord[] = [
+  { x: 9, y: 6 },
+  { x: 7, y: 6 },
+  { x: 7, y: 5 },
+];
+
+export const LAB_TOUR_PROF_PLAYER_WAYPOINTS: readonly WaypointCoord[] = [
+  { x: 8, y: 6 },
+  { x: 6, y: 6 },
+  { x: 6, y: 5 },
+];
+
+export const LAB_TOUR_PEDESTALS_GUIDE_WAYPOINTS: readonly WaypointCoord[] = [
+  { x: 9, y: 5 },
+];
+
+export const LAB_GUIDE_REST_BEFORE_STARTER: { x: number; y: number; dir: Direction } = {
+  x: 9,
+  y: 5,
+  dir: 'right',
 };

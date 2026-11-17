@@ -40,6 +40,16 @@ export function generateCharacterSpriteCanvas(
   } else if (role === 'leader') {
     px(4, 12, 1, 6, pal.trim);
     px(11, 12, 1, 6, pal.trim);
+  } else if (role === 'artisan') {
+    px(5, 12, 6, 6, PALETTE.leatherBrown);
+    px(6, 13, 4, 4, PALETTE.darkOak);
+    px(7, 13, 2, 1, pal.trim);
+  } else if (role === 'scholar') {
+    px(5, 12, 6, 6, pal.shirt);
+    px(6, 12, 4, 5, PALETTE.royalPurple);
+    px(7, 13, 2, 4, pal.trim);
+    px(4, 13, 1, 4, PALETTE.resonantGold);
+    px(11, 13, 1, 4, PALETTE.resonantGold);
   }
 
   // Arms
@@ -78,6 +88,15 @@ export function generateCharacterSpriteCanvas(
     px(5, 1, 6, 2, pal.trim);
     px(6, 0, 1, 2, pal.trim);
     px(9, 0, 1, 2, pal.trim);
+  } else if (role === 'artisan') {
+    px(4, 4, 8, 2, pal.hat);
+    px(5, 4, 2, 2, PALETTE.kiCyan);
+    px(9, 4, 2, 2, PALETTE.kiCyan);
+    px(7, 4, 2, 1, pal.trim);
+  } else if (role === 'scholar') {
+    px(4, 2, 8, 2, pal.hat);
+    px(5, 3, 6, 1, PALETTE.resonantGold);
+    px(7, 2, 2, 2, PALETTE.kiCyan);
   } else if (role === 'rival') {
     px(4, 2, 2, 2, pal.hair);
     px(10, 2, 2, 2, pal.hair);

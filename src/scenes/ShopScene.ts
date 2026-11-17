@@ -47,7 +47,7 @@ export class ShopScene implements Scene {
               const owned = save.bag.find((s) => s.itemId === id)?.quantity ?? 0;
               const canAfford = save.money >= item.price;
               return `
-                <div class="px-card flex items-center justify-between gap-2.5 p-2.5">
+                <div class="px-panel px-card flex items-center justify-between gap-2.5 p-2.5">
                   <div class="flex items-center gap-2.5 min-w-0">
                     <img src="${this.game.assets.getItemIconDataUrl(id)}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />
                     <div class="min-w-0">
@@ -55,10 +55,10 @@ export class ShopScene implements Scene {
                       <div class="text-xs text-bone-gray">${item.description}</div>
                     </div>
                   </div>
-                  <button data-buy="${id}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
+                  <button data-buy="${id}" ${canAfford ? '' : 'disabled'} class="px-btn min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
                     canAfford
                       ? 'px-btn-success'
-                      : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
+                      : 'px-btn-secondary'
                   }">${item.price} ◈</button>
                 </div>
               `;
@@ -71,16 +71,16 @@ export class ShopScene implements Scene {
                 const owned = save.vessels?.[cid] ?? 0;
                 const canAfford = save.money >= cdef.price;
                 return `
-                  <div class="px-card flex items-center justify-between gap-2 p-2.5">
+                  <div class="px-panel px-card flex items-center justify-between gap-2 p-2.5">
                     <div class="min-w-0">
                       <div class="font-bold text-sm text-porcelain">${cdef.name} <span class="text-xs text-bone-gray tabular-nums">(${ES.shop.owned}: ${owned})</span></div>
                       <div class="text-xs text-bone-gray">${cdef.description}</div>
                       <div class="text-[11px] text-ki-cyan tabular-nums mt-0.5">Cab ${cdef.ratios.head}% · Tor ${cdef.ratios.torso}% · Bra ${cdef.ratios.arms}% · Pie ${cdef.ratios.legs}%</div>
                     </div>
-                    <button data-buy-container="${cid}" ${canAfford ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
+                    <button data-buy-container="${cid}" ${canAfford ? '' : 'disabled'} class="px-btn min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap ${
                       canAfford
                         ? 'px-btn-success'
-                        : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
+                        : 'px-btn-secondary'
                     }">${cdef.price} ◈</button>
                   </div>
                 `;
@@ -93,7 +93,7 @@ export class ShopScene implements Scene {
                   const item = getItem(slot.itemId);
                   const val = getSellPrice(slot.itemId);
                   return `
-                    <div class="px-card flex items-center justify-between gap-2.5 p-2.5">
+                    <div class="px-panel px-card flex items-center justify-between gap-2.5 p-2.5">
                       <div class="flex items-center gap-2.5 min-w-0">
                         <img src="${this.game.assets.getItemIconDataUrl(slot.itemId)}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />
                         <div class="min-w-0">
@@ -101,7 +101,7 @@ export class ShopScene implements Scene {
                           <div class="text-xs text-bone-gray">${item.description}</div>
                         </div>
                       </div>
-                      <button data-sell="${slot.itemId}" class="px-btn-primary min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap">+${val} ◈</button>
+                      <button data-sell="${slot.itemId}" class="px-btn px-btn-primary min-h-[44px] px-3 text-xs font-bold tabular-nums shrink-0 whitespace-nowrap">+${val} ◈</button>
                     </div>
                   `;
                 })
@@ -109,22 +109,25 @@ export class ShopScene implements Scene {
 
     this.root.innerHTML = `
       <div class="px-panel w-full max-w-xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
-        <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
-          <div>
-            <div class="font-bold text-resonant-gold">${ES.shop.title}</div>
-            <div class="text-xs text-pale-gold tabular-nums">${ES.menu.money}: ${save.money} ◈</div>
+        <div class="mb-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-resonant-gold">${ES.shop.title}</div>
+              <div class="text-xs text-pale-gold tabular-nums">${ES.menu.money}: ${save.money} ◈</div>
+            </div>
+            <button data-exit class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.shop.exit}</button>
           </div>
-          <button data-exit class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.shop.exit}</button>
+          <div class="px-divider mt-2" aria-hidden="true"></div>
         </div>
 
         <div class="flex flex-wrap gap-2 mb-3">
-          <button data-tab="buy" class="min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
+          <button data-tab="buy" class="px-btn min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
             this.mode === 'buy' ? 'px-btn-primary' : 'px-btn-secondary'
           }">${ES.shop.buy}</button>
-          <button data-tab="containers" class="min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
+          <button data-tab="containers" class="px-btn min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
             this.mode === 'containers' ? 'px-btn-primary' : 'px-btn-secondary'
           }">Contenedores</button>
-          <button data-tab="sell" class="min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
+          <button data-tab="sell" class="px-btn min-h-[44px] px-3.5 text-sm font-bold whitespace-nowrap ${
             this.mode === 'sell' ? 'px-btn-primary' : 'px-btn-secondary'
           }">${ES.shop.sell}</button>
         </div>

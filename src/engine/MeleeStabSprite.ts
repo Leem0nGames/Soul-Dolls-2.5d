@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import {
-  computeStabFrameUvRect,
+  computeGridFrameUvRect,
+  MELEE_STAB_COLS,
+  MELEE_STAB_ROWS,
   MELEE_STAB_SHEET_PATH,
+  MELEE_STAB_TOTAL_FRAMES,
 } from '../domain/MeleeStabTiming.ts';
 import { hexToNumber } from '../gfx/Palette.ts';
 
@@ -20,6 +23,7 @@ uniform vec4 uFrameRect;
 uniform float uOpacity;
 uniform vec3 uElementColor;
 uniform float uElementGlow;
+uniform float uTintStrength;
 
 varying vec2 vUv;
 
@@ -40,8 +44,12 @@ void main() {
   float magentaMask = smoothstep(0.14, 0.42, chroma) * step(texel.g + 0.04, max(texel.r, texel.b));
 
   vec3 slashColored = uElementColor * (0.45 + maxC * 0.85);
-  vec3 color = mix(texel.rgb, slashColored, magentaMask * (0.65 + 0.35 * uElementGlow));
-  color = mix(color, uElementColor * 1.15 + vec3(0.18), clamp(uElementGlow * 0.34, 0.0, 0.42));
+  vec3 color = mix(texel.rgb, slashColored, magentaMask * (0.65 + 0.35 * uElementGlow) * uTintStrength);
+  color = mix(
+    color,
+    uElementColor * 1.15 + vec3(0.18),
+    clamp(uElementGlow * 0.34 * uTintStrength, 0.0, 0.42)
+  );
 
   float cleanAlpha = smoothstep(0.42, 0.58, texel.a);
   gl_FragColor = vec4(color, cleanAlpha * uOpacity);
@@ -53,9 +61,15 @@ void main() {
 export interface MeleeStabMaterialHandle {
   material: THREE.ShaderMaterial;
   setTexture(tex: THREE.Texture): void;
-  setFrame(frameIndex: number, flipX: boolean): void;
+  setFrame(
+    frameIndex: number,
+    flipX: boolean,
+    cols?: number,
+    rows?: number,
+    totalFrames?: number
+  ): void;
   setOpacity(opacity: number): void;
-  setElementEffect(hexColor: string, glow: number): void;
+  setElementEffect(hexColor: string, glow: number, tintStrength?: number): void;
 }
 
 export function createFallbackStabTexture(): THREE.DataTexture {
@@ -65,14 +79,15 @@ export function createFallbackStabTexture(): THREE.DataTexture {
   return tex;
 }
 
-export function loadMeleeStabTexture(
+export function loadAttackSheetTexture(
+  sheetPath: string,
   onLoaded?: (tex: THREE.Texture) => void
 ): THREE.Texture {
   if (typeof Image === 'undefined') {
     return createFallbackStabTexture();
   }
   const loader = new THREE.TextureLoader();
-  const tex = loader.load(MELEE_STAB_SHEET_PATH, (loaded) => {
+  const tex = loader.load(sheetPath, (loaded) => {
     loaded.colorSpace = THREE.SRGBColorSpace;
     loaded.magFilter = THREE.NearestFilter;
     loaded.minFilter = THREE.NearestFilter;
@@ -85,6 +100,12 @@ export function loadMeleeStabTexture(
   tex.minFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
   return tex;
+}
+
+export function loadMeleeStabTexture(
+  onLoaded?: (tex: THREE.Texture) => void
+): THREE.Texture {
+  return loadAttackSheetTexture(MELEE_STAB_SHEET_PATH, onLoaded);
 }
 
 export function createMeleeStabMaterial(
@@ -100,6 +121,7 @@ export function createMeleeStabMaterial(
       uOpacity: { value: 1 },
       uElementColor: { value: elementColor },
       uElementGlow: { value: 0 },
+      uTintStrength: { value: 1 },
     },
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
@@ -113,16 +135,24 @@ export function createMeleeStabMaterial(
     setTexture(tex: THREE.Texture) {
       material.uniforms.map.value = tex;
     },
-    setFrame(frameIndex: number, flipX: boolean) {
-      const r = computeStabFrameUvRect(frameIndex, flipX);
+    setFrame(
+      frameIndex: number,
+      flipX: boolean,
+      cols = MELEE_STAB_COLS,
+      rows = MELEE_STAB_ROWS,
+      totalFrames = MELEE_STAB_TOTAL_FRAMES
+    ) {
+      const r = computeGridFrameUvRect(frameIndex, cols, rows, totalFrames, flipX);
       frameRect.set(r.uMin, r.vMin, r.uSize, r.vSize);
     },
     setOpacity(opacity: number) {
       material.uniforms.uOpacity.value = Math.max(0, Math.min(1, opacity));
     },
-    setElementEffect(hexColor: string, glow: number) {
+    setElementEffect(hexColor: string, glow: number, tintStrength = 1) {
       elementColor.setHex(hexToNumber(hexColor));
       material.uniforms.uElementGlow.value = Math.max(0, Math.min(1, glow));
+      material.uniforms.uTintStrength.value = Math.max(0, Math.min(1, tintStrength));
     },
   };
 }
+

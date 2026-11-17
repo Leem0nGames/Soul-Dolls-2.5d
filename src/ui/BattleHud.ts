@@ -1,23 +1,19 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { BattleContainer } from '../components/BattleContainer.tsx';
-import { getMove } from '../data/moves.ts';
-import { getSpecies } from '../data/species.ts';
-import { TYPE_VISUALS } from '../data/types.ts';
-import { getMoveEffectivenessHint } from '../domain/BattleHints.ts';
-import { BODY_PART_SHORT } from '../domain/BodyParts.ts';
 import {
-  formatCardBonuses,
-  getCardDef,
-  getCardDismantleValue,
-} from '../domain/Cards.ts';
+  BattleActionMenuView,
+  BattleResultModalView,
+  LearnMoveModalView,
+} from '../components/ui/BattleHudViews.tsx';
+import { getSpecies } from '../data/species.ts';
+import { BODY_PART_SHORT } from '../domain/BodyParts.ts';
 import { getCreatureDisplayName, xpForLevel } from '../domain/Creature.ts';
-import type { BodyPartName, CreatureInstance } from '../domain/types.ts';
+import type { BattleWeather, BodyPartName, CreatureInstance } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
-import { CARD_RARITY_STYLES } from './cardRarityStyles.ts';
 import { renderSoulDustCounter } from './renderSoulDustCounter.ts';
-import { renderTypeBadge, renderTypeBadges } from './renderTypeBadge.ts';
+import { renderTypeBadges } from './renderTypeBadge.ts';
 
 export interface BattleResultDropSummary {
   speciesId: number;
@@ -32,6 +28,7 @@ export class BattleHud {
   readonly fxOverlay: HTMLDivElement;
   private enemyBox: HTMLDivElement;
   private dustBox: HTMLDivElement;
+  private weatherBox: HTMLDivElement;
   private bannerEl: HTMLDivElement;
   private bottomDock: HTMLDivElement;
   private playerBox: HTMLDivElement;
@@ -52,6 +49,8 @@ export class BattleHud {
 
   private enemyPartsRoot: Root | null = null;
   private playerPartsRoot: Root | null = null;
+  private menuRoot: Root | null = null;
+  private replaceRoot: Root | null = null;
   private lastEnemyCreature: CreatureInstance | null = null;
   private lastPlayerCreature: CreatureInstance | null = null;
   private enemyHit: {
@@ -80,15 +79,19 @@ export class BattleHud {
 
     this.enemyBox = document.createElement('div');
     this.enemyBox.className =
-      'pointer-events-none absolute top-[calc(0.375rem+env(safe-area-inset-top,0px))] inset-x-2 mx-auto max-w-[400px] sm:mx-0 sm:max-w-none sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[328px] px-hud-box px-2.5 py-1.5 sm:p-2';
+      'pointer-events-none absolute top-[calc(0.375rem+env(safe-area-inset-top,0px))] inset-x-2 mx-auto max-w-[400px] sm:mx-0 sm:max-w-none sm:inset-x-auto sm:left-[calc(0.75rem+env(safe-area-inset-left,0px))] sm:w-[328px] px-panel px-hud-box px-2.5 py-1.5 sm:p-2';
 
     this.dustBox = document.createElement('div');
     this.dustBox.className =
       'pointer-events-none absolute top-[calc(6.4rem+env(safe-area-inset-top,0px))] left-[calc(0.5rem+env(safe-area-inset-left,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:left-[calc(21.75rem+env(safe-area-inset-left,0px))]';
 
+    this.weatherBox = document.createElement('div');
+    this.weatherBox.className =
+      'pointer-events-none hidden absolute top-[calc(8.6rem+env(safe-area-inset-top,0px))] left-[calc(0.5rem+env(safe-area-inset-left,0px))] sm:top-[calc(3.15rem+env(safe-area-inset-top,0px))] sm:left-[calc(21.75rem+env(safe-area-inset-left,0px))] px-panel px-hud-box px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ice-cyan tabular-nums';
+
     this.bannerEl = document.createElement('div');
     this.bannerEl.className =
-      'pointer-events-none absolute hidden max-w-[220px] rounded-none border-2 border-ki-cyan bg-crypt-ink px-2.5 py-1 text-right shadow-[2px_2px_0_#050505] top-[calc(6.4rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
+      'pointer-events-none absolute hidden max-w-[220px] px-panel px-panel-cyan px-2.5 py-1 text-right top-[calc(6.4rem+env(safe-area-inset-top,0px))] right-[calc(0.5rem+env(safe-area-inset-right,0px))] sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:right-[calc(0.75rem+env(safe-area-inset-right,0px))]';
 
     this.bottomDock = document.createElement('div');
     this.bottomDock.className =
@@ -96,21 +99,21 @@ export class BattleHud {
 
     this.playerBox = document.createElement('div');
     this.playerBox.className =
-      'pointer-events-none w-full max-w-[400px] mx-auto sm:mx-0 sm:max-w-none sm:w-[328px] sm:shrink-0 sm:ml-auto mb-[76px] sm:mb-24 px-hud-box px-2.5 py-1.5 sm:p-2';
+      'pointer-events-none w-full max-w-[400px] mx-auto sm:mx-0 sm:max-w-none sm:w-[328px] sm:shrink-0 sm:ml-auto mb-[76px] sm:mb-24 px-panel px-hud-box px-2.5 py-1.5 sm:p-2';
 
     this.menuBox = document.createElement('div');
     this.menuBox.className =
-      'pointer-events-auto w-full max-w-[400px] mx-auto sm:mx-0 sm:flex-1 sm:max-w-[424px] hidden rounded-none border-2 border-resonant-gold bg-crypt-ink p-2 sm:p-3 shadow-[inset_0_2px_0_#8A6A3B,4px_4px_0_#050505]';
+      'pointer-events-auto w-full max-w-[400px] mx-auto sm:mx-0 sm:flex-1 sm:max-w-[424px] hidden px-panel p-2 sm:p-3';
 
     this.replaceModal = document.createElement('div');
-    this.replaceModal.className =
-      'pointer-events-auto fixed inset-0 z-40 hidden items-center justify-center bg-abyss-ink p-3 safe-pad';
+    this.replaceModal.className = 'pointer-events-none fixed inset-0 z-40 hidden';
 
     this.bottomDock.appendChild(this.playerBox);
     this.bottomDock.appendChild(this.menuBox);
 
     this.root.appendChild(this.enemyBox);
     this.root.appendChild(this.dustBox);
+    this.root.appendChild(this.weatherBox);
     this.root.appendChild(this.bannerEl);
     this.root.appendChild(this.bottomDock);
     this.root.appendChild(this.replaceModal);
@@ -132,11 +135,32 @@ export class BattleHud {
     });
   }
 
+  updateWeather(weather: BattleWeather, turns: number): void {
+    if (weather === 'none') {
+      this.weatherBox.classList.add('hidden');
+      this.weatherBox.textContent = '';
+      return;
+    }
+    const label = ES.battle.weatherLabel[weather];
+    const turnsText = turns > 0 ? ` (${turns}t)` : '';
+    const toneClass =
+      weather === 'sun'
+        ? 'text-resonant-gold border-resonant-gold'
+        : weather === 'rain'
+          ? 'text-ki-cyan border-ki-cyan'
+          : weather === 'sandstorm'
+            ? 'text-pale-gold border-brass'
+            : 'text-ice-cyan border-ice-cyan';
+    this.weatherBox.className = `pointer-events-none absolute top-[calc(8.6rem+env(safe-area-inset-top,0px))] left-[calc(0.5rem+env(safe-area-inset-left,0px))] sm:top-[calc(3.15rem+env(safe-area-inset-top,0px))] sm:left-[calc(21.75rem+env(safe-area-inset-left,0px))] px-panel px-hud-box px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider tabular-nums ${toneClass}`;
+    this.weatherBox.textContent = `${label}${turnsText}`;
+  }
+
   setVictoryShowcaseMode(active: boolean): void {
     this.enemyBox.classList.toggle('hidden', active);
     this.playerBox.classList.toggle('hidden', active);
     this.dustBox.classList.toggle('hidden', active);
     if (active) {
+      this.weatherBox.classList.add('hidden');
       this.bannerEl.classList.add('hidden');
       this.hideMenu();
     }
@@ -151,6 +175,7 @@ export class BattleHud {
     this.playerHit = { part: null, tick: 0 };
     this.bannerTimer = 0;
     this.bannerEl.classList.add('hidden');
+    this.weatherBox.classList.add('hidden');
     this.setVictoryShowcaseMode(false);
     this.updateSoulDust(this.currentSoulDust);
     this.root.classList.remove('hidden');
@@ -162,6 +187,7 @@ export class BattleHud {
     this.fxOverlay.classList.add('hidden');
     this.fxOverlay.innerHTML = '';
     this.bannerEl.classList.add('hidden');
+    this.weatherBox.classList.add('hidden');
     this.setVictoryShowcaseMode(false);
     this.hideMenu();
     this.replaceModal.classList.add('hidden');
@@ -174,6 +200,10 @@ export class BattleHud {
     this.enemyPartsRoot = null;
     this.playerPartsRoot?.unmount();
     this.playerPartsRoot = null;
+    this.menuRoot?.unmount();
+    this.menuRoot = null;
+    this.replaceRoot?.unmount();
+    this.replaceRoot = null;
     this.lastEnemyCreature = null;
     this.lastPlayerCreature = null;
   }
@@ -337,9 +367,10 @@ export class BattleHud {
             <span class="text-[11px] sm:text-xs font-bold text-resonant-gold tabular-nums" data-lv></span>
           </div>
         </div>
-        <div class="relative mt-1 h-[8px] w-full rounded-none bg-abyss-ink border border-cold-stone overflow-hidden">
+        <div class="relative mt-1 h-[8px] w-full rounded-none bg-abyss-ink border border-cold-stone shadow-[inset_0_1px_0_#050505] overflow-hidden">
           <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
           <div data-hp-fill class="relative h-full ${barColor} transition-[width] duration-300 ease-out" style="width:${pct}%"></div>
+          <div class="pointer-events-none absolute inset-0 px-meter-segmented" aria-hidden="true"></div>
         </div>
         <div data-parts class="mt-1 pt-1 border-t-2 border-ash-purple"></div>
       `;
@@ -416,15 +447,17 @@ export class BattleHud {
           </div>
         </div>
         <div class="mt-1 flex items-center gap-1.5">
-          <div class="relative h-[8px] flex-1 rounded-none bg-abyss-ink border border-cold-stone overflow-hidden">
+          <div class="relative h-[8px] flex-1 rounded-none bg-abyss-ink border border-cold-stone shadow-[inset_0_1px_0_#050505] overflow-hidden">
             <div data-hp-ghost class="absolute inset-y-0 left-0 bg-pale-gold transition-[width] duration-700 ease-out delay-150" style="width:${pct}%"></div>
             <div data-hp-fill class="relative h-full ${barColor} transition-[width] duration-300 ease-out" style="width:${pct}%"></div>
+            <div class="pointer-events-none absolute inset-0 px-meter-segmented" aria-hidden="true"></div>
           </div>
           <span data-hp-text class="text-[10px] sm:text-[11px] font-bold text-porcelain tabular-nums shrink-0 leading-none">${c.currentHp}/${c.stats.hp} ${ES.party.hp}</span>
         </div>
         <div data-parts class="mt-1 pt-1 border-t-2 border-ash-purple"></div>
-        <div class="mt-1 h-[4px] w-full rounded-none bg-abyss-ink border border-ash-purple overflow-hidden">
+        <div class="relative mt-1 h-[4px] w-full rounded-none bg-abyss-ink border border-ash-purple overflow-hidden">
           <div data-xp-fill class="h-full bg-ki-cyan transition-[width] duration-500 ease-out" style="width:${expPct}%"></div>
+          <div class="pointer-events-none absolute inset-0 px-meter-segmented" aria-hidden="true"></div>
         </div>
       `;
       this.hpTextEl = this.playerBox.querySelector('[data-hp-text]') as HTMLSpanElement;
@@ -508,92 +541,23 @@ export class BattleHud {
     this.playerBox.classList.remove('mb-[76px]', 'sm:mb-24');
     this.playerBox.classList.add('mb-1', 'sm:mb-0');
 
-    const icon = (kind: 'fight' | 'bag' | 'party' | 'run') => {
-      if (!this.assets) return '';
-      return `<img src="${this.assets.getBattleIconDataUrl(kind)}" alt="" class="pixel-canvas w-4 h-4 sm:w-5 sm:h-5 shrink-0" />`;
-    };
+    if (!this.menuRoot) {
+      this.menuRoot = createRoot(this.menuBox);
+    }
 
-    const renderRoot = () => {
-      this.menuBox.innerHTML = `
-        <div class="flex flex-col gap-2">
-          <div class="text-xs sm:text-sm font-bold text-porcelain px-0.5 pb-1 border-b-2 border-ash-purple truncate">${ES.battle.whatWillDo(getCreatureDisplayName(creature))}</div>
-          <div class="grid grid-cols-2 gap-2">
-            <button data-act="fight" class="min-h-[44px] sm:min-h-[48px] px-2.5 px-btn-danger font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5">${icon('fight')}<span>${ES.battle.fight}</span></button>
-            <button data-act="bag" class="min-h-[44px] sm:min-h-[48px] px-2.5 px-btn-primary font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5">${icon('bag')}<span>${ES.battle.bag}</span></button>
-            <button data-act="party" class="min-h-[44px] sm:min-h-[48px] px-2.5 px-btn-success font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5">${icon('party')}<span>${ES.battle.party}</span></button>
-            <button data-act="run" ${isWild ? '' : 'disabled'} class="min-h-[44px] sm:min-h-[48px] px-2.5 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 ${
-              isWild
-                ? 'px-btn-arcane'
-                : 'rounded-none border-2 border-cold-stone bg-ash-purple text-bone-gray cursor-not-allowed'
-            }">${icon('run')}<span>${ES.battle.run}</span></button>
-          </div>
-        </div>
-      `;
-
-      this.menuBox.querySelector('[data-act="fight"]')?.addEventListener('click', () => renderMoves());
-      this.menuBox.querySelector('[data-act="bag"]')?.addEventListener('click', () => callbacks.onBag());
-      this.menuBox.querySelector('[data-act="party"]')?.addEventListener('click', () => callbacks.onParty());
-      this.menuBox.querySelector('[data-act="run"]')?.addEventListener('click', () => {
-        if (isWild) callbacks.onRun();
-      });
-    };
-
-    const enemyTypes = getSpecies(enemy.speciesId).types;
-
-    const renderMoves = () => {
-      const movesHtml = creature.moves
-        .map((slot, idx) => {
-          const m = getMove(slot.moveId);
-          const v = TYPE_VISUALS[m.type];
-          const disabled = slot.pp <= 0;
-          const hint = getMoveEffectivenessHint(m.type, m.category, enemyTypes);
-          const hintBadge = hint.label
-            ? `<span class="px-1 py-[1px] rounded-none text-[9px] font-black border ${
-                hint.tone === 'super'
-                  ? 'bg-neon-mint border-deep-abyss text-ui-ink'
-                  : hint.tone === 'immune'
-                    ? 'bg-abyss-ink border-cold-stone text-bone-gray'
-                    : 'bg-dried-blood border-rift-crimson text-pale-rose'
-              }">${hint.label}</span>`
-            : '';
-
-          return `
-            <button data-move="${idx}" ${disabled ? 'disabled' : ''} style="border-color:${v.border};background-color:#2A1F2D" class="min-h-[46px] sm:min-h-[50px] rounded-none border-2 p-1.5 sm:p-2 text-left flex flex-col justify-between shadow-[2px_2px_0_#050505] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${
-              disabled ? 'opacity-45 cursor-not-allowed' : 'hover:bg-ash-purple'
-            }">
-              <div class="flex items-center justify-between gap-1">
-                <span class="font-bold text-xs sm:text-sm text-warm-white truncate">${m.name}</span>
-                <div class="flex items-center gap-1 shrink-0">
-                  ${hintBadge}
-                  ${renderTypeBadge(m.type, 'chip')}
-                </div>
-              </div>
-              <div class="flex justify-between text-[10px] text-porcelain tabular-nums mt-0.5">
-                <span>${ES.summary.power}: ${m.power || '—'}</span>
-                <span>PP ${slot.pp}/${slot.maxPp}</span>
-              </div>
-            </button>
-          `;
-        })
-        .join('');
-
-      this.menuBox.innerHTML = `
-        <div class="flex flex-col gap-2">
-          <div class="grid grid-cols-2 gap-2">${movesHtml}</div>
-          <button data-back class="min-h-[40px] sm:min-h-[44px] self-end px-3.5 px-btn-secondary text-xs font-bold">${ES.party.back}</button>
-        </div>
-      `;
-
-      this.menuBox.querySelectorAll<HTMLElement>('[data-move]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const i = Number(btn.dataset.move);
-          callbacks.onMove(i);
-        });
-      });
-      this.menuBox.querySelector('[data-back]')?.addEventListener('click', () => renderRoot());
-    };
-
-    renderRoot();
+    this.menuRoot.render(
+      createElement(BattleActionMenuView, {
+        key: `${creature.uid}-${enemy.uid}-${isWild ? 'wild' : 'trainer'}`,
+        creature,
+        enemy,
+        isWild,
+        assets: this.assets,
+        onMove: callbacks.onMove,
+        onBag: callbacks.onBag,
+        onParty: callbacks.onParty,
+        onRun: callbacks.onRun,
+      })
+    );
   }
 
   hideMenu(): void {
@@ -602,47 +566,32 @@ export class BattleHud {
     this.playerBox.classList.add('mb-[76px]', 'sm:mb-24');
   }
 
+  private closeReplaceOverlay(): void {
+    this.replaceRoot?.unmount();
+    this.replaceRoot = null;
+    this.replaceModal.classList.add('hidden');
+    this.replaceModal.classList.remove('flex');
+  }
+
   showLearnMovePrompt(
     creature: CreatureInstance,
     newMoveId: string,
     onDecision: (replaceIndex: number | null) => void
   ): void {
-    const newMove = getMove(newMoveId);
-    const slotsHtml = creature.moves
-      .map((slot, idx) => {
-        const m = getMove(slot.moveId);
-        return `
-          <button data-slot="${idx}" class="min-h-[44px] w-full rounded-none border-2 border-cold-stone bg-crypt-ink hover:bg-blood-moon hover:border-rift-crimson p-2.5 text-left flex justify-between items-center shadow-[2px_2px_0_#050505]">
-            <span class="font-bold text-sm">${m.name}</span>
-            <span class="text-xs text-bone-gray tabular-nums">${ES.types[m.type]} · Pot ${m.power || '—'}</span>
-          </button>
-        `;
+    this.replaceModal.className = 'pointer-events-auto fixed inset-0 z-40 block';
+    if (!this.replaceRoot) {
+      this.replaceRoot = createRoot(this.replaceModal);
+    }
+    this.replaceRoot.render(
+      createElement(LearnMoveModalView, {
+        creature,
+        newMoveId,
+        onDecision: (replaceIndex) => {
+          this.closeReplaceOverlay();
+          onDecision(replaceIndex);
+        },
       })
-      .join('');
-
-    this.replaceModal.className =
-      'pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-abyss-ink p-3 safe-pad';
-    this.replaceModal.innerHTML = `
-      <div class="w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto px-panel p-4">
-        <div class="text-sm font-bold text-resonant-gold mb-2">${ES.battle.wantsToLearn(getCreatureDisplayName(creature), newMove.name)}</div>
-        <div class="text-xs text-bone-gray mb-3">${newMove.name} (${ES.types[newMove.type]}, Pot. ${newMove.power || '—'}): ${newMove.description}</div>
-        <div class="space-y-2 mb-3">${slotsHtml}</div>
-        <button data-skip class="min-h-[44px] w-full px-btn-secondary text-sm font-bold">${ES.battle.skipMove}</button>
-      </div>
-    `;
-
-    this.replaceModal.querySelectorAll<HTMLElement>('[data-slot]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.replaceModal.classList.add('hidden');
-        this.replaceModal.classList.remove('flex');
-        onDecision(Number(btn.dataset.slot));
-      });
-    });
-    this.replaceModal.querySelector('[data-skip]')?.addEventListener('click', () => {
-      this.replaceModal.classList.add('hidden');
-      this.replaceModal.classList.remove('flex');
-      onDecision(null);
-    });
+    );
   }
 
   showBattleResultOverlay(
@@ -658,105 +607,26 @@ export class BattleHud {
     onDismantleDuplicate?: (index: number) => void
   ): void {
     const soulDust = summary.soulDust ?? this.currentSoulDust;
-    const cardsHtml =
-      summary.droppedCards.length === 0
-        ? `<div class="text-xs text-bone-gray italic py-2">Ninguna carta obtenida en este combate.</div>`
-        : summary.droppedCards
-            .map((card, idx) => {
-              const cardDef = getCardDef(card.speciesId);
-              const rarityStyle = CARD_RARITY_STYLES[cardDef.rarity];
-              const rarityTag = ES.cards.rarity[cardDef.rarity];
-              const bonuses = formatCardBonuses(cardDef.bonuses);
-              const dustValue = getCardDismantleValue(card.speciesId);
-              const metaStatus = card.isDuplicate
-                ? `${rarityTag} · ${ES.cards.duplicateTag}`
-                : `${rarityTag} · Nueva`;
-
-              let actionHtml = '';
-              if (card.dismantled) {
-                actionHtml = `<span class="text-[11px] font-bold text-ghost-violet tabular-nums shrink-0">${ES.cards.dismantledLabel(card.dustGained ?? dustValue)}</span>`;
-              } else if (card.isDuplicate && onDismantleDuplicate) {
-                actionHtml = `<button data-dismantle="${idx}" class="min-h-[44px] px-2.5 px-btn-arcane text-[11px] font-bold whitespace-nowrap shrink-0">${ES.cards.dismantleAction(dustValue)}</button>`;
-              }
-
-              return `
-                <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 rounded-none border-2 ${rarityStyle.border} ${rarityStyle.frameBg} p-2.5 shadow-[2px_2px_0_#050505]">
-                  <img src="${
-                    this.assets ? this.assets.getCreatureDataUrl(card.speciesId, 'front') : ''
-                  }" class="souldoll-img w-12 h-12 object-contain bg-abyss-ink border border-ash-purple p-0.5 shrink-0" alt="${
-                card.creatureName
-              }" />
-                  <div class="flex-1 min-w-0 text-left">
-                    <div class="flex items-center justify-between gap-1.5">
-                      <span class="font-bold text-xs text-porcelain truncate">${cardDef.name}</span>
-                      <span class="text-[10px] font-bold ${rarityStyle.accent} whitespace-nowrap shrink-0">${metaStatus}</span>
-                    </div>
-                    <div class="text-[10px] text-ki-cyan tabular-nums mt-0.5 truncate">${bonuses}</div>
-                  </div>
-                  ${actionHtml}
-                </div>
-              `;
-            })
-            .join('');
-
-    const subtitleParts: string[] = [];
-    if (summary.championName) subtitleParts.push(`${summary.championName} vence`);
-    if (summary.rewardMoney && summary.rewardMoney > 0) {
-      subtitleParts.push(`+${summary.rewardMoney} monedas`);
+    this.replaceModal.className = 'pointer-events-none fixed inset-0 z-40 block';
+    if (!this.replaceRoot) {
+      this.replaceRoot = createRoot(this.replaceModal);
     }
-    const subtitleText =
-      subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Resumen de recompensas y botín';
-
-    this.replaceModal.className =
-      'pointer-events-none fixed inset-0 z-40 flex items-end justify-center sm:items-center sm:justify-end bg-transparent p-2.5 sm:p-6 safe-pad';
-    this.replaceModal.innerHTML = `
-      <div class="pointer-events-auto w-full max-w-md max-h-[54dvh] sm:max-h-[calc(100dvh-2.5rem)] touch-scroll overflow-y-auto px-panel bg-crypt-ink/95 p-3.5 sm:p-5 text-porcelain shadow-2xl space-y-3.5">
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-ash-purple pb-2.5">
-          <div class="min-w-0">
-            <div class="text-base sm:text-lg font-black text-resonant-gold">¡Victoria!</div>
-            <div class="text-xs text-bone-gray truncate">${subtitleText}</div>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-result-soul-dust' })}
-            <div class="px-2.5 py-1 rounded-none border-2 border-ki-cyan bg-deep-abyss text-xs font-bold text-ki-cyan tabular-nums whitespace-nowrap">
-              +${summary.xpTotal} XP
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="text-xs font-bold uppercase tracking-wider text-bone-gray mb-2">Cartas Obtenidas en Combate</div>
-          <div class="space-y-2 max-h-44 sm:max-h-56 touch-scroll overflow-y-auto pr-1">
-            ${cardsHtml}
-          </div>
-        </div>
-
-        <div class="flex flex-col sm:flex-row items-center gap-2.5 pt-2 border-t-2 border-ash-purple">
-          <button data-album class="w-full sm:flex-1 min-h-[44px] px-btn-primary font-bold text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap">
-            <span>Ver en Álbum de Cartas</span>
-          </button>
-          <button data-continue class="w-full sm:flex-1 min-h-[44px] px-btn-secondary font-bold text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap">
-            <span>Continuar</span>
-          </button>
-        </div>
-      </div>
-    `;
-
-    this.replaceModal.querySelectorAll<HTMLElement>('[data-dismantle]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        onDismantleDuplicate?.(Number(btn.dataset.dismantle));
-      });
-    });
-
-    this.replaceModal.querySelector('[data-album]')?.addEventListener('click', () => {
-      onAlbum();
-    });
-
-    this.replaceModal.querySelector('[data-continue]')?.addEventListener('click', () => {
-      this.replaceModal.classList.add('hidden');
-      this.replaceModal.classList.remove('flex');
-      onContinue();
-    });
+    this.replaceRoot.render(
+      createElement(BattleResultModalView, {
+        xpTotal: summary.xpTotal,
+        soulDust,
+        championName: summary.championName,
+        rewardMoney: summary.rewardMoney,
+        droppedCards: summary.droppedCards,
+        assets: this.assets,
+        onAlbum,
+        onContinue: () => {
+          this.closeReplaceOverlay();
+          onContinue();
+        },
+        onDismantleDuplicate,
+      })
+    );
   }
 
   dispose(): void {

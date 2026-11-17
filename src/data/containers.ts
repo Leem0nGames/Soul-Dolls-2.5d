@@ -74,6 +74,16 @@ export const BODY_CONTAINERS: Record<string, BodyContainerDef> = {
     description: 'Cuerpo contenedor legendario cuyo torso absorbe impactos masivos.',
     accentColor: PALETTE.resonantGold,
   },
+  cuerpo_automata: {
+    id: 'cuerpo_automata',
+    name: 'Autómata de Bronce',
+    rarity: 'rare',
+    price: 1450,
+    affinityTypes: ['chispa', 'roca', 'comun'],
+    ratios: { head: 22, torso: 42, arms: 22, legs: 14 },
+    description: 'Obra maestra del taller con articulaciones de latón y núcleo equilibrado.',
+    accentColor: PALETTE.brightBrass,
+  },
 };
 
 export const ALL_CONTAINER_IDS = Object.keys(BODY_CONTAINERS);

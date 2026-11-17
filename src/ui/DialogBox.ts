@@ -1,3 +1,6 @@
+import { createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { DialogPanelView } from '../components/ui/DialogPanelView.tsx';
 import type { Input } from '../core/Input.ts';
 
 export interface DialogChoice {
@@ -7,9 +10,7 @@ export interface DialogChoice {
 
 export class DialogBox {
   readonly root: HTMLDivElement;
-  private textEl: HTMLDivElement;
-  private nextHint: HTMLDivElement;
-  private choicesEl: HTMLDivElement;
+  private reactRoot: Root | null = null;
 
   private queue: string[] = [];
   private fullText = '';
@@ -24,31 +25,8 @@ export class DialogBox {
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
     this.root.className =
-      'pointer-events-auto fixed inset-x-0 bottom-1.5 sm:bottom-3 z-30 mx-auto hidden w-[min(95vw,680px)] px-panel px-3.5 py-2.5 sm:p-4';
+      'pointer-events-auto fixed inset-x-0 bottom-1.5 sm:bottom-3 z-30 mx-auto hidden w-[min(95vw,680px)]';
     this.root.style.marginBottom = 'env(safe-area-inset-bottom, 0px)';
-
-    this.textEl = document.createElement('div');
-    this.textEl.className =
-      'min-h-[2.1rem] sm:min-h-[2.8rem] text-[13px] sm:text-base leading-snug sm:leading-relaxed text-porcelain';
-
-    this.choicesEl = document.createElement('div');
-    this.choicesEl.className = 'mt-2.5 sm:mt-3 hidden flex-wrap gap-2 justify-end';
-
-    this.nextHint = document.createElement('div');
-    this.nextHint.className =
-      'mt-0.5 sm:mt-1 text-right text-[11px] sm:text-xs font-bold text-resonant-gold battle-arrow-bob';
-    this.nextHint.textContent = '▼ Continuar';
-
-    this.root.appendChild(this.textEl);
-    this.root.appendChild(this.choicesEl);
-    this.root.appendChild(this.nextHint);
-
-    this.root.addEventListener('pointerdown', (e) => {
-      if (this.choices && this.charPos >= this.fullText.length) return;
-      e.stopPropagation();
-      this.advance();
-    });
-
     parent.appendChild(this.root);
   }
 
@@ -82,14 +60,36 @@ export class DialogBox {
     this.startNextLine();
   }
 
+  private renderView(): void {
+    if (!this.active) return;
+    if (!this.reactRoot) {
+      this.reactRoot = createRoot(this.root);
+    }
+    const lineComplete = this.charPos >= this.fullText.length;
+    const showChoices = Boolean(lineComplete && this.choices && this.queue.length === 0);
+    const showContinueHint = lineComplete && !showChoices;
+
+    this.reactRoot.render(
+      createElement(DialogPanelView, {
+        visibleText: this.fullText.slice(0, this.charPos),
+        choices: this.choices,
+        choiceIndex: this.choiceIndex,
+        showChoices,
+        showContinueHint,
+        onAdvance: () => this.advance(),
+        onPickChoice: (choice) => {
+          this.close();
+          choice.onSelect();
+        },
+      })
+    );
+  }
+
   private startNextLine(): void {
     this.fullText = this.queue.shift() ?? '';
     this.charPos = 0;
     this.charTimer = 0;
-    this.textEl.textContent = '';
-    this.choicesEl.classList.add('hidden');
-    this.choicesEl.innerHTML = '';
-    this.nextHint.style.visibility = 'hidden';
+    this.renderView();
   }
 
   update(dt: number, input: Input): void {
@@ -101,14 +101,10 @@ export class DialogBox {
       const nextPos = Math.min(this.fullText.length, Math.floor(this.charTimer));
       if (nextPos > this.charPos) {
         this.charPos = nextPos;
-        this.textEl.textContent = this.fullText.slice(0, this.charPos);
-      }
-      if (this.charPos >= this.fullText.length) {
-        this.onLineFinished();
+        this.renderView();
       } else if (input.justPressed('a') || input.justPressed('b')) {
         this.charPos = this.fullText.length;
-        this.textEl.textContent = this.fullText;
-        this.onLineFinished();
+        this.renderView();
       }
       return;
     }
@@ -116,10 +112,10 @@ export class DialogBox {
     if (this.choices && this.queue.length === 0) {
       if (input.justPressed('left') || input.justPressed('up')) {
         this.choiceIndex = (this.choiceIndex + this.choices.length - 1) % this.choices.length;
-        this.renderChoices();
+        this.renderView();
       } else if (input.justPressed('right') || input.justPressed('down')) {
         this.choiceIndex = (this.choiceIndex + 1) % this.choices.length;
-        this.renderChoices();
+        this.renderView();
       } else if (input.justPressed('a')) {
         const picked = this.choices[this.choiceIndex];
         this.close();
@@ -137,43 +133,11 @@ export class DialogBox {
     }
   }
 
-  private onLineFinished(): void {
-    if (this.choices && this.queue.length === 0) {
-      this.nextHint.style.visibility = 'hidden';
-      this.renderChoices();
-    } else {
-      this.nextHint.style.visibility = 'visible';
-    }
-  }
-
-  private renderChoices(): void {
-    if (!this.choices) return;
-    this.choicesEl.classList.remove('hidden');
-    this.choicesEl.classList.add('flex');
-    this.choicesEl.innerHTML = '';
-    this.choices.forEach((choice, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = choice.label;
-      btn.className =
-        idx === this.choiceIndex
-          ? 'min-h-[44px] px-4 py-2 px-btn-primary font-bold text-sm'
-          : 'min-h-[44px] px-4 py-2 px-btn-secondary font-semibold text-sm';
-      btn.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        this.close();
-        choice.onSelect();
-      });
-      this.choicesEl.appendChild(btn);
-    });
-  }
-
   advance(): void {
     if (!this.active) return;
     if (this.charPos < this.fullText.length) {
       this.charPos = this.fullText.length;
-      this.textEl.textContent = this.fullText;
-      this.onLineFinished();
+      this.renderView();
       return;
     }
     if (this.queue.length > 0) {
@@ -191,10 +155,13 @@ export class DialogBox {
     this.queue = [];
     this.choices = undefined;
     this.onComplete = undefined;
+    this.reactRoot?.unmount();
+    this.reactRoot = null;
     this.root.classList.add('hidden');
   }
 
   dispose(): void {
+    this.close();
     this.root.remove();
   }
 }

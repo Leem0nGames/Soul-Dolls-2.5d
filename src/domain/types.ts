@@ -30,6 +30,8 @@ export interface StatStages {
 
 export type StatusCondition = 'none' | 'burn' | 'poison' | 'paralysis' | 'sleep';
 export type MoveCategory = 'physical' | 'special' | 'status';
+export type TimePhase = 'morning' | 'day' | 'dusk' | 'night';
+export type BattleWeather = 'none' | 'sun' | 'rain' | 'sandstorm' | 'snow';
 
 export interface MoveEffect {
   kind:
@@ -46,8 +48,11 @@ export interface MoveEffect {
     | 'protect'
     | 'leech'
     | 'confuse'
-    | 'fixed_damage';
+    | 'fixed_damage'
+    | 'weather';
   status?: Exclude<StatusCondition, 'none'>;
+  weather?: Exclude<BattleWeather, 'none'>;
+  weatherTurns?: number;
   chance?: number;
   target?: 'self' | 'enemy';
   stages?: Partial<StatStages>;
@@ -229,6 +234,12 @@ export interface BodyContainerDef {
   accentColor: string;
 }
 
+export interface VesselCalibration {
+  focusPart?: BodyPartName;
+  temperLevel?: number;
+  affinityOverride?: CreatureType;
+}
+
 export interface CapturedSoul {
   uid: string;
   speciesId: number;
@@ -274,10 +285,12 @@ export interface CreatureInstance {
   stats: Stats;
   currentHp: number;
   containerId?: string;
+  vesselCalibration?: VesselCalibration;
   bodyParts?: BodyPartsHp;
   status: StatusCondition;
   sleepTurns: number;
   abilityId?: string;
+  unlockedAbilities?: string[];
   heldItemId?: string;
   socketedCardId?: number;
   socketedCardBonuses?: Partial<Stats>;
@@ -377,6 +390,8 @@ export type CharacterRole =
   | 'merchant'
   | 'trainer'
   | 'leader'
+  | 'artisan'
+  | 'scholar'
   | 'npc';
 
 export type TileKind =
@@ -435,7 +450,15 @@ export type PropKind =
   | 'bookshelf'
   | 'house_plant'
   | 'stair_up'
-  | 'stair_down';
+  | 'stair_down'
+  | 'forge_hearth'
+  | 'anvil_bench'
+  | 'doll_worktable'
+  | 'mannequin_rack'
+  | 'blueprint_desk'
+  | 'skill_altar'
+  | 'training_dummy'
+  | 'lab_console';
 
 export type BuildingKind =
   | 'house_red'
@@ -443,7 +466,8 @@ export type BuildingKind =
   | 'lab'
   | 'center'
   | 'shop'
-  | 'arena_hall';
+  | 'arena_hall'
+  | 'workshop';
 
 export interface BuildingPlacement {
   kind: BuildingKind;
@@ -536,6 +560,7 @@ export interface EncounterEntry {
   minLevel: number;
   maxLevel: number;
   weight: number;
+  timeOfDay?: TimePhase[];
 }
 
 export interface EncounterTable {
@@ -629,6 +654,8 @@ export interface BattleSideState {
 export interface BattleState {
   isWild: boolean;
   biome?: BattleBiome;
+  weather: BattleWeather;
+  weatherTurns: number;
   trainer?: TrainerDef;
   player: BattleSideState;
   enemy: BattleSideState;
@@ -700,11 +727,21 @@ export type BattleEvent =
   | { type: 'learn_move_prompt'; partyIndex: number; moveId: string }
   | { type: 'evolution_ready'; partyIndex: number; targetSpeciesId: number }
   | { type: 'card_drop'; speciesId: number; creatureName: string }
+  | { type: 'weather_change'; weather: BattleWeather; turns: number }
+  | {
+      type: 'weather_tick';
+      weather: Exclude<BattleWeather, 'none'>;
+      target: 'player' | 'enemy';
+      damage: number;
+      hpAfter: number;
+      maxHp: number;
+    }
   | { type: 'run_success' }
   | { type: 'run_fail' }
   | { type: 'battle_end'; outcome: 'win' | 'lose' | 'caught' | 'ran'; rewardMoney: number };
 
 export type GraphicsQualitySetting = 'auto' | 'low' | 'medium' | 'high';
+export type CameraMode = 'fixed' | 'free_orbit';
 
 export interface GameOptions {
   volume: number;
@@ -722,6 +759,7 @@ export interface GameOptions {
   colorGrading: boolean;
   vignette: boolean;
   textSpeed: 'normal' | 'fast';
+  cameraMode: CameraMode;
 }
 
 export interface PlayStats {
@@ -731,12 +769,21 @@ export interface PlayStats {
   playTimeSec: number;
 }
 
+export interface HealPoint {
+  mapId: string;
+  x: number;
+  y: number;
+  dir: Direction;
+}
+
 export interface SaveData {
   version: number;
   mapId: string;
   playerX: number;
   playerY: number;
   playerDir: Direction;
+  lastHealPoint?: HealPoint;
+  worldClockMinutes?: number;
   money: number;
   repelSteps: number;
   party: CreatureInstance[];

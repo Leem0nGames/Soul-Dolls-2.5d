@@ -401,8 +401,8 @@ export class TutorialScene implements Scene {
     const factCards = step.facts
       .map(
         (fact) => `
-          <div class="px-card p-2 sm:p-2.5 flex items-start gap-2.5">
-            <span class="px-hud-box px-2 py-1 text-[10px] sm:text-xs font-extrabold tracking-wider shrink-0 whitespace-nowrap ${toneBadgeClasses(fact.tone)}">${fact.badge}</span>
+          <div class="px-panel px-card p-2 sm:p-2.5 flex items-start gap-2.5">
+            <span class="px-panel px-hud-box px-2 py-1 text-[10px] sm:text-xs font-extrabold tracking-wider shrink-0 whitespace-nowrap ${toneBadgeClasses(fact.tone)}">${fact.badge}</span>
             <div class="min-w-0">
               <div class="text-xs sm:text-sm font-bold text-porcelain leading-tight">${fact.label}</div>
               <div class="text-[11px] sm:text-xs text-bone-gray leading-snug mt-0.5">${fact.detail}</div>
@@ -414,20 +414,23 @@ export class TutorialScene implements Scene {
 
     this.overlay.innerHTML = `
       <header class="flex items-center justify-between gap-2 max-w-2xl w-full mx-auto">
-        <div class="px-hud-box px-3 py-1.5 flex items-center gap-2 min-w-0">
+        <div class="px-panel px-hud-box px-3 py-1.5 flex items-center gap-2 min-w-0">
           <span class="text-xs sm:text-sm font-extrabold text-resonant-gold truncate">${TUTORIAL_SPEAKER}</span>
           <span class="text-[10px] sm:text-xs font-bold tracking-wider uppercase text-ki-cyan hidden sm:inline">· ${ES.tutorial.headerBadge}</span>
         </div>
-        <button type="button" data-skip class="px-btn-secondary min-h-[44px] px-3.5 text-xs sm:text-sm font-bold whitespace-nowrap shrink-0">${ES.tutorial.skip}</button>
+        <button type="button" data-skip class="px-btn px-btn-secondary min-h-[44px] px-3.5 text-xs sm:text-sm font-bold whitespace-nowrap shrink-0">${ES.tutorial.skip}</button>
       </header>
 
-      <main class="px-panel-violet w-full max-w-2xl mx-auto p-3 sm:p-4 flex flex-col gap-2.5 my-auto">
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-ash-purple pb-2">
-          <div class="min-w-0">
-            <div class="inline-block px-hud-box px-2 py-0.5 text-[10px] font-bold tracking-widest uppercase text-ki-cyan border-ki-cyan">${step.badge}</div>
-            <h1 class="mt-1 text-sm sm:text-lg font-extrabold text-pale-gold leading-tight px-text-shadow">${step.title}</h1>
+      <main class="px-panel px-panel-violet px-panel-ornate w-full max-w-2xl mx-auto p-3 sm:p-4 flex flex-col gap-2.5 my-auto">
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="inline-block px-panel px-hud-box px-2 py-0.5 text-[10px] font-bold tracking-widest uppercase text-ki-cyan border-ki-cyan">${step.badge}</div>
+              <h1 class="mt-1 text-sm sm:text-lg font-extrabold text-pale-gold leading-tight px-text-shadow">${step.title}</h1>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">${stepSquares}</div>
           </div>
-          <div class="flex items-center gap-1.5 shrink-0">${stepSquares}</div>
+          <div class="px-divider mt-2" aria-hidden="true"></div>
         </div>
 
         <div class="touch-scroll grid grid-cols-1 ${step.facts.length === 4 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'} gap-2 max-h-[34dvh] sm:max-h-[42dvh] overflow-y-auto pr-0.5">
@@ -435,30 +438,27 @@ export class TutorialScene implements Scene {
         </div>
       </main>
 
-      <footer data-dialog-card class="px-panel w-full max-w-2xl mx-auto px-3.5 py-2.5 sm:p-4 cursor-pointer">
+      <footer data-dialog-card class="px-panel px-panel-ornate w-full max-w-2xl mx-auto px-3.5 py-2.5 sm:p-4 cursor-pointer">
         <div class="flex items-center justify-between gap-2 mb-1.5 pb-1.5 border-b border-ash-purple">
-          <span class="px-hud-box px-2.5 py-0.5 text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-resonant-gold">${TUTORIAL_SPEAKER}</span>
+          <span class="px-panel px-hud-box px-2.5 py-0.5 text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-resonant-gold">${TUTORIAL_SPEAKER}</span>
           <span class="text-[10px] text-bone-gray hidden sm:inline">${hint}</span>
         </div>
 
         <div data-dialog-text class="min-h-[2.6rem] sm:min-h-[3.2rem] text-[13px] sm:text-base leading-snug sm:leading-relaxed text-porcelain"></div>
 
-        <div class="mt-2.5 pt-2 border-t border-ash-purple flex items-center justify-between gap-2">
+        <div class="px-divider mt-2" aria-hidden="true"></div>
+        <div class="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
             data-prev
             ${isFirst ? 'disabled' : ''}
-            class="min-h-[44px] px-3.5 text-xs sm:text-sm font-bold whitespace-nowrap ${
-              isFirst
-                ? 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
-                : 'px-btn-secondary'
-            }"
+            class="px-btn px-btn-secondary min-h-[44px] px-3.5 text-xs sm:text-sm font-bold whitespace-nowrap"
           >${ES.tutorial.prev}</button>
 
           <button
             type="button"
             data-next
-            class="px-btn-primary min-h-[44px] px-4 text-xs sm:text-sm font-extrabold whitespace-nowrap"
+            class="px-btn px-btn-primary min-h-[44px] px-4 text-xs sm:text-sm font-extrabold whitespace-nowrap"
           >${isLast ? ES.tutorial.finish : ES.tutorial.next}</button>
         </div>
       </footer>

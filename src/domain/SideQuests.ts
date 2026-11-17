@@ -11,6 +11,13 @@ export interface CraftingBlueprintDef {
 }
 
 export const CRAFTING_BLUEPRINTS: Record<string, CraftingBlueprintDef> = {
+  plano_aprendiz: {
+    id: 'plano_aprendiz',
+    name: 'Plano: Cuerpo Madera Ki',
+    containerId: 'cuerpo_aprendiz',
+    craftGoldCost: 220,
+    description: 'Receta básica del taller para tallar un Cuerpo Madera Ki equilibrado.',
+  },
   plano_maga: {
     id: 'plano_maga',
     name: 'Plano: Armazón de Maga',
@@ -38,6 +45,20 @@ export const CRAFTING_BLUEPRINTS: Record<string, CraftingBlueprintDef> = {
     containerId: 'cuerpo_bruja',
     craftGoldCost: 600,
     description: 'Permite forjar el Maniquí Witch (afinidad Común/Umbra) en Cuerpos por 600 Oro.',
+  },
+  plano_asesina: {
+    id: 'plano_asesina',
+    name: 'Plano: Bastidor Céfiro',
+    containerId: 'cuerpo_asesina',
+    craftGoldCost: 680,
+    description: 'Plano de taller para ensamblar el Bastidor Céfiro de extremidades ágiles.',
+  },
+  plano_automata: {
+    id: 'plano_automata',
+    name: 'Plano: Autómata de Bronce',
+    containerId: 'cuerpo_automata',
+    craftGoldCost: 900,
+    description: 'Plano artesanal del Autómata de Bronce con núcleo Chispa/Roca/Común.',
   },
   plano_titan: {
     id: 'plano_titan',
@@ -186,9 +207,9 @@ export const SIDE_QUESTS: readonly SideQuestDef[] = [
       'Reúne 4 especies de SoulDolls capturadas y suma 5 victorias en combate para probar la forja avanzada.',
     giverNpcId: 'artesano_gael',
     giverName: 'Artesano Gael',
-    mapId: 'villa_origen',
+    mapId: 'taller_origen',
     offerDialogue:
-      'Soy el forjador del poblado. Si reúnes 4 SoulDolls distintas y alcanzas 5 victorias en batalla, compartiré contigo mi Oro de reserva y un Plano arcano de Maniquí Witch.',
+      'Soy Gael, el maestro forjador del Taller de Marionetas. Si reúnes 4 SoulDolls distintas y alcanzas 5 victorias en batalla, compartiré contigo mi Oro de reserva y el Plano del Maniquí Witch.',
     progressDialogue:
       'La forja exige experiencia real. Completa las 4 capturas y 5 victorias antes de regresar.',
     completeDialogue:

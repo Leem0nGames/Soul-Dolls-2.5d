@@ -10,9 +10,11 @@ import type {
   BodyPartRatios,
   BodyPartsHp,
   CreatureInstance,
+  CreatureType,
   MoveCategory,
   SaveData,
   Stats,
+  VesselCalibration,
 } from './types.ts';
 
 export const BODY_PART_ORDER: readonly BodyPartName[] = ['head', 'torso', 'arms', 'legs'];
@@ -38,7 +40,8 @@ export const BODY_PART_SHORT: Record<BodyPartName, string> = {
 export function computeBodyPartRatios(
   containerId: string,
   ivs: Stats,
-  evBonuses?: Partial<Stats>
+  evBonuses?: Partial<Stats>,
+  calibration?: VesselCalibration
 ): BodyPartRatios {
   const container = getBodyContainer(containerId);
   const evHp = evBonuses?.hp ?? 0;
@@ -49,10 +52,37 @@ export function computeBodyPartRatios(
   const evSpe = evBonuses?.spe ?? 0;
 
   // IVs (0..15) y EVs moldean el reparto anatómico del contenedor
-  const rawHead = Math.max(8, container.ratios.head + (ivs.spa - 7) * 0.35 + (ivs.spd - 7) * 0.15 + (evSpa + evSpd) * 0.2);
-  const rawTorso = Math.max(15, container.ratios.torso + (ivs.hp - 7) * 0.4 + (ivs.def - 7) * 0.25 + (evHp + evDef) * 0.25);
-  const rawArms = Math.max(8, container.ratios.arms + (ivs.atk - 7) * 0.35 + evAtk * 0.2);
-  const rawLegs = Math.max(8, container.ratios.legs + (ivs.spe - 7) * 0.35 + evSpe * 0.2);
+  const focus = calibration?.focusPart;
+  const rawHead = Math.max(
+    8,
+    container.ratios.head +
+      (ivs.spa - 7) * 0.35 +
+      (ivs.spd - 7) * 0.15 +
+      (evSpa + evSpd) * 0.2 +
+      (focus === 'head' ? 9 : focus ? -3 : 0)
+  );
+  const rawTorso = Math.max(
+    15,
+    container.ratios.torso +
+      (ivs.hp - 7) * 0.4 +
+      (ivs.def - 7) * 0.25 +
+      (evHp + evDef) * 0.25 +
+      (focus === 'torso' ? 9 : focus ? -3 : 0)
+  );
+  const rawArms = Math.max(
+    8,
+    container.ratios.arms +
+      (ivs.atk - 7) * 0.35 +
+      evAtk * 0.2 +
+      (focus === 'arms' ? 9 : focus ? -3 : 0)
+  );
+  const rawLegs = Math.max(
+    8,
+    container.ratios.legs +
+      (ivs.spe - 7) * 0.35 +
+      evSpe * 0.2 +
+      (focus === 'legs' ? 9 : focus ? -3 : 0)
+  );
 
   const sum = rawHead + rawTorso + rawArms + rawLegs;
   const head = Math.round((rawHead / sum) * 100);
@@ -68,10 +98,11 @@ export function buildBodyPartsHp(
   containerId: string,
   ivs: Stats,
   evBonuses?: Partial<Stats>,
-  targetCurrentHp?: number
+  targetCurrentHp?: number,
+  calibration?: VesselCalibration
 ): BodyPartsHp {
   const maxHp = Math.max(4, Math.floor(totalMaxHp));
-  const ratios = computeBodyPartRatios(containerId, ivs, evBonuses);
+  const ratios = computeBodyPartRatios(containerId, ivs, evBonuses, calibration);
 
   const headMax = Math.max(1, Math.floor((maxHp * ratios.head) / 100));
   const armsMax = Math.max(1, Math.floor((maxHp * ratios.arms) / 100));
@@ -145,7 +176,8 @@ export function ensureBodyParts(creature: CreatureInstance): BodyPartsHp {
       creature.containerId,
       creature.ivs,
       creature.evBonuses,
-      creature.currentHp
+      creature.currentHp,
+      creature.vesselCalibration
     );
   }
   return creature.bodyParts;
@@ -164,7 +196,8 @@ export function syncBodyPartsFull(creature: CreatureInstance): void {
     containerId,
     creature.ivs,
     creature.evBonuses,
-    creature.stats.hp
+    creature.stats.hp,
+    creature.vesselCalibration
   );
   creature.currentHp = creature.stats.hp;
 }
@@ -262,16 +295,56 @@ export function healBodyParts(creature: CreatureInstance, healAmount: number): n
 
 export function rebindCreatureContainer(
   creature: CreatureInstance,
-  newContainerId: string
+  newContainerId: string,
+  calibration?: VesselCalibration
 ): void {
   creature.containerId = getBodyContainer(newContainerId).id;
+  if (calibration !== undefined) {
+    creature.vesselCalibration = calibration;
+  }
   creature.bodyParts = buildBodyPartsHp(
     creature.stats.hp,
     creature.containerId,
     creature.ivs,
     creature.evBonuses,
-    creature.currentHp
+    creature.currentHp,
+    creature.vesselCalibration
   );
+}
+
+export interface ContainerAffinityMatch {
+  matchedTypes: CreatureType[];
+  effectiveAffinities: CreatureType[];
+  level: 'none' | 'partial' | 'full';
+  hasRuneOverride: boolean;
+}
+
+export function getContainerAffinityMatch(
+  creature: CreatureInstance,
+  containerIdOverride?: string,
+  calibrationOverride?: VesselCalibration
+): ContainerAffinityMatch {
+  const spec = getSpecies(creature.speciesId);
+  const cdef = getBodyContainer(containerIdOverride ?? creature.containerId ?? getDefaultContainerForTypes(spec.types));
+  const cal = calibrationOverride ?? creature.vesselCalibration;
+  const effectiveAffinities: CreatureType[] = [...cdef.affinityTypes];
+  const hasRuneOverride = Boolean(cal?.affinityOverride && !effectiveAffinities.includes(cal.affinityOverride));
+  if (cal?.affinityOverride && !effectiveAffinities.includes(cal.affinityOverride)) {
+    effectiveAffinities.push(cal.affinityOverride);
+  }
+  const matchedTypes = spec.types.filter((t) => effectiveAffinities.includes(t));
+  const level: 'none' | 'partial' | 'full' =
+    matchedTypes.length === 0
+      ? 'none'
+      : matchedTypes.length >= spec.types.length
+        ? 'full'
+        : 'partial';
+  return {
+    matchedTypes,
+    effectiveAffinities,
+    level,
+    hasRuneOverride,
+  };
 }
 
 export function ensureSaveVesselState(save: SaveData): void {

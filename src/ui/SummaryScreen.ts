@@ -11,6 +11,7 @@ import {
   socketCardOnCreature,
   unsocketCardFromCreature,
 } from '../domain/Cards.ts';
+import { BODY_PART_LABELS, getContainerAffinityMatch } from '../domain/BodyParts.ts';
 import { getCreatureDisplayName, xpForLevel } from '../domain/Creature.ts';
 import { equipHeldItem, getHeldItemDef, unequipHeldItem } from '../domain/HeldItems.ts';
 import type { BagSlot, CreatureInstance, SaveData } from '../domain/types.ts';
@@ -70,6 +71,33 @@ export class SummaryScreen extends ModalOverlay {
               }
           : null;
       const containerDef = getBodyContainer(creature.containerId ?? 'cuerpo_aprendiz');
+      const affinityMatch = getContainerAffinityMatch(creature);
+      const cal = creature.vesselCalibration;
+      const calBadges: string[] = [];
+      if (affinityMatch.level === 'full') {
+        calBadges.push(
+          '<span class="px-1.5 py-0.5 border border-neon-mint bg-forest-green text-warm-white text-[10px] font-bold">Resonancia Plena</span>'
+        );
+      } else if (affinityMatch.level === 'partial') {
+        calBadges.push(
+          '<span class="px-1.5 py-0.5 border border-ki-cyan bg-deep-abyss text-frosted-glass text-[10px] font-bold">Resonancia Parcial</span>'
+        );
+      }
+      if (cal?.temperLevel && cal.temperLevel > 0) {
+        calBadges.push(
+          `<span class="px-1.5 py-0.5 border border-resonant-gold bg-dark-oak text-pale-gold text-[10px] font-bold">Templado +${cal.temperLevel} (+${cal.temperLevel * 4}% PS)</span>`
+        );
+      }
+      if (cal?.focusPart) {
+        calBadges.push(
+          `<span class="px-1.5 py-0.5 border border-ash-purple bg-smoked-wood text-porcelain text-[10px] font-bold">Enfoque: ${BODY_PART_LABELS[cal.focusPart]}</span>`
+        );
+      }
+      if (cal?.affinityOverride) {
+        calBadges.push(
+          `<span class="px-1.5 py-0.5 border border-ethereal-orchid bg-royal-purple text-lavender-mist text-[10px] font-bold">Runa ${ES.types[cal.affinityOverride]}</span>`
+        );
+      }
       const dollProfile = getSpeciesDollProfile(
         creature.speciesId,
         spec.types,
@@ -101,7 +129,7 @@ export class SummaryScreen extends ModalOverlay {
         .map((slot) => {
           const m = getMove(slot.moveId);
           return `
-            <div class="px-card p-2">
+            <div class="px-panel px-card p-2">
               <div class="flex items-center justify-between gap-2">
                 <span class="font-bold text-sm text-porcelain">${m.name}</span>
                 ${renderTypeBadge(m.type, 'move')}
@@ -118,10 +146,10 @@ export class SummaryScreen extends ModalOverlay {
 
       const heldActionsHtml = heldConfig
         ? `<div class="flex gap-1.5 mt-2">
-             <button data-equip-open class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.equipItem}</button>
+             <button data-equip-open class="px-btn px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.equipItem}</button>
              ${
                heldItem
-                 ? `<button data-unequip class="px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.removeItem}</button>`
+                 ? `<button data-unequip class="px-btn px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.removeItem}</button>`
                  : ''
              }
            </div>`
@@ -140,7 +168,7 @@ export class SummaryScreen extends ModalOverlay {
                       .map((s) => {
                         const def = getItem(s.itemId);
                         return `
-                          <button data-pick-held="${def.id}" class="px-card w-full min-h-[48px] hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
+                          <button data-pick-held="${def.id}" class="px-panel px-card w-full min-h-[48px] hover:border-resonant-gold p-2 flex items-center gap-2.5 text-left">
                             <img src="${this.assets.getItemIconDataUrl(def.id)}" class="pixel-canvas w-7 h-7 object-contain shrink-0" alt="" />
                             <div class="min-w-0 flex-1">
                               <div class="font-bold text-xs text-porcelain">${def.name} <span class="text-resonant-gold">×${s.quantity}</span></div>
@@ -152,10 +180,13 @@ export class SummaryScreen extends ModalOverlay {
                       .join('');
               return `
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-3">
-                  <div class="px-panel w-full max-w-md max-h-[80dvh] flex flex-col p-3.5 text-porcelain">
-                    <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2">
-                      <span class="font-bold text-sm text-resonant-gold">${ES.summary.equipItem}</span>
-                      <button data-pick-cancel class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.back}</button>
+                  <div class="px-panel px-panel-ornate w-full max-w-md max-h-[80dvh] flex flex-col p-3.5 text-porcelain">
+                    <div class="mb-2">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="font-bold text-sm text-resonant-gold">◆ ${ES.summary.equipItem}</span>
+                        <button data-pick-cancel class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.back}</button>
+                      </div>
+                      <div class="px-divider mt-2" aria-hidden="true"></div>
                     </div>
                     <div class="touch-scroll overflow-y-auto space-y-1.5">${list}</div>
                   </div>
@@ -166,10 +197,10 @@ export class SummaryScreen extends ModalOverlay {
 
       const cardActionsHtml = cardConfig
         ? `<div class="flex gap-1.5 mt-2">
-             <button data-card-open class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.socketCard}</button>
+             <button data-card-open class="px-btn px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.socketCard}</button>
              ${
                socketedCard
-                 ? `<button data-card-remove class="px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.removeCard}</button>`
+                 ? `<button data-card-remove class="px-btn px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.removeCard}</button>`
                  : ''
              }
            </div>`
@@ -214,10 +245,13 @@ export class SummaryScreen extends ModalOverlay {
                       .join('');
               return `
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-3">
-                  <div class="px-panel w-full max-w-md max-h-[80dvh] flex flex-col border-ki-cyan p-3.5 text-porcelain">
-                    <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2">
-                      <span class="font-bold text-sm text-ki-cyan">${ES.summary.socketCard}</span>
-                      <button data-card-cancel class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.back}</button>
+                  <div class="px-panel px-panel-cyan px-panel-ornate w-full max-w-md max-h-[80dvh] flex flex-col p-3.5 text-porcelain">
+                    <div class="mb-2">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="font-bold text-sm text-ki-cyan">◆ ${ES.summary.socketCard}</span>
+                        <button data-card-cancel class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.summary.back}</button>
+                      </div>
+                      <div class="px-divider mt-2" aria-hidden="true"></div>
                     </div>
                     <div class="touch-scroll overflow-y-auto space-y-1.5">${list}</div>
                   </div>
@@ -228,14 +262,17 @@ export class SummaryScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3">
-            <div class="text-base font-bold text-resonant-gold">${ES.summary.title}</div>
-            <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.summary.back}</button>
+          <div class="mb-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-base font-bold text-resonant-gold">${ES.summary.title}</div>
+              <button data-close class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.summary.back}</button>
+            </div>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="flex flex-col gap-3">
-              <div class="px-card flex items-center gap-3 p-3">
+              <div class="px-panel px-card flex items-center gap-3 p-3">
                 <div data-anim-portrait class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center"></div>
                 <div>
                   <div class="text-lg font-bold">${getCreatureDisplayName(creature)}</div>
@@ -246,10 +283,15 @@ export class SummaryScreen extends ModalOverlay {
                 </div>
               </div>
 
-              <div class="px-card p-3 text-xs space-y-2">
+              <div class="px-panel px-card p-3 text-xs space-y-2">
                 <div>
                   <div class="font-bold uppercase tracking-wider text-bone-gray">Cuerpo Contenedor</div>
                   <div class="mt-0.5 font-bold text-resonant-gold">${containerDef.name}</div>
+                  ${
+                    calBadges.length > 0
+                      ? `<div class="mt-1 flex flex-wrap gap-1">${calBadges.join('')}</div>`
+                      : ''
+                  }
                   <div class="mt-1.5 space-y-1.5">${partsHtml}</div>
                 </div>
                 <div class="pt-2 border-t border-ash-purple">
@@ -302,19 +344,20 @@ export class SummaryScreen extends ModalOverlay {
                 </div>
               </div>
 
-              <div class="px-card p-3 text-xs space-y-1.5 tabular-nums">
-                <div class="flex justify-between"><span>${ES.party.hp} Total</span><span>${creature.currentHp} / ${creature.stats.hp}${socketedCard?.bonuses.hp ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.hp})</em>` : ''}</span></div>
+              <div class="px-panel px-card p-3 text-xs space-y-1.5 tabular-nums">
+                <div class="flex justify-between"><span>${ES.party.hp} Total</span><span>${creature.currentHp} / ${creature.stats.hp}${socketedCard?.bonuses.hp ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.hp})</em>` : ''}${creature.evBonuses?.hp ? ` <em class="text-neon-mint not-italic">+${creature.evBonuses.hp} EV</em>` : ''}</span></div>
                 <div class="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 border-t border-ash-purple">
-                  <div class="flex justify-between"><span>${ES.stats.atk}</span><span>${creature.stats.atk}${socketedCard?.bonuses.atk ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.atk})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.atk})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.def}</span><span>${creature.stats.def}${socketedCard?.bonuses.def ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.def})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.def})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.spa}</span><span>${creature.stats.spa}${socketedCard?.bonuses.spa ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spa})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.spa})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.spd}</span><span>${creature.stats.spd}${socketedCard?.bonuses.spd ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spd})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.spd})</em></span></div>
-                  <div class="flex justify-between"><span>${ES.stats.spe}</span><span>${creature.stats.spe}${socketedCard?.bonuses.spe ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spe})</em>` : ''} <em class="text-bone-gray">(IV ${creature.ivs.spe})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.atk}</span><span>${creature.stats.atk}${socketedCard?.bonuses.atk ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.atk})</em>` : ''} <em class="text-bone-gray not-italic">(IV ${creature.ivs.atk}${creature.evBonuses?.atk ? `·+${creature.evBonuses.atk}EV` : ''})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.def}</span><span>${creature.stats.def}${socketedCard?.bonuses.def ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.def})</em>` : ''} <em class="text-bone-gray not-italic">(IV ${creature.ivs.def}${creature.evBonuses?.def ? `·+${creature.evBonuses.def}EV` : ''})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.spa}</span><span>${creature.stats.spa}${socketedCard?.bonuses.spa ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spa})</em>` : ''} <em class="text-bone-gray not-italic">(IV ${creature.ivs.spa}${creature.evBonuses?.spa ? `·+${creature.evBonuses.spa}EV` : ''})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.spd}</span><span>${creature.stats.spd}${socketedCard?.bonuses.spd ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spd})</em>` : ''} <em class="text-bone-gray not-italic">(IV ${creature.ivs.spd}${creature.evBonuses?.spd ? `·+${creature.evBonuses.spd}EV` : ''})</em></span></div>
+                  <div class="flex justify-between"><span>${ES.stats.spe}</span><span>${creature.stats.spe}${socketedCard?.bonuses.spe ? ` <em data-stat-boost class="text-ki-cyan not-italic">(+${socketedCard.bonuses.spe})</em>` : ''} <em class="text-bone-gray not-italic">(IV ${creature.ivs.spe}${creature.evBonuses?.spe ? `·+${creature.evBonuses.spe}EV` : ''})</em></span></div>
                 </div>
                 <div class="pt-1 border-t border-ash-purple">
                   <div class="flex justify-between mb-1"><span>${ES.summary.xp}</span><span>${creature.xp} / ${nextLvXp}</span></div>
-                  <div class="h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
+                  <div class="relative h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden shadow-[inset_0_1px_0_#050505]">
                     <div class="h-full bg-ki-cyan" style="width:${expPct}%"></div>
+                    <div class="pointer-events-none absolute inset-0 px-meter-segmented"></div>
                   </div>
                 </div>
               </div>

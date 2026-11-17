@@ -2,6 +2,7 @@ import { getBodyContainer, getSpeciesDollProfile } from '../data/containers.ts';
 import { getSpecies } from '../data/species.ts';
 import { getCreatureAbilityDef } from '../domain/Abilities.ts';
 import { formatCardBonuses, getCardDef, getEffectiveCardDef } from '../domain/Cards.ts';
+import { getContainerAffinityMatch } from '../domain/BodyParts.ts';
 import { getCreatureDisplayName } from '../domain/Creature.ts';
 import { getHeldItemDef } from '../domain/HeldItems.ts';
 import { SOULDOLL_PORTRAIT_PLACEHOLDER_PATH } from '../domain/MeleeStabTiming.ts';
@@ -59,6 +60,20 @@ export class PartyScreen extends ModalOverlay {
                   spec.weapon
                 );
                 const containerDef = getBodyContainer(c.containerId ?? 'cuerpo_aprendiz');
+                const affinityMatch = getContainerAffinityMatch(c);
+                const cal = c.vesselCalibration;
+                const containerTags: string[] = [];
+                if (cal?.temperLevel && cal.temperLevel > 0) {
+                  containerTags.push(`+${cal.temperLevel}`);
+                }
+                if (cal?.affinityOverride) {
+                  containerTags.push(`Runa ${ES.types[cal.affinityOverride]}`);
+                }
+                if (affinityMatch.level === 'full') {
+                  containerTags.push('Resonancia ★');
+                } else if (affinityMatch.level === 'partial') {
+                  containerTags.push('Resonancia');
+                }
                 const ability = getCreatureAbilityDef(c);
                 const heldItem = getHeldItemDef(c);
                 const socketedCard =
@@ -99,15 +114,15 @@ export class PartyScreen extends ModalOverlay {
                 const actionButtonsHtml =
                   mode.kind === 'manage'
                     ? `
-                      <button data-summary="${idx}" class="px-btn-secondary flex-1 min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${ES.party.summary}</button>
+                      <button data-summary="${idx}" class="px-btn px-btn-secondary flex-1 min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${ES.party.summary}</button>
                       ${
                         idx > 0
-                          ? `<button data-lead="${idx}" class="px-btn-arcane min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${ES.party.makeLead}</button>`
+                          ? `<button data-lead="${idx}" class="px-btn px-btn-arcane min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${ES.party.makeLead}</button>`
                           : ''
                       }
                     `
                     : mode.kind === 'switch'
-                      ? `<button data-pick="${idx}" class="${
+                      ? `<button data-pick="${idx}" class="px-btn ${
                           isFainted || isActiveInBattle ? 'px-btn-secondary' : 'px-btn-success'
                         } w-full min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${
                           isFainted
@@ -116,7 +131,7 @@ export class PartyScreen extends ModalOverlay {
                               ? ES.party.inBattle
                               : ES.party.sendOut
                         }</button>`
-                      : `<button data-pick="${idx}" class="px-btn-success w-full min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${ES.party.useItem}</button>`;
+                      : `<button data-pick="${idx}" class="px-btn px-btn-success w-full min-h-[44px] px-4 py-2 text-xs font-bold whitespace-nowrap">${ES.party.useItem}</button>`;
 
                 const heldLine = heldItem
                   ? `<div class="flex items-center gap-1.5 min-w-0">
@@ -126,15 +141,15 @@ export class PartyScreen extends ModalOverlay {
                   : `<span class="text-bone-gray">${ES.summary.noHeldItem}</span>`;
 
                 return `
-                  <article class="px-card ${
+                  <article class="px-panel px-card ${
                     isFainted
-                      ? 'border-rift-crimson bg-dried-blood/40'
+                      ? 'border-rift-crimson bg-dried-blood'
                       : isActiveInBattle || isLead
                         ? 'border-old-bronze bg-crypt-ink'
                         : 'border-ash-purple bg-crypt-ink'
                   } flex flex-col overflow-hidden">
                     <!-- Instagram-style post author bar -->
-                    <header class="flex items-center justify-between gap-2.5 px-3 py-2.5 border-b border-ash-purple bg-smoked-wood/60">
+                    <header class="flex items-center justify-between gap-2.5 px-3 py-2.5 border-b border-ash-purple bg-smoked-wood">
                       <div class="flex items-center gap-2.5 min-w-0">
                         <img
                           src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}"
@@ -154,8 +169,8 @@ export class PartyScreen extends ModalOverlay {
                       </div>
                     </header>
 
-                    <!-- 1:1 Square Portrait Post Media -->
-                    <div class="relative aspect-square w-full overflow-hidden border-b border-ash-purple bg-gradient-to-b from-smoked-wood to-crypt-ink">
+                    <!-- 1:1 Square Portrait Post Media (Flat Shading) -->
+                    <div class="relative aspect-square w-full overflow-hidden border-b border-ash-purple bg-smoked-wood">
                       <img
                         src="${SOULDOLL_PORTRAIT_PLACEHOLDER_PATH}"
                         referrerPolicy="no-referrer"
@@ -163,7 +178,7 @@ export class PartyScreen extends ModalOverlay {
                         class="w-full h-full object-cover object-top block"
                         alt="Retrato de ${escapeHtml(displayName)}"
                       />
-                      <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#0B080E]/95 via-[#0B080E]/55 to-transparent px-3 pt-8 pb-2.5 flex items-end justify-between gap-2">
+                      <div class="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-ash-purple bg-abyss-ink px-3 py-2 flex items-center justify-between gap-2">
                         <div class="flex items-center gap-1 flex-wrap">${renderTypeBadges(spec.types, 'sm')}</div>
                         <span class="text-[11px] font-bold text-frosted-glass px-text-shadow truncate">${escapeHtml(dollProfile.weaponName)}</span>
                       </div>
@@ -176,8 +191,9 @@ export class PartyScreen extends ModalOverlay {
                           <span class="font-bold text-porcelain">${ES.party.hp} ${c.currentHp}/${c.stats.hp} <span class="text-bone-gray font-normal">(${pct}%)</span></span>
                           ${statusText}
                         </div>
-                        <div class="h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden">
+                        <div class="relative h-2.5 w-full rounded-none border border-ash-purple bg-ui-ink overflow-hidden shadow-[inset_0_1px_0_#050505]">
                           <div class="h-full ${barColor}" style="width:${pct}%"></div>
+                          <div class="pointer-events-none absolute inset-0 px-meter-segmented"></div>
                         </div>
                       </div>
 
@@ -211,7 +227,13 @@ export class PartyScreen extends ModalOverlay {
                         </div>
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-bone-gray shrink-0">Contenedor</span>
-                          <span class="text-porcelain truncate">${escapeHtml(containerDef.name)}</span>
+                          <span class="text-porcelain truncate">
+                            ${escapeHtml(containerDef.name)}${
+                              containerTags.length > 0
+                                ? ` <em class="not-italic text-ki-cyan">(${escapeHtml(containerTags.join(' · '))})</em>`
+                                : ''
+                            }
+                          </span>
                         </div>
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-bone-gray shrink-0">${ES.summary.heldItem}</span>
@@ -238,22 +260,25 @@ export class PartyScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-5xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-4 sm:p-5 text-porcelain">
-          <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ash-purple pb-3 mb-4">
-            <div class="min-w-0">
-              <div class="text-base sm:text-lg font-bold text-resonant-gold">${
-                mode.kind === 'switch' ? ES.party.chooseSwitch : ES.party.title
-              }</div>
-              <div class="text-xs text-bone-gray tabular-nums">
-                ${ES.party.subtitle} · ${party.length}/6 en formación · ${aliveCount} listas${
-                  party.length > 0 ? ` · ${ES.party.lv} prom. ${avgLevel}` : ''
-                }
+          <div class="mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-base sm:text-lg font-bold text-resonant-gold">${
+                  mode.kind === 'switch' ? ES.party.chooseSwitch : ES.party.title
+                }</div>
+                <div class="text-xs text-bone-gray tabular-nums">
+                  ${ES.party.subtitle} · ${party.length}/6 en formación · ${aliveCount} listas${
+                    party.length > 0 ? ` · ${ES.party.lv} prom. ${avgLevel}` : ''
+                  }
+                </div>
               </div>
+              ${
+                canCancel
+                  ? `<button data-close class="px-btn px-btn-secondary min-h-[44px] px-4 py-2 text-sm font-bold whitespace-nowrap shrink-0">${ES.party.back}</button>`
+                  : ''
+              }
             </div>
-            ${
-              canCancel
-                ? `<button data-close class="px-btn-secondary min-h-[44px] px-4 py-2 text-sm font-bold whitespace-nowrap shrink-0">${ES.party.back}</button>`
-                : ''
-            }
+            <div class="px-divider mt-3" aria-hidden="true"></div>
           </div>
           <div data-msg class="mb-2 text-xs text-coral-red min-h-[1rem]"></div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cardsHtml}</div>

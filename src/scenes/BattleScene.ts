@@ -23,6 +23,7 @@ import { getCreatureDisplayName } from '../domain/Creature.ts';
 import { checkLevelEvolution } from '../domain/Evolution.ts';
 import { replaceCreatureMove } from '../domain/Experience.ts';
 import { addCapturedCreature } from '../domain/Storage.ts';
+import { getTimePhase } from '../domain/TimeOfDay.ts';
 import type {
   BattleAction,
   BattleBiome,
@@ -48,14 +49,21 @@ import { DisposableRegistry } from '../engine/Disposables.ts';
 import { FxSystem } from '../engine/FxSystem.ts';
 import {
   createMeleeStabMaterial,
+  loadAttackSheetTexture,
   loadMeleeStabTexture,
   type MeleeStabMaterialHandle,
 } from '../engine/MeleeStabSprite.ts';
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { TweenRunner } from '../engine/Tween.ts';
 import {
-  evaluateMeleeStabPhase,
+  evaluateAttackAnimPhase,
+  getSpeciesAttackSheetConfig,
+  MELEE_STAB_COLS,
+  MELEE_STAB_ROWS,
+  MELEE_STAB_SHEET_PATH,
   MELEE_STAB_TOTAL_DURATION,
+  MELEE_STAB_TOTAL_FRAMES,
+  SOULDOLL_15_ATTACK_SHEET,
 } from '../domain/MeleeStabTiming.ts';
 import { hexToNumber, PALETTE, TYPE_PALETTES } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
@@ -94,6 +102,8 @@ export class BattleScene implements Scene {
   private playerMatHandle: BattleSpriteMaterialHandle;
   private enemyMatHandle: BattleSpriteMaterialHandle;
   private meleeStabMatHandle: MeleeStabMaterialHandle;
+  private attackTextures = new Map<string, THREE.Texture>();
+  private activeAttackSheetPath = MELEE_STAB_SHEET_PATH;
   private playerRig: SoulDollIdleRig;
   private enemyRig: SoulDollIdleRig;
   private unsubCreatureLoad: (() => void) | null = null;
@@ -141,7 +151,8 @@ export class BattleScene implements Scene {
       game.saveData.bag,
       game.rng,
       params.trainer,
-      this.biome
+      this.biome,
+      { timePhase: getTimePhase(game.saveData.worldClockMinutes) }
     );
 
     this.stage = new BattleStage(this.scene, game.assets, this.biome, this.isBoss);
@@ -268,15 +279,30 @@ export class BattleScene implements Scene {
     const meleeStabGeo = createBottomPivotPlaneGeometry(1, 1);
     const meleeStabTex = loadMeleeStabTexture((loaded) => {
       if (!this.exited) {
-        this.meleeStabMatHandle.setTexture(loaded);
+        this.attackTextures.set(MELEE_STAB_SHEET_PATH, loaded);
+        if (this.activeAttackSheetPath === MELEE_STAB_SHEET_PATH) {
+          this.meleeStabMatHandle.setTexture(loaded);
+        }
       }
     });
+    this.attackTextures.set(MELEE_STAB_SHEET_PATH, meleeStabTex);
+    const souldoll15Tex = loadAttackSheetTexture(SOULDOLL_15_ATTACK_SHEET.sheetPath, (loaded) => {
+      if (!this.exited) {
+        this.attackTextures.set(SOULDOLL_15_ATTACK_SHEET.sheetPath, loaded);
+        if (this.activeAttackSheetPath === SOULDOLL_15_ATTACK_SHEET.sheetPath) {
+          this.meleeStabMatHandle.setTexture(loaded);
+        }
+      }
+    });
+    this.attackTextures.set(SOULDOLL_15_ATTACK_SHEET.sheetPath, souldoll15Tex);
+
     this.meleeStabMatHandle = createMeleeStabMaterial(meleeStabTex);
     this.meleeStabMesh = new THREE.Mesh(meleeStabGeo, this.meleeStabMatHandle.material);
     this.meleeStabMesh.visible = false;
     this.meleeStabMesh.renderOrder = 3;
     this.disposables.track(meleeStabGeo);
     this.disposables.track(meleeStabTex);
+    this.disposables.track(souldoll15Tex);
     this.disposables.track(this.meleeStabMatHandle.material);
 
     this.scene.add(this.playerMesh, this.enemyMesh, this.meleeStabMesh, this.capsuleMesh);
@@ -532,6 +558,10 @@ export class BattleScene implements Scene {
 
   private refreshHud(): void {
     this.game.battleHud.updateSoulDust(getSoulDust(this.game.saveData));
+    this.game.battleHud.updateWeather(
+      this.engine.state.weather,
+      this.engine.state.weatherTurns
+    );
     this.game.battleHud.updateBars(
       this.engine.getActive('player'),
       this.engine.getActive('enemy'),
@@ -710,6 +740,21 @@ export class BattleScene implements Scene {
           let dashDustFired = false;
           actorRig.injectImpulse(isPlayer ? 0.34 : -0.34, 0.36, 0.14);
 
+          const attacker = this.engine.getActive(ev.side);
+          const customAttack = getSpeciesAttackSheetConfig(attacker.speciesId);
+          const attackSheetPath = customAttack
+            ? customAttack.sheetPath
+            : MELEE_STAB_SHEET_PATH;
+          this.activeAttackSheetPath = attackSheetPath;
+          const activeAttackTex = this.attackTextures.get(attackSheetPath);
+          if (activeAttackTex) {
+            this.meleeStabMatHandle.setTexture(activeAttackTex);
+          }
+
+          const totalAnimDuration = customAttack
+            ? customAttack.totalDuration
+            : MELEE_STAB_TOTAL_DURATION;
+
           const typePal = TYPE_PALETTES[move.type];
           const elemAccentHex = typePal.accent;
           const elemBaseHex = typePal.base;
@@ -717,14 +762,19 @@ export class BattleScene implements Scene {
           const elemNum = hexToNumber(elemBaseHex);
           const elemAccentNum = hexToNumber(elemAccentHex);
           const elemLightNum = hexToNumber(elemLightHex);
-          const stabScale = targetScale * 1.18;
+          const stabHeight = customAttack
+            ? targetScale * customAttack.heightScale
+            : targetScale * 1.18;
+          const stabWidth = customAttack
+            ? stabHeight * customAttack.cellAspect
+            : stabHeight;
           const targetGroundedY = this.getGroundedY(targetSide);
 
           this.tweens.start(
-            MELEE_STAB_TOTAL_DURATION,
+            totalAnimDuration,
             (t) => {
-              const elapsed = t * MELEE_STAB_TOTAL_DURATION;
-              const st = evaluateMeleeStabPhase(elapsed);
+              const elapsed = t * totalAnimDuration;
+              const st = evaluateAttackAnimPhase(elapsed, customAttack);
 
               if (st.phase === 'advance') {
                 this.meleeStabMesh.visible = false;
@@ -760,7 +810,7 @@ export class BattleScene implements Scene {
                 mesh.visible = false;
                 attackerMatHandle.setOpacity(0);
 
-                // Position directly to the right side of the opponent from the camera's viewpoint
+                // Compute camera-relative horizontal flank direction around defender
                 _stabFwd.set(
                   target.x - this.game.cameraRig.camera.position.x,
                   0,
@@ -770,19 +820,43 @@ export class BattleScene implements Scene {
                 _stabFwd.normalize();
                 _stabRight.crossVectors(_stabFwd, _worldUp).normalize();
 
-                const rightOffset = targetScale * 0.44;
+                // Custom SoulDoll #15 faces right unflipped (attack from left flank when player, right flank flipped when enemy)
+                const attackFromLeft = customAttack ? isPlayer : false;
+                const flankSign = attackFromLeft ? -1 : 1;
+                const flipX = !attackFromLeft;
+                const flankOffset = customAttack ? targetScale * 0.56 : targetScale * 0.44;
                 this.meleeStabMesh.position.set(
-                  target.x + _stabRight.x * rightOffset - _stabFwd.x * 0.08,
+                  target.x + _stabRight.x * (flankOffset * flankSign) - _stabFwd.x * 0.08,
                   targetGroundedY,
-                  target.z + _stabRight.z * rightOffset - _stabFwd.z * 0.08
+                  target.z + _stabRight.z * (flankOffset * flankSign) - _stabFwd.z * 0.08
                 );
-                this.meleeStabMesh.scale.setScalar(stabScale);
+                this.meleeStabMesh.scale.set(stabWidth, stabHeight, 1);
                 this.meleeStabMesh.visible = true;
 
-                // Mirror horizontally so standing to the right of the enemy thrusts left into them
-                this.meleeStabMatHandle.setFrame(st.frameIndex, true);
+                if (customAttack) {
+                  this.meleeStabMatHandle.setFrame(
+                    st.frameIndex,
+                    flipX,
+                    customAttack.cols,
+                    customAttack.rows,
+                    customAttack.totalFrames
+                  );
+                  this.meleeStabMatHandle.setElementEffect(
+                    elemAccentHex,
+                    st.elementGlow,
+                    customAttack.elementTintStrength
+                  );
+                } else {
+                  this.meleeStabMatHandle.setFrame(
+                    st.frameIndex,
+                    true,
+                    MELEE_STAB_COLS,
+                    MELEE_STAB_ROWS,
+                    MELEE_STAB_TOTAL_FRAMES
+                  );
+                  this.meleeStabMatHandle.setElementEffect(elemAccentHex, st.elementGlow, 1);
+                }
                 this.meleeStabMatHandle.setOpacity(st.stabOpacity);
-                this.meleeStabMatHandle.setElementEffect(elemAccentHex, st.elementGlow);
 
                 if (st.impactTriggered && !impactFired) {
                   impactFired = true;
@@ -815,16 +889,17 @@ export class BattleScene implements Scene {
                   this.fx.flash(`rgba(${r}, ${g}, ${b}, 0.30)`, 120);
 
                   // Elemental VFX + stab spark burst & expanding ring right where the blade strikes
+                  const tipDir = attackFromLeft ? 1 : -1;
                   _stabTipPos.set(
-                    this.meleeStabMesh.position.x - _stabRight.x * (stabScale * 0.25),
+                    this.meleeStabMesh.position.x + _stabRight.x * (stabWidth * 0.28 * tipDir),
                     target.y + targetScale * 0.52,
-                    this.meleeStabMesh.position.z - _stabRight.z * (stabScale * 0.25)
+                    this.meleeStabMesh.position.z + _stabRight.z * (stabWidth * 0.28 * tipDir)
                   );
                   this.fx.playTypeMove(move.type, _stabTipPos, _toPos, 'physical', {
                     power: move.power,
                     fromGroundY: targetGroundedY,
                     toGroundY: target.y,
-                    fromScale: stabScale,
+                    fromScale: stabHeight,
                     toScale: targetScale,
                   });
                   this.fx.burst(_toPos, {
@@ -1446,6 +1521,47 @@ export class BattleScene implements Scene {
         done();
         break;
       }
+
+      case 'weather_change': {
+        this.game.battleHud.updateWeather(ev.weather, ev.turns);
+        if (ev.weather !== 'none') {
+          const weatherColor =
+            ev.weather === 'sun'
+              ? PALETTE.resonantGold
+              : ev.weather === 'rain'
+                ? PALETTE.kiCyan
+                : ev.weather === 'sandstorm'
+                  ? PALETTE.paleGold
+                  : PALETTE.iceCyan;
+          const enemyFx = computeVfxScaleMetrics(this.enemyScale).silhouette;
+          _toPos.set(
+            ENEMY_STATION_POS.x,
+            ENEMY_STATION_POS.y + this.enemyScale * 0.45,
+            ENEMY_STATION_POS.z
+          );
+          this.fx.ring(_toPos, {
+            count: 16,
+            radius: 0.45 * enemyFx,
+            speed: 1.4 * enemyFx,
+            life: 0.48,
+            sizeStart: 0.24 * enemyFx,
+            sizeEnd: 0.04 * enemyFx,
+            colorHex: hexToNumber(weatherColor),
+            vy: ev.weather === 'sun' ? 1.2 * enemyFx : -0.6 * enemyFx,
+          });
+        }
+        done();
+        break;
+      }
+
+      case 'weather_tick':
+        this.refreshHud();
+        this.game.bus.emit('audio:sfx', { sfx: 'hit_weak' });
+        if (ev.damage > 0) {
+          this.spawnFloatingDamage(ev.target, `-${ev.damage}`, 'resist');
+        }
+        done();
+        break;
 
       case 'run_success':
       case 'run_fail':

@@ -17,6 +17,8 @@ export class Synth {
   private nextNoteAt = 0;
   private timerId: number | null = null;
   private unlocked = false;
+  private lastSfxAt = new Map<SfxId, number>();
+  private readonly sfxCooldownSec = 0.035;
 
   unlock(): void {
     if (typeof window === 'undefined') return;
@@ -107,6 +109,11 @@ export class Synth {
       return;
     }
     const now = this.ctx.currentTime;
+    const prev = this.lastSfxAt.get(sfx);
+    if (prev !== undefined && now - prev < this.sfxCooldownSec) {
+      return;
+    }
+    this.lastSfxAt.set(sfx, now);
     switch (sfx) {
       case 'menu':
         this.tone(660, 0.05, 'square', now, 0.35);
@@ -292,6 +299,7 @@ export class Synth {
 
   dispose(): void {
     this.stopMusic();
+    this.lastSfxAt.clear();
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;

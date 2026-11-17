@@ -24,14 +24,17 @@ function buildVillaOrigen() {
   // Village central plateau at height 2 (+ south-east cottage plot & yard)
   fillRect(z, 12, 14, 24, 22, '.', 2);
   fillRect(z, 28, 30, 9, 7, '.', 2);
-  // Village plaza cobble & cottage walkway
+  // Village plaza cobble, lab entrance walkway & cottage walkway
   fillRect(z, 17, 20, 14, 11, '=', 2);
+  fillRect(z, 18, 18, 3, 2, '=', 2);
   fillRect(z, 29, 31, 4, 5, '=', 2);
   // Pond on east side
   fillRect(z, 31, 24, 5, 5, '~', 1);
   // Flower meadows
   fillRect(z, 13, 25, 3, 4, '*', 2);
-  fillRect(z, 31, 16, 4, 3, '*', 2);
+  fillRect(z, 33, 16, 3, 3, '*', 2);
+  // Workshop cobble courtyard
+  fillRect(z, 29, 17, 4, 3, '=', 2);
 
   // North exit road to Ruta 1
   carveRoad(z, 23, 0, 23, 21, 2, '=', 2);
@@ -70,7 +73,7 @@ export const MAP_VILLA_ORIGEN: MapDef = {
   buildings: [
     { kind: 'lab', x: 17, z: 14, width: 5, depth: 4, facing: 'down' },
     { kind: 'house_red', x: 13, z: 19, width: 4, depth: 3, facing: 'down' },
-    { kind: 'house_blue', x: 29, z: 14, width: 4, depth: 3, facing: 'down' },
+    { kind: 'workshop', x: 29, z: 14, width: 4, depth: 3, facing: 'down' },
     { kind: 'house_blue', x: 30, z: 31, width: 3, depth: 3, facing: 'down' },
   ],
   props: [
@@ -109,6 +112,33 @@ export const MAP_VILLA_ORIGEN: MapDef = {
     { x: 23, y: 0, targetMap: 'ruta_1', targetX: 23, targetY: 53, dir: 'up' },
     { x: 24, y: 0, targetMap: 'ruta_1', targetX: 24, targetY: 53, dir: 'up' },
     {
+      x: 19,
+      y: 18,
+      targetMap: 'laboratorio_origen',
+      targetX: 8,
+      targetY: 10,
+      dir: 'up',
+      doorStyle: 'building',
+    },
+    {
+      x: 30,
+      y: 17,
+      targetMap: 'taller_origen',
+      targetX: 8,
+      targetY: 10,
+      dir: 'up',
+      doorStyle: 'building',
+    },
+    {
+      x: 31,
+      y: 17,
+      targetMap: 'taller_origen',
+      targetX: 9,
+      targetY: 10,
+      dir: 'up',
+      doorStyle: 'building',
+    },
+    {
       x: 31,
       y: 34,
       targetMap: 'casa_villa_pb',
@@ -121,58 +151,14 @@ export const MAP_VILLA_ORIGEN: MapDef = {
   ],
   npcs: [
     {
-      id: 'prof_robledo',
-      name: 'Prof. Robledo',
-      role: 'professor',
-      x: 19,
-      y: 19,
-      dir: 'down',
-      dialogKey: 'prof_welcome',
-      healOnTalk: true,
-      lookAtPlayerAfterTalk: true,
-    },
-    {
       id: 'guia_villa',
       name: 'Guía Lía',
       role: 'trainer',
       x: 24,
       y: 24,
       dir: 'down',
-      dialogKey: 'guide_remind_starter',
+      dialogKey: 'guide_remind_prof',
       lookAtPlayerAfterTalk: true,
-    },
-    {
-      id: 'starter_0',
-      name: 'Soulpot Brasa',
-      role: 'npc',
-      x: 25,
-      y: 19,
-      dir: 'down',
-      dialogKey: 'starter_prompt',
-      starterIndex: 0,
-      flagHidden: 'starter_chosen',
-    },
-    {
-      id: 'starter_1',
-      name: 'Soulpot Marea',
-      role: 'npc',
-      x: 26,
-      y: 19,
-      dir: 'down',
-      dialogKey: 'starter_prompt',
-      starterIndex: 1,
-      flagHidden: 'starter_chosen',
-    },
-    {
-      id: 'starter_2',
-      name: 'Soulpot Flora',
-      role: 'npc',
-      x: 27,
-      y: 19,
-      dir: 'down',
-      dialogKey: 'starter_prompt',
-      starterIndex: 2,
-      flagHidden: 'starter_chosen',
     },
     {
       id: 'aldeano_origen',
@@ -195,23 +181,13 @@ export const MAP_VILLA_ORIGEN: MapDef = {
       lookAtPlayerAfterTalk: true,
     },
     {
-      id: 'artesano_gael',
-      name: 'Artesano Gael',
-      role: 'npc',
-      x: 28,
-      y: 26,
+      id: 'aprendiz_taller',
+      name: 'Aprendiz Kael',
+      role: 'artisan',
+      x: 33,
+      y: 18,
       dir: 'left',
-      dialogKey: 'artesano_gael',
-      patrol: {
-        waypoints: [
-          { x: 28, y: 26 },
-          { x: 25, y: 26 },
-          { x: 25, y: 28 },
-          { x: 28, y: 28 },
-        ],
-        speed: 1.4,
-        pauseSec: 1.5,
-      },
+      dialogKey: 'aprendiz_taller',
       lookAtPlayerAfterTalk: true,
     },
     {
@@ -226,5 +202,8 @@ export const MAP_VILLA_ORIGEN: MapDef = {
       lookAtPlayerAfterTalk: true,
     },
   ],
-  signs: [{ x: 22, y: 18, textKey: 'sign_origen' }],
+  signs: [
+    { x: 22, y: 18, textKey: 'sign_origen' },
+    { x: 28, y: 17, textKey: 'sign_taller' },
+  ],
 };

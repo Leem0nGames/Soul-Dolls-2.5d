@@ -9,6 +9,7 @@ import {
 } from '../data/containers.ts';
 import { getItem } from '../data/items.ts';
 import { getMap, MAPS } from '../data/maps/index.ts';
+import { getMove } from '../data/moves.ts';
 import { getSpecies } from '../data/species.ts';
 import { getTrainer } from '../data/trainers.ts';
 import { getClaimableMilestones, claimBestiaryMilestone } from '../domain/Bestiary.ts';
@@ -24,6 +25,7 @@ import { buyHouse, getHouse, ownsHouse } from '../domain/Housing.ts';
 import {
   addItem,
   applyMedicineToCreature,
+  applyTmToCreature,
   removeItem,
 } from '../domain/Inventory.ts';
 import { addToParty, healPartyFull } from '../domain/Party.ts';
@@ -36,12 +38,17 @@ import {
 } from '../domain/NpcBehavior.ts';
 import {
   expandGridWaypoints,
+  LAB_GUIDE_NPC_ID,
+  LAB_GUIDE_REST_BEFORE_STARTER,
+  LAB_GUIDE_SPAWN,
+  LAB_TOUR_PEDESTALS_GUIDE_WAYPOINTS,
+  LAB_TOUR_PROF_GUIDE_WAYPOINTS,
+  LAB_TOUR_PROF_PLAYER_WAYPOINTS,
   VILLA_GUIDE_NPC_ID,
   VILLA_GUIDE_REST_AFTER_STARTER,
   VILLA_GUIDE_REST_BEFORE_STARTER,
   VILLA_TOUR_LAB_GUIDE_WAYPOINTS,
   VILLA_TOUR_LAB_PLAYER_WAYPOINTS,
-  VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS,
   VILLA_TOUR_PLAZA_GUIDE_WAYPOINTS,
   VILLA_TOUR_PLAZA_PLAYER_WAYPOINTS,
   type GridStep,
@@ -59,11 +66,21 @@ import {
   getSideQuestStatus,
   SIDE_QUESTS,
 } from '../domain/SideQuests.ts';
+import { TALLER_SKILL_SHOP_STOCK } from '../domain/SkillForge.ts';
 import {
   createStaminaState,
   stepStamina,
   type StaminaState,
 } from '../domain/Stamina.ts';
+import {
+  advanceWorldClock,
+  filterEncountersByTime,
+  formatWorldClock,
+  getTimeLightingProfile,
+  getTimePhase,
+  getTimePhaseLabel,
+  normalizeWorldMinutes,
+} from '../domain/TimeOfDay.ts';
 import {
   cameraRelativeMove,
   getTileHeightLevel,
@@ -80,6 +97,7 @@ import type {
   MapDef,
   NpcDef,
   PropKind,
+  TimePhase,
   WarpDef,
 } from '../domain/types.ts';
 import {
@@ -95,6 +113,13 @@ import { buildBuildingsMesh, buildInteriorWallsMesh } from '../engine/BuildingMe
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { buildMapGatesGroup } from '../engine/GateMesher.ts';
 import { OverworldAtmosphere } from '../engine/OverworldAtmosphere.ts';
+import {
+  attachCameraOcclusionCutout,
+  getDirectionLeadTarget,
+  OCCLUSION_FOCUS_HEIGHT,
+  OCCLUSION_TERRAIN_MIN_REL_Y,
+  updateCameraOcclusionUniforms,
+} from '../engine/OcclusionCutout.ts';
 import { OverworldPostFx } from '../engine/OverworldPostFx.ts';
 import {
   buildCloudBillboards,
@@ -112,6 +137,8 @@ import {
 import { WaterSurface } from '../engine/WaterSurface.ts';
 import { ES } from '../i18n/es.ts';
 import { OverworldHud } from '../ui/OverworldHud.ts';
+import type { SkillAcademyTab } from '../ui/SkillAcademyScreen.ts';
+import type { WorkshopTab } from '../ui/VesselScreen.ts';
 
 interface RuntimeNpc {
   def: NpcDef;
@@ -125,6 +152,12 @@ interface RuntimeNpc {
   lastWalkFrame?: CharacterFrame;
   markerMesh?: THREE.Mesh;
   markerMat?: THREE.MeshBasicMaterial;
+  prevVisualX: number;
+  prevVisualY: number;
+  prevVisualZ: number;
+  currVisualX: number;
+  currVisualY: number;
+  currVisualZ: number;
 }
 
 interface EscortActorMove {
@@ -157,7 +190,7 @@ function createQuestMarkerTexture(symbol: '!' | '?'): THREE.CanvasTexture {
   const trimColor = isExcl ? '#E8B84A' : '#5FE3D2';
   const fillColor = isExcl ? '#24123B' : '#123F3C';
   const glyphColor = isExcl ? '#FFD700' : '#D9FBF7';
-  const glyphHi = isExcl ? '#FCEDB8' : '#7BF2E2';
+  const glyphHi = isExcl ? '#FCEDB8' : '#85EADD';
 
   // Badge frame (diamond-trimmed square badge)
   ctx.fillStyle = borderColor;
@@ -240,6 +273,23 @@ export class OverworldScene implements Scene {
   private atmosphere: OverworldAtmosphere | null = null;
   private waterSurface: WaterSurface | null = null;
   private sunLight: THREE.DirectionalLight | null = null;
+  private hemiLight: THREE.HemisphereLight | null = null;
+  private baseHorizonColorHex = 0x000000;
+  private baseHemiIntensity = 2.05;
+  private baseSunIntensity = 1.55;
+  private lastClockUiMinute = -1;
+  private lastAppliedTimePhase: TimePhase | null = null;
+  private readonly _fogBaseColor = new THREE.Color();
+  private readonly _fogTintColor = new THREE.Color();
+
+  private readonly prevPlayerPos = new THREE.Vector3();
+  private readonly currPlayerPos = new THREE.Vector3();
+  private readonly prevCamPos = new THREE.Vector3();
+  private readonly currCamPos = new THREE.Vector3();
+  private readonly prevCamQuat = new THREE.Quaternion();
+  private readonly currCamQuat = new THREE.Quaternion();
+  private justTeleported = true;
+
   private charGeo: THREE.PlaneGeometry;
   private markerGeo: THREE.PlaneGeometry;
   private questExclamationTex: THREE.CanvasTexture;
@@ -259,6 +309,8 @@ export class OverworldScene implements Scene {
   private waterTimer = 0;
   private waterFrame: 0 | 1 = 0;
   private sceneTime = 0;
+  private occlusionLeadX = 0;
+  private occlusionLeadZ = 0;
 
   private stamina: StaminaState = createStaminaState();
   private hud: OverworldHud;
@@ -317,12 +369,15 @@ export class OverworldScene implements Scene {
   onEnter(): void {
     this.hud.mount(this.game.uiLayer, this.game.uiLayers);
     this.game.uiLayers.applySceneVisibility({
+      touchCamera: true,
       overworldHud: true,
       touchControls: true,
       battleHud: false,
       battleFx: false,
       battleTransition: false,
     });
+    this.game.touchControls.setCameraTouchEnabled(true);
+    this.bindTouchCameraHandlers();
     this.game.touchControls.setVisible(true);
     this.game.cameraRig.setPreset('overworld');
 
@@ -352,6 +407,8 @@ export class OverworldScene implements Scene {
       this.game.dialog.show(ES.dialogs.isekai_intro_1, () => {
         this.game.dialog.show(ES.dialogs.isekai_intro_2);
       });
+    } else if (save.mapId === 'laboratorio_origen') {
+      this.maybeStartLabIntroOrEscort();
     }
   }
 
@@ -440,32 +497,90 @@ export class OverworldScene implements Scene {
             speed: 3.4,
             onDone: () => {
               this.game.dialog.show(ES.dialogs.guide_tour_professor, () => {
-                const profNpc = this.findNpcById('prof_robledo');
-                if (profNpc) {
-                  engageNpcLook(profNpc.behavior, this.gridX, this.gridY, true);
-                  this.syncBillboardYaw(0);
-                }
-                this.game.saveData.flags.prof_intro_talked = true;
-                this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-                this.game.dialog.show(ES.dialogs.prof_welcome, () => {
-                  const pedSteps = expandGridWaypoints(
-                    guideNpc.behavior.gridX,
-                    guideNpc.behavior.gridY,
-                    VILLA_TOUR_PEDESTALS_GUIDE_WAYPOINTS
-                  );
-                  this.escortCutscene = {
-                    guide: guideNpc,
-                    guideMove: this.createEscortMove(pedSteps, 'right'),
-                    playerMove: null,
-                    speed: 3.6,
-                    onDone: () => {
-                      this.game.saveData.flags.village_tour_done = true;
-                      this.game.saveManager.save(this.game.saveData);
-                      this.game.dialog.show(ES.dialogs.guide_choose_starter);
-                    },
-                  };
+                this.game.saveData.flags.village_tour_done = true;
+                this.game.saveData.flags.lab_tour_pending = true;
+                this.game.saveManager.save(this.game.saveData);
+                this.startWarpTransition({
+                  x: 19,
+                  y: 18,
+                  targetMap: 'laboratorio_origen',
+                  targetX: 8,
+                  targetY: 10,
+                  dir: 'up',
+                  doorStyle: 'building',
                 });
               });
+            },
+          };
+        });
+      },
+    };
+  }
+
+  private maybeStartLabIntroOrEscort(): void {
+    if (this.currentMap.id !== 'laboratorio_origen') return;
+    const save = this.game.saveData;
+    if (save.flags.starter_chosen) return;
+
+    const labGuide = this.findNpcById(LAB_GUIDE_NPC_ID);
+    if (save.flags.lab_tour_pending && labGuide) {
+      save.flags.lab_tour_pending = false;
+      this.startLabEscortTour(labGuide);
+      return;
+    }
+
+    if (!save.flags.prof_intro_talked) {
+      save.flags.prof_intro_talked = true;
+      this.game.saveManager.save(save);
+      const profNpc = this.findNpcById('prof_robledo');
+      if (profNpc) {
+        engageNpcLook(profNpc.behavior, this.gridX, this.gridY, true);
+        this.syncBillboardYaw(0);
+      }
+      this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+      this.game.dialog.show(ES.dialogs.prof_welcome);
+    }
+  }
+
+  private startLabEscortTour(labGuide: RuntimeNpc): void {
+    const profGuideSteps = expandGridWaypoints(
+      labGuide.behavior.gridX,
+      labGuide.behavior.gridY,
+      LAB_TOUR_PROF_GUIDE_WAYPOINTS
+    );
+    const profPlayerSteps = expandGridWaypoints(
+      this.gridX,
+      this.gridY,
+      LAB_TOUR_PROF_PLAYER_WAYPOINTS
+    );
+
+    this.escortCutscene = {
+      guide: labGuide,
+      guideMove: this.createEscortMove(profGuideSteps, 'up'),
+      playerMove: this.createEscortMove(profPlayerSteps, 'up'),
+      speed: 3.4,
+      onDone: () => {
+        const profNpc = this.findNpcById('prof_robledo');
+        if (profNpc) {
+          engageNpcLook(profNpc.behavior, this.gridX, this.gridY, true);
+          this.syncBillboardYaw(0);
+        }
+        this.game.saveData.flags.prof_intro_talked = true;
+        this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+        this.game.dialog.show(ES.dialogs.prof_welcome, () => {
+          const pedSteps = expandGridWaypoints(
+            labGuide.behavior.gridX,
+            labGuide.behavior.gridY,
+            LAB_TOUR_PEDESTALS_GUIDE_WAYPOINTS
+          );
+          this.escortCutscene = {
+            guide: labGuide,
+            guideMove: this.createEscortMove(pedSteps, LAB_GUIDE_REST_BEFORE_STARTER.dir),
+            playerMove: null,
+            speed: 3.6,
+            onDone: () => {
+              this.game.saveManager.save(this.game.saveData);
+              this.game.dialog.show(ES.dialogs.guide_choose_starter);
             },
           };
         });
@@ -592,12 +707,15 @@ export class OverworldScene implements Scene {
 
   onResume(): void {
     this.game.uiLayers.applySceneVisibility({
+      touchCamera: true,
       overworldHud: true,
       touchControls: true,
       battleHud: false,
       battleFx: false,
       battleTransition: false,
     });
+    this.game.touchControls.setCameraTouchEnabled(true);
+    this.bindTouchCameraHandlers();
     this.game.touchControls.setVisible(true);
     this.game.cameraRig.setPreset('overworld');
     this.game.cameraRig.snapTo(
@@ -606,12 +724,44 @@ export class OverworldScene implements Scene {
       this.playerMesh.position.z,
       this.sampleTerrain
     );
+    const resumeLead = getDirectionLeadTarget(this.dir, false);
+    this.occlusionLeadX = resumeLead.x;
+    this.occlusionLeadZ = resumeLead.z;
+    updateCameraOcclusionUniforms(
+      this.game.cameraRig.camera.position,
+      {
+        x: this.playerMesh.position.x + this.occlusionLeadX,
+        y: this.playerMesh.position.y + OCCLUSION_FOCUS_HEIGHT,
+        z: this.playerMesh.position.z + this.occlusionLeadZ,
+      },
+      1.0
+    );
     this.game.bus.emit('audio:music', { track: this.currentMap.music });
     this.refreshNpcVisibility();
+    this.syncTimeOfDayVisuals(true);
     this.updateBadge();
     this.updateStaminaHud();
     this.refreshQuestHud(true);
     this.refreshSideQuestMarkers();
+    this.syncVisualSnapshot(true);
+  }
+
+  private bindTouchCameraHandlers(): void {
+    this.game.touchControls.setCameraHandlers({
+      onStep: (delta) => {
+        if (this.isBlockingUiOpen() || this.warpPhase !== 'idle' || this.escortCutscene) {
+          return;
+        }
+        this.game.cameraRig.rotateStep(delta);
+        this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      },
+      onOrbit: (deltaRad) => {
+        if (this.isBlockingUiOpen() || this.warpPhase !== 'idle' || this.escortCutscene) {
+          return;
+        }
+        this.game.cameraRig.orbitYaw(deltaRad);
+      },
+    });
   }
 
   private refreshQuestHud(force = false): void {
@@ -650,11 +800,50 @@ export class OverworldScene implements Scene {
   }
 
   private updateBadge(): void {
+    const mins = this.game.saveData.worldClockMinutes;
+    const timeLabel = `${formatWorldClock(mins)} · ${getTimePhaseLabel(getTimePhase(mins))}`;
     this.hud.updateBadge(
       this.currentMap.id,
       this.game.saveData.money,
-      this.game.saveData.repelSteps
+      this.game.saveData.repelSteps,
+      timeLabel
     );
+  }
+
+  private syncTimeOfDayVisuals(force = false): void {
+    if (!this.currentMap) return;
+    const mins = this.game.saveData.worldClockMinutes;
+    const minute = Math.floor(normalizeWorldMinutes(mins));
+    if (force || minute !== this.lastClockUiMinute) {
+      this.lastClockUiMinute = minute;
+      this.updateBadge();
+    }
+
+    const phase = getTimePhase(mins);
+    if (!force && phase === this.lastAppliedTimePhase) return;
+    this.lastAppliedTimePhase = phase;
+
+    const isInterior = Boolean(this.currentMap.isInterior);
+    const isCave = this.currentMap.music === 'cave';
+    const profile = getTimeLightingProfile(phase, isInterior, isCave);
+
+    if (this.hemiLight) {
+      this.hemiLight.intensity = this.baseHemiIntensity * profile.hemiIntensityMult;
+      this.hemiLight.color.setHex(profile.hemiSkyHex);
+    }
+    if (this.sunLight) {
+      this.sunLight.intensity = this.baseSunIntensity * profile.sunIntensityMult;
+      this.sunLight.color.setHex(profile.sunColorHex);
+    }
+    if (!isInterior && !isCave && this.scene.fog instanceof THREE.Fog) {
+      this._fogBaseColor.setHex(this.baseHorizonColorHex);
+      if (profile.fogBlend > 0) {
+        this._fogTintColor.setHex(profile.fogTintHex);
+        this._fogBaseColor.lerp(this._fogTintColor, profile.fogBlend);
+      }
+      this.scene.fog.color.copy(this._fogBaseColor);
+    }
+    this.atmosphere?.setGlowIntensityMult(profile.glowIntensityMult);
   }
 
   private updateStaminaHud(): void {
@@ -958,6 +1147,7 @@ export class OverworldScene implements Scene {
     }
     this.sunLight?.shadow.map?.dispose();
     this.sunLight = null;
+    this.hemiLight = null;
 
     const toRemove: THREE.Object3D[] = [];
     for (const child of this.scene.children) {
@@ -1004,17 +1194,22 @@ export class OverworldScene implements Scene {
     const isCave = map.music === 'cave';
     const hemiSkyColor = isCave ? 0xd9c8ff : 0xfff8eb;
     const hemiGroundColor = isCave ? 0x6f5894 : 0xa39c8e;
+    const baseHemiIntensity = isCave ? 1.85 : 2.05;
     const hemiLight = new THREE.HemisphereLight(
       hemiSkyColor,
       hemiGroundColor,
-      isCave ? 1.85 : 2.05
+      baseHemiIntensity
     );
     this.scene.add(hemiLight);
     this.mapDisposables.track(hemiLight);
+    this.hemiLight = hemiLight;
+    this.baseHemiIntensity = baseHemiIntensity;
+    this.baseHorizonColorHex = horizonColor;
 
+    const baseSunIntensity = isCave ? 1.35 : 1.55;
     const sunLight = new THREE.DirectionalLight(
       isCave ? 0xffe0b8 : 0xfff7e6,
-      isCave ? 1.35 : 1.55
+      baseSunIntensity
     );
     sunLight.castShadow = !map.isInterior && !isCave;
     if (sunLight.castShadow) {
@@ -1033,9 +1228,10 @@ export class OverworldScene implements Scene {
     this.scene.add(sunLight.target);
     this.mapDisposables.track(sunLight);
     this.sunLight = sunLight;
+    this.baseSunIntensity = baseSunIntensity;
     this.postFx.setBiome(map.biome, Boolean(map.isInterior));
 
-    const atlasMat = new THREE.MeshStandardMaterial({
+    const terrainAtlasMat = new THREE.MeshStandardMaterial({
       map: this.game.assets.getTileAtlasTexture(),
       normalMap: this.game.assets.getTileAtlasNormalTexture(),
       normalScale: new THREE.Vector2(1.15, 1.15),
@@ -1043,6 +1239,7 @@ export class OverworldScene implements Scene {
       metalness: 0.03,
       vertexColors: true,
     });
+    const structureAtlasMat = terrainAtlasMat.clone();
     const grassMat = new THREE.MeshStandardMaterial({
       map: this.game.assets.getGrassTexture(),
       normalMap: this.game.assets.getGrassNormalTexture(),
@@ -1051,16 +1248,20 @@ export class OverworldScene implements Scene {
       metalness: 0.0,
       vertexColors: true,
     });
-    this.mapDisposables.track(atlasMat);
+    attachCameraOcclusionCutout(terrainAtlasMat, { minRelY: OCCLUSION_TERRAIN_MIN_REL_Y });
+    attachCameraOcclusionCutout(grassMat, { minRelY: OCCLUSION_TERRAIN_MIN_REL_Y });
+    attachCameraOcclusionCutout(structureAtlasMat, { minRelY: -999 });
+    this.mapDisposables.track(terrainAtlasMat);
+    this.mapDisposables.track(structureAtlasMat);
     this.mapDisposables.track(grassMat);
 
     // 1. Heightfield terrain chunks + seamless outer border apron
-    this.chunks = buildTerrainChunks(map, atlasMat, grassMat);
+    this.chunks = buildTerrainChunks(map, terrainAtlasMat, grassMat);
     for (const chunk of this.chunks) {
       this.mapDisposables.track(chunk.mesh.geometry);
       this.scene.add(chunk.mesh);
     }
-    const borderApron = map.isInterior ? null : buildTerrainBorderApron(map, atlasMat, grassMat);
+    const borderApron = map.isInterior ? null : buildTerrainBorderApron(map, terrainAtlasMat, grassMat);
     if (borderApron) {
       this.mapDisposables.track(borderApron.geometry);
       this.scene.add(borderApron);
@@ -1070,7 +1271,7 @@ export class OverworldScene implements Scene {
     if (map.isInterior) {
       const interiorWalls = buildInteriorWallsMesh(
         map,
-        atlasMat,
+        structureAtlasMat,
         (key) => this.game.assets.getWallTexture(key),
         (key) => this.game.assets.getWallNormalTexture(key)
       );
@@ -1079,7 +1280,8 @@ export class OverworldScene implements Scene {
           const mesh = obj as THREE.Mesh;
           if (mesh.isMesh) {
             if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
-            if (mesh.material && mesh.material !== atlasMat && !Array.isArray(mesh.material)) {
+            if (mesh.material && mesh.material !== structureAtlasMat && !Array.isArray(mesh.material)) {
+              attachCameraOcclusionCutout(mesh.material, { minRelY: -999 });
               this.mapDisposables.track(mesh.material);
             }
           }
@@ -1091,7 +1293,7 @@ export class OverworldScene implements Scene {
     // 2. Low-poly 3D buildings & 3D map-to-map route gates / cave portals
     const buildingsGroup = buildBuildingsMesh(
       map,
-      atlasMat,
+      structureAtlasMat,
       (kind) => this.game.assets.getRoofTexture(kind),
       (kind) => this.game.assets.getRoofNormalTexture(kind),
       (key) => this.game.assets.getWallTexture(key),
@@ -1101,7 +1303,8 @@ export class OverworldScene implements Scene {
       for (const child of buildingsGroup.children) {
         const mesh = child as THREE.Mesh;
         if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
-        if (mesh.material && mesh.material !== atlasMat && !Array.isArray(mesh.material)) {
+        if (mesh.material && mesh.material !== structureAtlasMat && !Array.isArray(mesh.material)) {
+          attachCameraOcclusionCutout(mesh.material, { minRelY: -999 });
           this.mapDisposables.track(mesh.material);
         }
       }
@@ -1110,7 +1313,7 @@ export class OverworldScene implements Scene {
 
     const gatesGroup = buildMapGatesGroup(
       map,
-      atlasMat,
+      structureAtlasMat,
       (kind) => this.game.assets.getRoofTexture(kind),
       (kind) => this.game.assets.getRoofNormalTexture(kind),
       (key) => this.game.assets.getWallTexture(key),
@@ -1126,7 +1329,8 @@ export class OverworldScene implements Scene {
             mesh.receiveShadow = true;
           }
           if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
-          if (mesh.material && mesh.material !== atlasMat && !Array.isArray(mesh.material)) {
+          if (mesh.material && mesh.material !== structureAtlasMat && !Array.isArray(mesh.material)) {
+            attachCameraOcclusionCutout(mesh.material, { minRelY: -999 });
             this.mapDisposables.track(mesh.material);
           }
         }
@@ -1242,6 +1446,19 @@ export class OverworldScene implements Scene {
         const restY = getTileWorldY(map, npcInitX, npcInitY);
         mesh.position.set(npcInitX, restY, npcInitY);
         if (markerMesh) markerMesh.position.set(npcInitX, restY + 1.65, npcInitY);
+      } else if (npcDef.id === LAB_GUIDE_NPC_ID) {
+        if (this.game.saveData.flags.lab_tour_pending && !this.game.saveData.flags.starter_chosen) {
+          npcInitX = LAB_GUIDE_SPAWN.x;
+          npcInitY = LAB_GUIDE_SPAWN.y;
+          npcInitDir = LAB_GUIDE_SPAWN.dir;
+        } else {
+          npcInitX = LAB_GUIDE_REST_BEFORE_STARTER.x;
+          npcInitY = LAB_GUIDE_REST_BEFORE_STARTER.y;
+          npcInitDir = LAB_GUIDE_REST_BEFORE_STARTER.dir;
+        }
+        const restY = getTileWorldY(map, npcInitX, npcInitY);
+        mesh.position.set(npcInitX, restY, npcInitY);
+        if (markerMesh) markerMesh.position.set(npcInitX, restY + 1.65, npcInitY);
       }
 
       const behavior = createNpcBehaviorState(
@@ -1263,6 +1480,12 @@ export class OverworldScene implements Scene {
         lastWalkFrame: 0,
         markerMesh,
         markerMat,
+        prevVisualX: mesh.position.x,
+        prevVisualY: mesh.position.y,
+        prevVisualZ: mesh.position.z,
+        currVisualX: mesh.position.x,
+        currVisualY: mesh.position.y,
+        currVisualZ: mesh.position.z,
       });
     }
 
@@ -1350,11 +1573,27 @@ export class OverworldScene implements Scene {
     const startY = sampleInterpolatedHeight(map, clampedX, clampedY);
     this.syncSunShadowCenter(clampedX, startY, clampedY);
     this.game.cameraRig.snapTo(clampedX, startY, clampedY, this.sampleTerrain);
+    const startLead = getDirectionLeadTarget(this.dir, false);
+    this.occlusionLeadX = startLead.x;
+    this.occlusionLeadZ = startLead.z;
+    updateCameraOcclusionUniforms(
+      this.game.cameraRig.camera.position,
+      {
+        x: clampedX + this.occlusionLeadX,
+        y: startY + OCCLUSION_FOCUS_HEIGHT,
+        z: clampedY + this.occlusionLeadZ,
+      },
+      1.0
+    );
     updateVisibleTerrainChunks(this.chunks, clampedX, clampedY);
     this.game.bus.emit('audio:music', { track: map.music });
+    this.lastAppliedTimePhase = null;
+    this.syncTimeOfDayVisuals(true);
     this.updateBadge();
     this.checkQuestCoordinates();
     this.refreshQuestHud(true);
+    this.syncVisualSnapshot(true);
+    this.justTeleported = true;
 
     if (autoSave) {
       this.game.saveManager.save(this.game.saveData);
@@ -1421,9 +1660,17 @@ export class OverworldScene implements Scene {
   private openQuestJournal(): void {
     if (this.warpPhase !== 'idle' || this.isBlockingUiOpen()) return;
     this.game.bus.emit('audio:sfx', { sfx: 'quest_journal' });
-    this.game.questJournal.open(this.game.saveData, () => {
-      this.refreshSideQuestMarkers();
-    });
+    this.game.questJournal.open(
+      this.game.saveData,
+      () => {
+        this.refreshSideQuestMarkers();
+      },
+      {
+        map: this.currentMap,
+        x: this.gridX,
+        y: this.gridY,
+      }
+    );
   }
 
   private syncPlayerVisual(): void {
@@ -1560,6 +1807,24 @@ export class OverworldScene implements Scene {
     const playerX = this.playerMesh.position.x;
     const playerY = this.playerMesh.position.y;
     const playerZ = this.playerMesh.position.z;
+    const leadTarget = getDirectionLeadTarget(this.dir, this.moving);
+    if (dt > 0) {
+      this.occlusionLeadX = THREE.MathUtils.damp(this.occlusionLeadX, leadTarget.x, 8, dt);
+      this.occlusionLeadZ = THREE.MathUtils.damp(this.occlusionLeadZ, leadTarget.z, 8, dt);
+    } else {
+      this.occlusionLeadX = leadTarget.x;
+      this.occlusionLeadZ = leadTarget.z;
+    }
+    updateCameraOcclusionUniforms(
+      this.game.cameraRig.camera.position,
+      {
+        x: playerX + this.occlusionLeadX,
+        y: playerY + OCCLUSION_FOCUS_HEIGHT,
+        z: playerZ + this.occlusionLeadZ,
+      },
+      1.0
+    );
+
     const tier = this.game.renderer.getQualityTier();
     const showAmbient = this.game.renderer.areAmbientParticlesEnabled();
     updatePropBatchAnimation(this.propBatches, yaw, this.sceneTime, playerX, playerZ);
@@ -1635,13 +1900,86 @@ export class OverworldScene implements Scene {
       this.game.endingModal.isOpen() ||
       this.game.arGachaModal.isOpen() ||
       this.game.vesselScreen.isOpen() ||
+      this.game.skillAcademyScreen.isOpen() ||
       this.game.questJournal.isOpen() ||
       this.game.chestScreen.isOpen() ||
       this.game.achievementsScreen.isOpen()
     );
   }
 
+  private syncVisualSnapshot(resetPrev: boolean): void {
+    this.currPlayerPos.copy(this.playerMesh.position);
+    this.currCamPos.copy(this.game.cameraRig.camera.position);
+    this.currCamQuat.copy(this.game.cameraRig.camera.quaternion);
+    if (resetPrev) {
+      this.prevPlayerPos.copy(this.currPlayerPos);
+      this.prevCamPos.copy(this.currCamPos);
+      this.prevCamQuat.copy(this.currCamQuat);
+    }
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      npc.currVisualX = npc.mesh.position.x;
+      npc.currVisualY = npc.mesh.position.y;
+      npc.currVisualZ = npc.mesh.position.z;
+      if (resetPrev) {
+        npc.prevVisualX = npc.currVisualX;
+        npc.prevVisualY = npc.currVisualY;
+        npc.prevVisualZ = npc.currVisualZ;
+      }
+    }
+  }
+
+  private restoreVisualSnapshot(): void {
+    this.playerMesh.position.copy(this.currPlayerPos);
+    this.game.cameraRig.camera.position.copy(this.currCamPos);
+    this.game.cameraRig.camera.quaternion.copy(this.currCamQuat);
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      npc.mesh.position.set(npc.currVisualX, npc.currVisualY, npc.currVisualZ);
+    }
+  }
+
+  private capturePrevVisualSnapshot(): void {
+    this.prevPlayerPos.copy(this.currPlayerPos);
+    this.prevCamPos.copy(this.currCamPos);
+    this.prevCamQuat.copy(this.currCamQuat);
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      npc.prevVisualX = npc.currVisualX;
+      npc.prevVisualY = npc.currVisualY;
+      npc.prevVisualZ = npc.currVisualZ;
+    }
+  }
+
+  private captureCurrVisualSnapshot(): void {
+    this.syncVisualSnapshot(this.justTeleported);
+    this.justTeleported = false;
+  }
+
+  private applyInterpolatedVisuals(alpha: number): void {
+    const a = Math.max(0, Math.min(1, alpha));
+    this.playerMesh.position.lerpVectors(this.prevPlayerPos, this.currPlayerPos, a);
+    this.game.cameraRig.camera.position.lerpVectors(this.prevCamPos, this.currCamPos, a);
+    this.game.cameraRig.camera.quaternion.slerpQuaternions(this.prevCamQuat, this.currCamQuat, a);
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      if (!npc.visible || npc.isPedestal) continue;
+      npc.mesh.position.set(
+        THREE.MathUtils.lerp(npc.prevVisualX, npc.currVisualX, a),
+        THREE.MathUtils.lerp(npc.prevVisualY, npc.currVisualY, a),
+        THREE.MathUtils.lerp(npc.prevVisualZ, npc.currVisualZ, a)
+      );
+    }
+  }
+
   fixedUpdate(dt: number): void {
+    this.restoreVisualSnapshot();
+    this.capturePrevVisualSnapshot();
+    this.stepSimulation(dt);
+    this.captureCurrVisualSnapshot();
+  }
+
+  private stepSimulation(dt: number): void {
     this.game.saveData.stats.playTimeSec += dt;
 
     // 2-frame water animation
@@ -1676,6 +2014,7 @@ export class OverworldScene implements Scene {
         if (this.warpTimer >= fadeDuration) {
           this.warpPhase = 'idle';
           this.hud.setWarpAlpha(0);
+          this.maybeStartLabIntroOrEscort();
         }
       }
       this.syncBillboardYaw(dt);
@@ -1698,6 +2037,12 @@ export class OverworldScene implements Scene {
       return;
     }
 
+    this.game.saveData.worldClockMinutes = advanceWorldClock(
+      this.game.saveData.worldClockMinutes,
+      dt
+    );
+    this.syncTimeOfDayVisuals(false);
+
     this.updateNpcs(dt);
 
     if (this.game.input.justPressed('start')) {
@@ -1705,8 +2050,16 @@ export class OverworldScene implements Scene {
       return;
     }
 
-    // 90-degree shoulder camera rotation (L/R or Q/E)
-    if (this.game.input.justPressed('camLeft')) {
+    // Horizontal orbital camera rotation (Q/E or touch swipe/drag)
+    if (this.game.cameraRig.getCameraMode() === 'free_orbit') {
+      const orbitSpeed = 2.1;
+      if (this.game.input.isHeld('camLeft')) {
+        this.game.cameraRig.orbitYaw(-orbitSpeed * dt);
+      }
+      if (this.game.input.isHeld('camRight')) {
+        this.game.cameraRig.orbitYaw(orbitSpeed * dt);
+      }
+    } else if (this.game.input.justPressed('camLeft')) {
       this.game.cameraRig.rotateStep(-1);
       this.game.bus.emit('audio:sfx', { sfx: 'menu' });
     } else if (this.game.input.justPressed('camRight')) {
@@ -1836,7 +2189,14 @@ export class OverworldScene implements Scene {
     // 0. Evaluate coordinate-triggered quest objective
     this.checkQuestCoordinates();
 
-    // 1. Check warps
+    // 1. Check trainer line-of-sight before warps so spotted players cannot dodge duels
+    const spotted = this.findSpottingTrainer();
+    if (spotted && this.game.saveData.party.length > 0) {
+      this.triggerTrainerBattle(spotted);
+      return;
+    }
+
+    // 2. Check warps
     const warp = this.currentMap.warps.find(
       (w) => w.x === this.gridX && w.y === this.gridY
     );
@@ -1849,19 +2209,12 @@ export class OverworldScene implements Scene {
       return;
     }
 
-    // 1b. Check hidden pickups on tile
+    // 2b. Check hidden pickups on tile
     const hiddenPickup = this.pickups.find(
       (p) => p.hidden && p.x === this.gridX && p.y === this.gridY
     );
     if (hiddenPickup) {
       this.collectPickup(hiddenPickup);
-      return;
-    }
-
-    // 2. Check trainer line-of-sight
-    const spotted = this.findSpottingTrainer();
-    if (spotted && this.game.saveData.party.length > 0) {
-      this.triggerTrainerBattle(spotted);
       return;
     }
 
@@ -1927,10 +2280,14 @@ export class OverworldScene implements Scene {
     const table = this.currentMap.encounters;
     if (!table || table.entries.length === 0) return;
 
-    const totalWeight = table.entries.reduce((s, e) => s + e.weight, 0);
+    const phase = getTimePhase(this.game.saveData.worldClockMinutes);
+    const entries = filterEncountersByTime(table.entries, phase);
+    if (entries.length === 0) return;
+
+    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
     let roll = this.game.rng.next() * totalWeight;
-    let picked = table.entries[0];
-    for (const entry of table.entries) {
+    let picked = entries[0];
+    for (const entry of entries) {
       roll -= entry.weight;
       if (roll <= 0) {
         picked = entry;
@@ -1949,6 +2306,9 @@ export class OverworldScene implements Scene {
         if (outcome === 'lose') {
           this.handleBlackout();
         } else {
+          if (outcome === 'win' || outcome === 'caught') {
+            this.game.saveManager.save(this.game.saveData);
+          }
           this.refreshSideQuestMarkers();
         }
       },
@@ -2014,9 +2374,24 @@ export class OverworldScene implements Scene {
     });
   }
 
+  private recordHealPoint(): void {
+    this.game.saveData.lastHealPoint = {
+      mapId: this.currentMap.id,
+      x: this.gridX,
+      y: this.gridY,
+      dir: this.dir,
+    };
+  }
+
   private handleBlackout(): void {
     healPartyFull(this.game.saveData.party);
-    this.loadMap('villa_origen', 24, 26, 'up', true);
+    const hp = this.game.saveData.lastHealPoint;
+    const targetMap = hp && MAPS[hp.mapId] ? hp.mapId : 'villa_origen';
+    const targetX = hp && MAPS[hp.mapId] ? hp.x : 24;
+    const targetY = hp && MAPS[hp.mapId] ? hp.y : 26;
+    const targetDir = hp && MAPS[hp.mapId] ? hp.dir : 'up';
+    this.loadMap(targetMap, targetX, targetY, targetDir, true);
+    this.game.dialog.show(ES.battle.blackoutWake);
   }
 
   private tryInteract(): void {
@@ -2111,6 +2486,7 @@ export class OverworldScene implements Scene {
   private interactProp(kind: PropKind): void {
     if (kind === 'bed') {
       healPartyFull(this.game.saveData.party);
+      this.recordHealPoint();
       this.game.bus.emit('audio:sfx', { sfx: 'heal' });
       this.game.saveManager.save(this.game.saveData);
       this.game.dialog.show(ES.dialogs.bed_rest);
@@ -2151,6 +2527,63 @@ export class OverworldScene implements Scene {
     if (kind === 'dining_table') {
       this.game.bus.emit('audio:sfx', { sfx: 'menu' });
       this.game.dialog.show(ES.dialogs.table_flavor);
+      return;
+    }
+    if (kind === 'forge_hearth') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.openWorkshop('forja');
+      return;
+    }
+    if (kind === 'anvil_bench' || kind === 'doll_worktable') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.openWorkshop('creacion');
+      return;
+    }
+    if (kind === 'blueprint_desk') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.openWorkshop('piezas');
+      return;
+    }
+    if (kind === 'mannequin_rack') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.dialog.show(ES.dialogs.mannequin_rack_flavor, undefined, [
+        {
+          label: 'Ver Stock de Cuerpos',
+          onSelect: () => {
+            this.openWorkshop('cuerpos');
+          },
+        },
+        { label: 'Cerrar', onSelect: () => {} },
+      ]);
+      return;
+    }
+    if (kind === 'skill_altar') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.openSkillAcademy('movimientos');
+      return;
+    }
+    if (kind === 'training_dummy') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.openSkillAcademy('atributos');
+      return;
+    }
+    if (kind === 'lab_console') {
+      this.game.bus.emit('audio:sfx', { sfx: 'menu' });
+      this.game.dialog.show(ES.dialogs.lab_console_prompt, undefined, [
+        {
+          label: 'Abrir Grimorio (Bestiario)',
+          onSelect: () => {
+            this.game.bestiaryScreen.open(this.game.saveData, () => {});
+          },
+        },
+        {
+          label: 'Leer Informe del Laboratorio',
+          onSelect: () => {
+            this.game.dialog.show(ES.dialogs.lab_console_notes);
+          },
+        },
+        { label: 'Cerrar', onSelect: () => {} },
+      ]);
     }
   }
 
@@ -2288,14 +2721,18 @@ export class OverworldScene implements Scene {
           }
         }
         healPartyFull(this.game.saveData.party);
+        this.recordHealPoint();
         this.game.bus.emit('audio:sfx', { sfx: 'heal' });
+        this.game.saveManager.save(this.game.saveData);
         this.game.dialog.show(ES.dialogs.prof_healed);
         return;
       }
 
       if (npc.id === 'arena_heal') {
         healPartyFull(this.game.saveData.party);
+        this.recordHealPoint();
         this.game.bus.emit('audio:sfx', { sfx: 'heal' });
+        this.game.saveManager.save(this.game.saveData);
         this.game.dialog.show(ES.dialogs.heal_machine_use);
         return;
       }
@@ -2305,7 +2742,9 @@ export class OverworldScene implements Scene {
           label: 'Curar equipo',
           onSelect: () => {
             healPartyFull(this.game.saveData.party);
+            this.recordHealPoint();
             this.game.bus.emit('audio:sfx', { sfx: 'heal' });
+            this.game.saveManager.save(this.game.saveData);
             const msg =
               ((ES.dialogs as Record<string, unknown>)[npc.dialogKey] as string) ??
               ES.dialogs.healer_clara;
@@ -2322,6 +2761,145 @@ export class OverworldScene implements Scene {
         },
         { label: 'Salir', onSelect: () => {} },
       ]);
+      return;
+    }
+
+    if (npc.id === 'taller_asistente_iris') {
+      this.game.dialog.show(ES.dialogs.iris_workshop_greeting, undefined, [
+        {
+          label: 'Reparar SoulDolls (PS y PP)',
+          onSelect: () => {
+            healPartyFull(this.game.saveData.party);
+            this.recordHealPoint();
+            this.game.bus.emit('audio:sfx', { sfx: 'heal' });
+            this.game.saveManager.save(this.game.saveData);
+            this.game.dialog.show(ES.dialogs.iris_healed);
+          },
+        },
+        {
+          label: 'Mesa de Creación y Almas',
+          onSelect: () => {
+            this.openWorkshop('creacion');
+          },
+        },
+        {
+          label: 'Piezas y Desmantelado',
+          onSelect: () => {
+            this.openWorkshop('piezas');
+          },
+        },
+        { label: 'Salir', onSelect: () => {} },
+      ]);
+      return;
+    }
+
+    if (npc.id === 'taller_maestra_lyra') {
+      this.game.dialog.show(ES.dialogs.lyra_workshop_greeting, undefined, [
+        {
+          label: 'Forjar Técnicas y Movimientos',
+          onSelect: () => {
+            this.openSkillAcademy('movimientos');
+          },
+        },
+        {
+          label: 'Despertar Habilidades Pasivas',
+          onSelect: () => {
+            this.openSkillAcademy('pasivas');
+          },
+        },
+        {
+          label: 'Entrenar Atributos (EV / IV)',
+          onSelect: () => {
+            this.openSkillAcademy('atributos');
+          },
+        },
+        {
+          label: 'Comercio de MT y Tónicos',
+          onSelect: () => {
+            this.openSkillShop();
+          },
+        },
+        {
+          label: '¿Cómo se aprenden habilidades?',
+          onSelect: () => {
+            this.game.dialog.show(ES.dialogs.lyra_skill_guide, () => {
+              this.openSkillAcademy('fuentes');
+            });
+          },
+        },
+        { label: 'Salir', onSelect: () => {} },
+      ]);
+      return;
+    }
+
+    if (npc.id === 'artesano_gael') {
+      const sideState = getSideQuestForNpc(npc.id, this.game.saveData);
+      if (sideState && sideState.status === 'active' && sideState.progress.ready) {
+        const reward = completeSideQuest(this.game.saveData, sideState.quest.id);
+        if (reward) {
+          this.game.bus.emit('audio:sfx', { sfx: 'quest_reward' });
+          this.updateBadge();
+          this.refreshSideQuestMarkers();
+          this.game.saveManager.save(this.game.saveData);
+          this.game.dialog.show(sideState.quest.completeDialogue, () => {
+            this.game.showToast(
+              `Recompensa: +${reward.rewardGold} Oro y ${reward.blueprint.name}`
+            );
+          });
+          return;
+        }
+      }
+
+      const gaelChoices: Array<{ label: string; onSelect: () => void }> = [];
+      if (sideState && sideState.status === 'available') {
+        gaelChoices.push({
+          label: '¡Aceptar misión de forja!',
+          onSelect: () => {
+            if (acceptSideQuest(this.game.saveData, sideState.quest.id)) {
+              this.game.bus.emit('audio:sfx', { sfx: 'quest_accept' });
+              this.refreshSideQuestMarkers();
+              this.game.saveManager.save(this.game.saveData);
+              this.game.showToast(`Misión aceptada: ${sideState.quest.title}`);
+            }
+          },
+        });
+      }
+      gaelChoices.push(
+        {
+          label: 'Abrir Fragua y Planos',
+          onSelect: () => {
+            this.openWorkshop('forja');
+          },
+        },
+        {
+          label: 'Crear / Moldear Cuerpos',
+          onSelect: () => {
+            this.openWorkshop('creacion');
+          },
+        }
+      );
+      if (sideState && sideState.status === 'active') {
+        gaelChoices.push({
+          label: 'Progreso de misión',
+          onSelect: () => {
+            this.game.dialog.show(`${sideState.quest.progressDialogue} (${sideState.progress.label})`);
+          },
+        });
+      } else {
+        gaelChoices.push({
+          label: '¿Qué es la Resonancia?',
+          onSelect: () => {
+            this.game.dialog.show(ES.dialogs.gael_resonance_tip);
+          },
+        });
+      }
+      gaelChoices.push({ label: 'Salir', onSelect: () => {} });
+
+      this.game.dialog.show(
+        sideState?.status === 'available' ? sideState.quest.offerDialogue : ES.dialogs.artesano_gael,
+        undefined,
+        gaelChoices
+      );
       return;
     }
 
@@ -2370,9 +2948,11 @@ export class OverworldScene implements Scene {
       }
     }
 
-    if (npc.id === VILLA_GUIDE_NPC_ID) {
+    if (npc.id === VILLA_GUIDE_NPC_ID || npc.id === LAB_GUIDE_NPC_ID) {
       if (this.game.saveData.flags.starter_chosen) {
         this.game.dialog.show(ES.dialogs.guide_after_starter);
+      } else if (npc.id === LAB_GUIDE_NPC_ID) {
+        this.game.dialog.show(ES.dialogs.guide_choose_starter);
       } else if (this.game.saveData.flags.prof_intro_talked) {
         this.game.dialog.show(ES.dialogs.guide_remind_starter);
       } else {
@@ -2403,18 +2983,7 @@ export class OverworldScene implements Scene {
         this.openOverworldBag();
       },
       onVessels: () => {
-        this.game.vesselScreen.open(
-          this.game.saveData,
-          this.game.rng,
-          () => {
-            this.updateBadge();
-            this.game.saveManager.save(this.game.saveData);
-          },
-          () => {},
-          () => {
-            this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
-          }
-        );
+        this.openWorkshop('forja');
       },
       onBestiary: () => {
         this.game.bestiaryScreen.open(this.game.saveData, () => {});
@@ -2442,6 +3011,47 @@ export class OverworldScene implements Scene {
         this.game.persistOptions();
       },
       onClose: () => {},
+    });
+  }
+
+  private openWorkshop(initialTab: WorkshopTab = 'forja'): void {
+    this.game.vesselScreen.open(
+      this.game.saveData,
+      this.game.rng,
+      () => {
+        this.updateBadge();
+        this.game.saveManager.save(this.game.saveData);
+      },
+      () => {},
+      () => {
+        this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+      },
+      initialTab
+    );
+  }
+
+  private openSkillAcademy(initialTab: SkillAcademyTab = 'movimientos'): void {
+    this.game.skillAcademyScreen.open(
+      this.game.saveData,
+      () => {
+        this.updateBadge();
+        this.game.saveManager.save(this.game.saveData);
+      },
+      () => {},
+      () => {
+        this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+      },
+      initialTab,
+      () => {
+        this.openSkillShop();
+      }
+    );
+  }
+
+  private openSkillShop(): void {
+    this.game.openShop(TALLER_SKILL_SHOP_STOCK, () => {
+      this.updateBadge();
+      this.game.saveManager.save(this.game.saveData);
     });
   }
 
@@ -2479,6 +3089,7 @@ export class OverworldScene implements Scene {
         }
         if (
           item.category === 'medicine' ||
+          item.category === 'tm' ||
           item.category === 'stone' ||
           item.category === 'held'
         ) {
@@ -2488,6 +3099,58 @@ export class OverworldScene implements Scene {
               kind: 'item_target',
               onPick: (partyIndex) => {
                 const creature = this.game.saveData.party[partyIndex];
+                if (item.category === 'tm') {
+                  const res = applyTmToCreature(itemId, creature);
+                  const dollName = getCreatureDisplayName(creature);
+                  if (res.applied) {
+                    removeItem(this.game.saveData.bag, itemId, 1);
+                    this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
+                    this.game.saveManager.save(this.game.saveData);
+                    this.game.dialog.show(
+                      ES.battle.learnedMove(dollName, res.moveName ?? item.name)
+                    );
+                    return;
+                  }
+                  if (res.reason === 'need_slot') {
+                    const moveName = res.moveName ?? item.name;
+                    this.game.dialog.show(
+                      ES.battle.wantsToLearn(dollName, moveName),
+                      undefined,
+                      [
+                        ...creature.moves.map((slot, sIdx) => ({
+                          label: `Olvidar ${getMove(slot.moveId).name}`,
+                          onSelect: () => {
+                            const rep = applyTmToCreature(itemId, creature, sIdx);
+                            if (rep.applied) {
+                              removeItem(this.game.saveData.bag, itemId, 1);
+                              this.game.bus.emit('audio:sfx', { sfx: 'levelup' });
+                              this.game.saveManager.save(this.game.saveData);
+                              this.game.dialog.show(
+                                ES.battle.forgotAndLearned(
+                                  dollName,
+                                  rep.replacedMoveName ?? '',
+                                  rep.moveName ?? moveName
+                                )
+                              );
+                            }
+                          },
+                        })),
+                        { label: ES.battle.skipMove, onSelect: () => {} },
+                      ]
+                    );
+                    return;
+                  }
+                  if (res.reason === 'incompatible') {
+                    this.game.dialog.show(
+                      `${dollName} no tiene afinidad para aprender ${item.name}. Graba la Runa Elemental correspondiente en el Taller.`
+                    );
+                    return;
+                  }
+                  this.game.dialog.show(
+                    `${dollName} ya conoce ${res.moveName ?? item.name}.`
+                  );
+                  return;
+                }
                 if (item.category === 'held') {
                   if (equipHeldItem(this.game.saveData.bag, creature, itemId)) {
                     this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
@@ -2521,6 +3184,13 @@ export class OverworldScene implements Scene {
                 }
                 removeItem(this.game.saveData.bag, itemId, 1);
                 this.game.bus.emit('audio:sfx', { sfx: 'heal' });
+                this.game.saveManager.save(this.game.saveData);
+                if (applied.addedEv && applied.vitaminStat) {
+                  this.game.dialog.show(
+                    `¡${getCreatureDisplayName(creature)} ganó +${applied.addedEv} EV en ${ES.stats[applied.vitaminStat]}!`
+                  );
+                  return;
+                }
                 this.game.dialog.show(
                   `${ES.bag.usedItem(item.name)} (${getCreatureDisplayName(creature)})`
                 );
@@ -2536,15 +3206,24 @@ export class OverworldScene implements Scene {
     );
   }
 
-  render(): void {
+  render(alpha = 1): void {
     if (this.game.renderer.isContextLost()) return;
+    this.applyInterpolatedVisuals(alpha);
     this.postFx.setQualityTier(this.game.renderer.getQualityTier());
     this.postFx.setPixelEffect(this.game.renderer.isPixelEffectEnabled());
     this.postFx.setPostFxOptions(this.game.renderer.getPostFxOptions());
     this.postFx.render();
   }
 
+  onPause(): void {
+    this.restoreVisualSnapshot();
+    this.game.touchControls.setCameraTouchEnabled(false);
+    this.game.touchControls.setCameraHandlers(null);
+  }
+
   onExit(): void {
+    this.game.touchControls.setCameraTouchEnabled(false);
+    this.game.touchControls.setCameraHandlers(null);
     this.hud.unmount(this.game.uiLayers);
     this.sunLight?.shadow.map?.dispose();
     this.sunLight = null;

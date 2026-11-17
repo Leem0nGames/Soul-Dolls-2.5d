@@ -35,6 +35,14 @@ const PROP_SHADOW_RADIUS: Partial<Record<PropKind, number>> = {
   lamp_stone: 0.28,
   bush: 0.46,
   bush_arcane: 0.46,
+  forge_hearth: 0.62,
+  anvil_bench: 0.44,
+  doll_worktable: 0.56,
+  mannequin_rack: 0.52,
+  blueprint_desk: 0.42,
+  skill_altar: 0.56,
+  training_dummy: 0.48,
+  lab_console: 0.54,
 };
 
 const PROP_GLOW_SPECS: Partial<Record<PropKind, GlowSpec>> = {
@@ -45,6 +53,12 @@ const PROP_GLOW_SPECS: Partial<Record<PropKind, GlowSpec>> = {
   crystal: { height: 0.65, size: 1.05, color: 0x86e8ff, intensity: 1.6 },
   capsule_pedestal: { height: 0.78, size: 0.92, color: 0x7af5d8, intensity: 1.4 },
   heal_machine: { height: 0.95, size: 1.15, color: 0x7effc6, intensity: 1.45 },
+  forge_hearth: { height: 0.72, size: 1.45, color: 0xff9248, intensity: 1.7 },
+  anvil_bench: { height: 0.62, size: 0.78, color: 0xffb85c, intensity: 1.2 },
+  doll_worktable: { height: 0.74, size: 1.05, color: 0x5fe3d2, intensity: 1.35 },
+  skill_altar: { height: 1.05, size: 1.35, color: 0x62f2ff, intensity: 1.65 },
+  training_dummy: { height: 0.78, size: 0.85, color: 0xf4c35d, intensity: 1.15 },
+  lab_console: { height: 0.88, size: 1.18, color: 0x66f2ff, intensity: 1.45 },
 };
 
 export function createContactShadowTexture(): THREE.Texture {
@@ -243,7 +257,9 @@ export class OverworldAtmosphere {
   private readonly shadowPlaneGeo: THREE.PlaneGeometry;
 
   private glowMesh: THREE.InstancedMesh | null = null;
+  private glowMat: THREE.MeshBasicMaterial | null = null;
   private glowEntries: GlowEntry[] = [];
+  private glowIntensityMult = 1.0;
   private nearestLights: PooledPointLight[] = [];
 
   private shaftGroup: THREE.Group | null = null;
@@ -407,7 +423,15 @@ export class OverworldAtmosphere {
 
     scene.add(inst);
     this.glowMesh = inst;
+    this.glowMat = glowMat;
     this.glowEntries = entries;
+  }
+
+  setGlowIntensityMult(mult: number): void {
+    this.glowIntensityMult = Math.max(0.25, Math.min(2.2, mult));
+    if (this.glowMat) {
+      this.glowMat.opacity = Math.min(0.95, 0.72 * Math.sqrt(this.glowIntensityMult));
+    }
   }
 
   private buildLightShafts(
@@ -766,7 +790,7 @@ export class OverworldAtmosphere {
           const flicker = 0.92 + Math.sin(this.time * 3.1 + e.phase) * 0.08;
           p.light.position.set(e.x, e.y, e.z);
           p.light.color.setHex(e.color);
-          p.light.intensity = 2.4 * fade * flicker;
+          p.light.intensity = 2.4 * fade * flicker * this.glowIntensityMult;
         }
       }
     }

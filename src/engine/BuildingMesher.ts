@@ -70,6 +70,14 @@ function getBuildingPalette(kind: BuildingKind): {
         wallHeight: 2.8,
         roofHeight: 1.4,
       };
+    case 'workshop':
+      return {
+        wall: 'wall_fieldstone',
+        roof: 'roof_wood',
+        roofKind: 'wood',
+        wallHeight: 2.3,
+        roofHeight: 1.35,
+      };
   }
 }
 
@@ -184,6 +192,47 @@ function addBuildingGeometry(
   // Gable end triangles
   pushTriangle(qb, [rx0, yTop, rz0], [rx0, yTop, rz1], [rx0, yPeak, rMidZ], pal.wall, 0.90);
   pushTriangle(qb, [rx1, yTop, rz1], [rx1, yTop, rz0], [rx1, yPeak, rMidZ], pal.wall, 0.95);
+
+  if (b.kind === 'workshop') {
+    // Stone forge chimney rising from the right-back slope
+    const cx0 = x1 - 0.85;
+    const cx1 = x1 - 0.25;
+    const cz0 = z0 + 0.25;
+    const cz1 = z0 + 0.85;
+    const cyTop = yPeak + 0.55;
+    if (wallBuilders) {
+      let cqb = wallBuilders.get('wall_castle');
+      if (!cqb) {
+        cqb = createQuadBuilder();
+        wallBuilders.set('wall_castle', cqb);
+      }
+      pushTiledBox(cqb, cx0, cx1, yTop - 0.1, cyTop, cz0, cz1, 0.95, [0.95, 0.92, 0.88]);
+    } else {
+      pushTiledQuadKey(qb, [cx0, yTop - 0.1, cz1], [cx1, yTop - 0.1, cz1], [cx1, cyTop, cz1], [cx0, cyTop, cz1], 'wall_castle', 1, 2, 1.0);
+      pushTiledQuadKey(qb, [cx1, yTop - 0.1, cz0], [cx0, yTop - 0.1, cz0], [cx0, cyTop, cz0], [cx1, cyTop, cz0], 'wall_castle', 1, 2, 0.88);
+      pushTiledQuadKey(qb, [cx1, yTop - 0.1, cz1], [cx1, yTop - 0.1, cz0], [cx1, cyTop, cz0], [cx1, cyTop, cz1], 'wall_castle', 1, 2, 0.92);
+      pushTiledQuadKey(qb, [cx0, yTop - 0.1, cz0], [cx0, yTop - 0.1, cz1], [cx0, cyTop, cz1], [cx0, cyTop, cz0], 'wall_castle', 1, 2, 0.90);
+    }
+    // Warm forge sign emblem above entrance + stone chimney cap
+    pushQuad(
+      qb,
+      [midX - 0.6, groundY + doorH + 0.15, zFront + 0.02],
+      [midX + 0.6, groundY + doorH + 0.15, zFront + 0.02],
+      [midX + 0.6, groundY + doorH + 0.65, zFront + 0.02],
+      [midX - 0.6, groundY + doorH + 0.65, zFront + 0.02],
+      'wall_wood_gold',
+      1.05
+    );
+    pushQuad(
+      qb,
+      [cx0 - 0.08, cyTop, cz1 + 0.08],
+      [cx1 + 0.08, cyTop, cz1 + 0.08],
+      [cx1 + 0.08, cyTop + 0.14, cz1 + 0.08],
+      [cx0 - 0.08, cyTop + 0.14, cz1 + 0.08],
+      'wall_iron',
+      1.0
+    );
+  }
 }
 
 export function buildBuildingsMesh(
@@ -293,10 +342,11 @@ export function buildInteriorWallsMesh(
   if (wallQb.indices.length === 0) return null;
 
   const group = new THREE.Group();
+  const wallKey: TileAtlasKey = map.id === 'taller_origen' ? 'wall_brick' : 'wall_plaster';
   const wallMat = getWallTexture
     ? new THREE.MeshStandardMaterial({
-        map: getWallTexture('wall_plaster'),
-        normalMap: getWallNormalTexture ? getWallNormalTexture('wall_plaster') : null,
+        map: getWallTexture(wallKey),
+        normalMap: getWallNormalTexture ? getWallNormalTexture(wallKey) : null,
         normalScale: new THREE.Vector2(1.05, 1.05),
         roughness: 0.88,
         metalness: 0.03,

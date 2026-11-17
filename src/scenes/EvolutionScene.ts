@@ -63,12 +63,14 @@ export class EvolutionScene implements Scene {
 
   onEnter(): void {
     this.game.uiLayers.applySceneVisibility({
+      touchCamera: false,
       overworldHud: false,
       touchControls: true,
       battleHud: false,
       battleFx: false,
       battleTransition: false,
     });
+    this.game.touchControls.setCameraTouchEnabled(false);
     this.game.touchControls.setVisible(true);
     this.game.cameraRig.setPreset('battle');
     this.game.cameraRig.snapTo(0, 0, 0);

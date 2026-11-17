@@ -14,11 +14,11 @@ export const MAIN_QUESTS: readonly QuestDef[] = [
   {
     id: 'q_plaza_soulpots',
     title: 'El Despertar',
-    objective: 'Acércate a los Soulpots en la plaza central',
-    targetMapId: 'villa_origen',
-    targetX: 25,
-    targetY: 20,
-    radius: 2,
+    objective: 'Entra al Laboratorio del Prof. Robledo y elige tu SoulDoll',
+    targetMapId: 'laboratorio_origen',
+    targetX: 12,
+    targetY: 5,
+    radius: 3,
   },
   {
     id: 'q_estanque_este',

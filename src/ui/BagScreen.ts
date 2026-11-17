@@ -7,6 +7,7 @@ import { renderSoulDustCounter } from './renderSoulDustCounter.ts';
 
 const OVERWORLD_CATEGORIES: readonly ItemCategory[] = [
   'medicine',
+  'tm',
   'capsule',
   'stone',
   'held',
@@ -40,7 +41,7 @@ export class BagScreen extends ModalOverlay {
       const tabs = visibleCats
         .map((cat) => {
           const active = cat === this.activeCat;
-          return `<button data-cat="${cat}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+          return `<button data-cat="${cat}" class="px-btn min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
             active ? 'px-btn-primary' : 'px-btn-secondary'
           }">${ES.bag.categories[cat]}</button>`;
         })
@@ -58,15 +59,21 @@ export class BagScreen extends ModalOverlay {
                     def.category === 'capsule' ||
                     def.category === 'battle'
                   : def.category === 'medicine' ||
+                    def.category === 'tm' ||
                     def.category === 'stone' ||
                     def.category === 'held' ||
                     def.category === 'utility';
-                const btnLabel = def.category === 'held' ? ES.bag.equip : ES.bag.use;
+                const btnLabel =
+                  def.category === 'held'
+                    ? ES.bag.equip
+                    : def.category === 'tm'
+                      ? 'Enseñar'
+                      : ES.bag.use;
                 const iconHtml = this.assets
                   ? `<img src="${this.assets.getItemIconDataUrl(def.id)}" class="pixel-canvas w-8 h-8 object-contain shrink-0" alt="" />`
                   : '';
                 return `
-                  <div class="px-card flex items-center justify-between gap-3 p-2.5">
+                  <div class="px-panel px-card flex items-center justify-between gap-3 p-2.5">
                     <div class="flex items-center gap-2.5 min-w-0">
                       ${iconHtml}
                       <div class="min-w-0">
@@ -74,10 +81,10 @@ export class BagScreen extends ModalOverlay {
                         <div class="text-xs text-bone-gray">${def.description}</div>
                       </div>
                     </div>
-                    <button data-use="${def.id}" ${usable ? '' : 'disabled'} class="min-h-[44px] px-3.5 text-xs font-bold shrink-0 whitespace-nowrap ${
+                    <button data-use="${def.id}" ${usable ? '' : 'disabled'} class="px-btn min-h-[44px] px-3.5 text-xs font-bold shrink-0 whitespace-nowrap ${
                       usable
                         ? 'px-btn-success'
-                        : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-cold-stone cursor-not-allowed'
+                        : 'px-btn-secondary'
                     }">${btnLabel}</button>
                   </div>
                 `;
@@ -86,12 +93,15 @@ export class BagScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
-            <div class="text-base font-bold text-resonant-gold truncate">${ES.bag.title}</div>
-            <div class="flex items-center gap-2 shrink-0">
-              ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-bag-soul-dust' })}
-              <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bag.back}</button>
+          <div class="mb-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-base font-bold text-resonant-gold truncate">${ES.bag.title}</div>
+              <div class="flex items-center gap-2 shrink-0">
+                ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-bag-soul-dust' })}
+                <button data-close class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.bag.back}</button>
+              </div>
             </div>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
           <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 mb-3">${tabs}</div>
           <div class="space-y-2">${listHtml}</div>

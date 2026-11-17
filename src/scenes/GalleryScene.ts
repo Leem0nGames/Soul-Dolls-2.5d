@@ -49,7 +49,7 @@ export class GalleryScene implements Scene {
       const badges = renderTypeBadges(s.types, 'smUpper');
 
       return `
-        <div class="px-card border-cold-stone bg-smoked-wood p-2.5 flex flex-col gap-1.5">
+        <div class="px-panel px-card border-cold-stone bg-smoked-wood p-2.5 flex flex-col gap-1.5">
           <div class="flex items-center justify-between text-xs font-bold">
             <span class="text-bone-gray tabular-nums">#${String(id).padStart(2, '0')}</span>
             <span class="text-resonant-gold truncate">${s.name}</span>
@@ -77,7 +77,7 @@ export class GalleryScene implements Scene {
       <div class="max-w-6xl mx-auto">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4 border-b-2 border-ash-purple pb-3">
           <h1 class="text-base sm:text-lg font-extrabold text-resonant-gold px-text-shadow">${ES.gallery.title}</h1>
-          <button data-exit class="px-btn-arcane min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.gallery.backToTitle}</button>
+          <button data-exit class="px-btn px-btn-arcane min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.gallery.backToTitle}</button>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pb-6">
           ${cards}

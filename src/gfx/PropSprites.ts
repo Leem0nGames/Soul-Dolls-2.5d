@@ -17,7 +17,12 @@ export function generatePropCanvas(kind: PropKind): HTMLCanvasElement {
     kind === 'sofa' ||
     kind === 'achievements_wall' ||
     kind === 'bookshelf' ||
-    kind === 'stove';
+    kind === 'stove' ||
+    kind === 'forge_hearth' ||
+    kind === 'doll_worktable' ||
+    kind === 'mannequin_rack' ||
+    kind === 'skill_altar' ||
+    kind === 'training_dummy';
 
   const w = isTree ? 32 : isLarge ? 32 : 24;
   const h = isTree ? 42 : isLarge ? 32 : 24;
@@ -382,6 +387,153 @@ export function generatePropCanvas(kind: PropKind): HTMLCanvasElement {
       px(5, 6, 14, 4, PALETTE.woodHighlight);
       px(7, 10, 10, 4, PALETTE.leatherBrown);
       px(9, 14, 6, 4, PALETTE.burntUmber);
+      break;
+
+    case 'forge_hearth':
+      // Stone forge furnace with chimney hood, glowing embers, and bronze bellows pipe
+      px(6, 2, 20, 10, PALETTE.stoneShadow);
+      px(8, 3, 16, 8, PALETTE.stoneMid);
+      px(3, 12, 26, 18, PALETTE.cryptInk);
+      px(4, 13, 24, 16, PALETTE.stoneShadow);
+      px(5, 14, 22, 4, PALETTE.stoneMid);
+      px(5, 14, 22, 1, PALETTE.oldBronze);
+      // Glowing hearth chamber
+      px(8, 18, 16, 10, PALETTE.abyssInk);
+      px(10, 20, 12, 7, PALETTE.riftCrimson);
+      px(11, 21, 10, 5, PALETTE.coralRed);
+      px(13, 22, 6, 4, PALETTE.resonantGold);
+      px(14, 24, 4, 2, PALETTE.paleGold);
+      // Brass side pipe / bellows accent
+      px(2, 18, 3, 9, PALETTE.darkOak);
+      px(2, 20, 3, 3, PALETTE.oldBronze);
+      break;
+
+    case 'anvil_bench':
+      // Heavy timber stump & horned bronze-iron anvil
+      px(4, 14, 16, 9, PALETTE.darkOak);
+      px(5, 15, 14, 7, PALETTE.burntUmber);
+      px(5, 15, 14, 2, PALETTE.leatherBrown);
+      px(2, 8, 20, 4, PALETTE.stoneShadow);
+      px(3, 7, 17, 3, PALETTE.stoneMid);
+      px(6, 6, 11, 2, PALETTE.boneGray);
+      px(8, 11, 8, 4, PALETTE.stoneShadow);
+      // Glowing heated bar on anvil
+      px(9, 6, 5, 1, PALETTE.resonantGold);
+      break;
+
+    case 'doll_worktable':
+      // Articulated SoulDoll assembly table with brass calipers, silk ribbon & Ki crystal
+      px(2, 13, 28, 16, PALETTE.darkOak);
+      px(3, 12, 26, 6, PALETTE.leatherBrown);
+      px(4, 13, 24, 4, PALETTE.woodHighlight);
+      px(4, 19, 4, 11, PALETTE.darkOak);
+      px(24, 19, 4, 11, PALETTE.darkOak);
+      // Half-assembled wooden mannequin bust & tools on bench
+      px(12, 5, 8, 7, PALETTE.cryptInk);
+      px(13, 6, 6, 5, PALETTE.porcelain);
+      px(14, 8, 4, 2, PALETTE.oldBronze);
+      px(14, 12, 4, 3, PALETTE.tarnishedGold);
+      // Ki crystal & glowing rune circle on tabletop
+      px(6, 10, 4, 5, PALETTE.oceanicTeal);
+      px(7, 9, 2, 4, PALETTE.kiCyan);
+      px(21, 11, 5, 3, PALETTE.resonantGold);
+      px(22, 10, 3, 2, PALETTE.paleGold);
+      break;
+
+    case 'mannequin_rack':
+      // Display rack holding 2 crafted doll chassis frames
+      px(3, 27, 26, 3, PALETTE.darkOak);
+      px(4, 4, 2, 24, PALETTE.burntUmber);
+      px(26, 4, 2, 24, PALETTE.burntUmber);
+      px(3, 3, 26, 3, PALETTE.oldBronze);
+      // Left chassis (Paladín / Bronze)
+      px(8, 7, 6, 5, PALETTE.stoneMid);
+      px(7, 12, 8, 7, PALETTE.tarnishedGold);
+      px(9, 13, 4, 5, PALETTE.brightBrass);
+      px(8, 19, 2, 6, PALETTE.stoneShadow);
+      px(12, 19, 2, 6, PALETTE.stoneShadow);
+      // Right chassis (Witch / Violet-Cyan)
+      px(18, 7, 6, 5, PALETTE.porcelain);
+      px(17, 12, 8, 7, PALETTE.royalPurple);
+      px(19, 13, 4, 4, PALETTE.kiCyan);
+      px(18, 19, 2, 6, PALETTE.deepAmethyst);
+      px(22, 19, 2, 6, PALETTE.deepAmethyst);
+      break;
+
+    case 'blueprint_desk':
+      // Drafting lectern with unrolled cyan arcane blueprint & quill
+      px(3, 11, 18, 11, PALETTE.darkOak);
+      px(4, 10, 16, 4, PALETTE.burntUmber);
+      px(5, 14, 3, 8, PALETTE.darkOak);
+      px(16, 14, 3, 8, PALETTE.darkOak);
+      // Blueprint scroll
+      px(5, 5, 14, 7, PALETTE.deepAbyss);
+      px(6, 6, 12, 5, PALETTE.oceanicTeal);
+      px(7, 7, 4, 3, PALETTE.kiCyan);
+      px(12, 7, 5, 1, PALETTE.iceCyan);
+      px(12, 9, 4, 1, PALETTE.paleGold);
+      px(17, 4, 2, 4, PALETTE.resonantGold);
+      break;
+
+    case 'skill_altar':
+      // Obsidian & brass arcane lectern with floating glowing Ki grimoire and crystal spires
+      px(6, 23, 20, 7, PALETTE.cryptInk);
+      px(7, 22, 18, 6, PALETTE.stoneShadow);
+      px(9, 14, 14, 9, PALETTE.deepAmethyst);
+      px(11, 15, 10, 7, PALETTE.royalPurple);
+      px(10, 13, 12, 2, PALETTE.resonantGold);
+      // Floating glowing open grimoire / skill tablet
+      px(7, 5, 18, 7, PALETTE.deepAbyss);
+      px(8, 6, 7, 5, PALETTE.porcelain);
+      px(17, 6, 7, 5, PALETTE.porcelain);
+      px(15, 6, 2, 5, PALETTE.resonantGold);
+      px(10, 8, 3, 2, PALETTE.kiCyan);
+      px(19, 8, 3, 2, PALETTE.etherealOrchid);
+      // Arcane crystal crown & rune sparks
+      px(14, 1, 4, 4, PALETTE.vibrantAqua);
+      px(15, 2, 2, 2, PALETTE.frostedGlass);
+      px(4, 10, 2, 2, PALETTE.kiCyan);
+      px(26, 9, 2, 2, PALETTE.resonantGold);
+      break;
+
+    case 'training_dummy':
+      // Heavy oak combat training dummy with bronze breastplate, wooden spar bar & Ki strike pad
+      px(8, 26, 16, 4, PALETTE.darkOak);
+      px(13, 18, 6, 9, PALETTE.burntUmber);
+      px(5, 11, 22, 3, PALETTE.woodHighlight);
+      px(4, 10, 3, 5, PALETTE.oldBronze);
+      px(25, 10, 3, 5, PALETTE.oldBronze);
+      // Armor torso
+      px(10, 9, 12, 11, PALETTE.stoneShadow);
+      px(11, 10, 10, 9, PALETTE.oldBronze);
+      px(13, 12, 6, 5, PALETTE.riftCrimson);
+      px(14, 13, 4, 3, PALETTE.resonantGold);
+      // Helmet head
+      px(12, 3, 8, 6, PALETTE.stoneMid);
+      px(13, 4, 6, 4, PALETTE.boneGray);
+      px(14, 5, 4, 1, PALETTE.kiCyan);
+      break;
+
+    case 'lab_console':
+      // Arcane Soulpot telemetry desk with glowing cyan CRT monitor and specimen vial
+      px(3, 18, 26, 11, PALETTE.darkOak);
+      px(4, 16, 24, 5, PALETTE.burntUmber);
+      px(5, 17, 22, 2, PALETTE.oldBronze);
+      px(4, 21, 3, 8, PALETTE.cryptInk);
+      px(25, 21, 3, 8, PALETTE.cryptInk);
+      // Monitor housing & Ki waveform screen
+      px(6, 5, 14, 12, PALETTE.stoneShadow);
+      px(7, 6, 12, 10, PALETTE.deepAbyss);
+      px(8, 7, 10, 7, PALETTE.oceanicTeal);
+      px(9, 9, 3, 2, PALETTE.kiCyan);
+      px(12, 8, 2, 4, PALETTE.neonMint);
+      px(14, 10, 3, 1, PALETTE.iceCyan);
+      // Glass Soulpot analyzer jar on the right
+      px(22, 8, 5, 9, PALETTE.cryptInk);
+      px(23, 9, 3, 7, PALETTE.vibrantAqua);
+      px(23, 7, 3, 2, PALETTE.resonantGold);
+      px(9, 15, 2, 1, PALETTE.resonantGold);
+      px(12, 15, 2, 1, PALETTE.riftCrimson);
       break;
   }
 

@@ -13,6 +13,7 @@ import {
   applyDamageToBodyParts,
   BODY_PART_LABELS,
   ensureBodyParts,
+  getContainerAffinityMatch,
   healBodyParts,
   pickTargetBodyPart,
   syncBodyPartsFull,
@@ -26,6 +27,7 @@ import { awardExperience, computeBattleXp } from './Experience.ts';
 import { computeHeldStatMultiplier, getHeldItemDef } from './HeldItems.ts';
 import { applyMedicineToCreature, removeItem } from './Inventory.ts';
 import { getFirstHealthyIndex } from './Party.ts';
+import { getDefaultBiomeWeather } from './TimeOfDay.ts';
 import { getTypeMultiplier } from './TypeChart.ts';
 import type {
   BagSlot,
@@ -35,10 +37,12 @@ import type {
   BattleSideState,
   BattleState,
   BattleStatName,
+  BattleWeather,
   BodyPartName,
   CreatureInstance,
   MoveDef,
   StatusCondition,
+  TimePhase,
   TrainerDef,
 } from './types.ts';
 
@@ -46,6 +50,7 @@ export class BattleEngine {
   readonly state: BattleState;
   private readonly bag: BagSlot[];
   private readonly rng: Rng;
+  private readonly timePhase?: TimePhase;
   private entryTriggeredOnce = false;
 
   constructor(
@@ -54,20 +59,25 @@ export class BattleEngine {
     bag: BagSlot[],
     rng: Rng,
     trainer?: TrainerDef,
-    biome?: BattleBiome
+    biome?: BattleBiome,
+    extra?: { timePhase?: TimePhase; weather?: BattleWeather }
   ) {
     this.bag = bag;
     this.rng = rng;
+    this.timePhase = extra?.timePhase;
 
     for (const c of playerParty) ensureBodyParts(c);
     for (const c of enemyParty) ensureBodyParts(c);
 
     const pIdx = Math.max(0, getFirstHealthyIndex(playerParty));
     const eIdx = Math.max(0, getFirstHealthyIndex(enemyParty));
+    const initWeather = extra?.weather ?? getDefaultBiomeWeather(biome);
 
     this.state = {
       isWild: !trainer,
       biome,
+      weather: initWeather,
+      weatherTurns: initWeather === 'none' ? 0 : -1,
       trainer,
       player: {
         party: playerParty,
@@ -100,6 +110,17 @@ export class BattleEngine {
     if (this.entryTriggeredOnce) return [];
     this.entryTriggeredOnce = true;
     const events: BattleEvent[] = [];
+    if (this.state.weather !== 'none') {
+      events.push({
+        type: 'weather_change',
+        weather: this.state.weather,
+        turns: this.state.weatherTurns,
+      });
+      events.push({
+        type: 'text',
+        message: ES.battle.weatherStart[this.state.weather],
+      });
+    }
     this.triggerOnEntry('player', events);
     this.triggerOnEntry('enemy', events);
     return events;
@@ -173,7 +194,11 @@ export class BattleEngine {
     spe *= computeAbilityStatMultiplier(c, 'spe');
     spe *= computeHeldStatMultiplier(c, 'spe');
     if (c.status === 'paralysis') spe *= 0.5;
-    if (c.bodyParts && c.bodyParts.legs.current <= 0) spe *= 0.85;
+    if (c.bodyParts && c.bodyParts.legs.current <= 0) {
+      const match = getContainerAffinityMatch(c);
+      const legMult = match.level === 'full' ? 0.95 : match.level === 'partial' ? 0.92 : 0.85;
+      spe *= legMult;
+    }
     return spe;
   }
 
@@ -247,6 +272,10 @@ export class BattleEngine {
         events.push({ type: 'text', message: ES.battle.cantRunTrainer });
         return events;
       }
+      if (this.state.player.trappedTurns && this.state.player.trappedTurns > 0) {
+        events.push({ type: 'text', message: ES.battle.cantEscapeTrapped });
+        return events;
+      }
       this.state.runAttempts += 1;
       const pSpe = Math.max(1, this.effectiveSpeed('player'));
       const eSpe = Math.max(1, this.effectiveSpeed('enemy'));
@@ -262,14 +291,22 @@ export class BattleEngine {
       events.push({ type: 'run_fail' });
       events.push({ type: 'text', message: ES.battle.runFailed });
       this.executeAction('enemy', enemyAction, events);
-      this.resolveEndOfTurn(events);
+      if (!this.state.finished) {
+        this.resolveEndOfTurn(events);
+      }
       return events;
     }
 
     if (playerAction.type === 'switch') {
+      if (this.state.player.trappedTurns && this.state.player.trappedTurns > 0) {
+        events.push({ type: 'text', message: ES.battle.cantEscapeTrapped });
+        return events;
+      }
       this.executeSwitch('player', playerAction.partyIndex, events);
       this.executeAction('enemy', enemyAction, events);
-      this.resolveEndOfTurn(events);
+      if (!this.state.finished) {
+        this.resolveEndOfTurn(events);
+      }
       return events;
     }
 
@@ -383,6 +420,7 @@ export class BattleEngine {
       const res = attemptCatch(wild, itemId, this.rng, {
         biome: this.state.biome,
         turnCount: this.state.turnCount,
+        timePhase: this.timePhase,
       });
       events.push({
         type: 'catch_attempt',
@@ -710,7 +748,8 @@ export class BattleEngine {
             attackerSideState.stages,
             defenderSideState.stages,
             move,
-            this.rng
+            this.rng,
+            this.state.weather
           );
 
           if (res.immuneHealRatio > 0 && res.triggeredDefenderAbility) {
@@ -891,6 +930,15 @@ export class BattleEngine {
     events: BattleEvent[]
   ): void {
     const eff = move.effect;
+    if (eff.kind === 'weather' && eff.weather) {
+      const turns = eff.weatherTurns ?? 5;
+      this.state.weather = eff.weather;
+      this.state.weatherTurns = turns;
+      events.push({ type: 'weather_change', weather: eff.weather, turns });
+      events.push({ type: 'text', message: ES.battle.weatherStart[eff.weather] });
+      return;
+    }
+
     if (
       eff.kind === 'none' ||
       eff.kind === 'drain' ||
@@ -965,7 +1013,15 @@ export class BattleEngine {
   }
 
   private resolveEndOfTurn(events: BattleEvent[]): void {
-    for (const side of ['player', 'enemy'] as const) {
+    const pSpe = this.effectiveSpeed('player');
+    const eSpe = this.effectiveSpeed('enemy');
+    const playerFirst =
+      pSpe > eSpe ? true : eSpe > pSpe ? false : this.rng.next() < 0.5;
+    const speedOrder: ReadonlyArray<'player' | 'enemy'> = playerFirst
+      ? ['player', 'enemy']
+      : ['enemy', 'player'];
+
+    for (const side of speedOrder) {
       if (this.state.finished) return;
       const c = this.getActive(side);
       const sState = this.getSide(side);
@@ -1087,6 +1143,51 @@ export class BattleEngine {
           hpAfter: c.currentHp,
           maxHp: c.stats.hp,
         });
+      }
+    }
+
+    // Battle weather end-of-turn ticks & duration countdown
+    if (!this.state.finished && this.state.weather !== 'none') {
+      const weather = this.state.weather;
+      if (weather === 'sandstorm' || weather === 'snow') {
+        for (const side of speedOrder) {
+          if (this.state.finished) break;
+          const c = this.getActive(side);
+          if (c.currentHp <= 0) continue;
+          const types = getSpecies(c.speciesId).types;
+          const immune =
+            weather === 'sandstorm'
+              ? types.includes('roca')
+              : types.includes('marea') || types.includes('brisa');
+          if (immune) continue;
+
+          const dmg = Math.max(1, Math.floor(c.stats.hp / 16));
+          applyDamageToBodyParts(c, dmg, 'torso');
+          events.push({
+            type: 'weather_tick',
+            weather,
+            target: side,
+            damage: dmg,
+            hpAfter: c.currentHp,
+            maxHp: c.stats.hp,
+          });
+          events.push({
+            type: 'text',
+            message: ES.battle.weatherTick[weather](getCreatureDisplayName(c)),
+          });
+          if (c.currentHp <= 0) {
+            this.handleFaint(side, events);
+          }
+        }
+      }
+
+      if (!this.state.finished && this.state.weatherTurns > 0) {
+        this.state.weatherTurns -= 1;
+        if (this.state.weatherTurns === 0) {
+          this.state.weather = 'none';
+          events.push({ type: 'weather_change', weather: 'none', turns: 0 });
+          events.push({ type: 'text', message: ES.battle.weatherClear });
+        }
       }
     }
   }

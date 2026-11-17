@@ -61,7 +61,7 @@ export class StorageScreen extends ModalOverlay {
       const boxTabs = save.storageBoxes
         .map(
           (b, idx) =>
-            `<button data-box="${idx}" class="min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap ${
+            `<button data-box="${idx}" class="px-btn min-h-[44px] px-2.5 text-xs font-bold shrink-0 whitespace-nowrap ${
               idx === this.activeBox ? 'px-btn-primary' : 'px-btn-secondary'
             }">${idx + 1}. ${b.name}</button>`
         )
@@ -72,7 +72,7 @@ export class StorageScreen extends ModalOverlay {
           const isSel =
             this.selected?.kind === 'party' && this.selected.partyIndex === idx;
           return `
-            <button data-party="${idx}" class="px-card w-full ${
+            <button data-party="${idx}" class="px-panel px-card w-full ${
               isSel ? 'border-resonant-gold bg-ash-purple' : 'border-ash-purple bg-crypt-ink'
             } p-1.5 flex items-center gap-2 text-left min-h-[48px]">
               <img src="${this.assets.getCreatureDataUrl(c.speciesId, 'front')}" data-souldoll-id="${c.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="" />
@@ -124,21 +124,21 @@ export class StorageScreen extends ModalOverlay {
         actionBar = `
           <div class="flex items-center justify-between gap-2 rounded-none border-2 border-ki-cyan bg-deep-abyss px-3 py-2 text-xs shadow-[2px_2px_0_#050505]">
             <span class="font-bold text-ice-cyan">${ES.storage.placeHere}</span>
-            <button data-cancel-move class="px-btn-secondary min-h-[44px] px-3 font-bold whitespace-nowrap">${ES.storage.cancelMove}</button>
+            <button data-cancel-move class="px-btn px-btn-secondary min-h-[44px] px-3 font-bold whitespace-nowrap">${ES.storage.cancelMove}</button>
           </div>
         `;
       } else if (selCreature && this.selected) {
         const actions =
           this.selected.kind === 'party'
-            ? `<button data-act="deposit" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.deposit}</button>
-               <button data-act="summary" class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.summary}</button>`
-            : `<button data-act="withdraw" class="px-btn-success min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.withdraw}</button>
-               <button data-act="move" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.move}</button>
-               <button data-act="summary" class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.summary}</button>
-               <button data-act="release" class="px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.release}</button>`;
+            ? `<button data-act="deposit" class="px-btn px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.deposit}</button>
+               <button data-act="summary" class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.summary}</button>`
+            : `<button data-act="withdraw" class="px-btn px-btn-success min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.withdraw}</button>
+               <button data-act="move" class="px-btn px-btn-arcane min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.move}</button>
+               <button data-act="summary" class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.summary}</button>
+               <button data-act="release" class="px-btn px-btn-danger min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.release}</button>`;
 
         actionBar = `
-          <div class="px-card flex flex-wrap items-center justify-between gap-2 p-2.5">
+          <div class="px-panel px-card flex flex-wrap items-center justify-between gap-2 p-2.5">
             <div class="flex items-center gap-2 min-w-0">
               <img src="${this.assets.getCreatureDataUrl(selCreature.speciesId, 'front')}" data-souldoll-id="${selCreature.speciesId}" data-souldoll-view="front" class="souldoll-img w-12 h-12 object-contain shrink-0" alt="" />
               <div class="min-w-0">
@@ -154,12 +154,12 @@ export class StorageScreen extends ModalOverlay {
       const renameModal = this.renaming
         ? `
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-4">
-            <div class="px-panel w-full max-w-xs p-4 space-y-3">
-              <div class="text-sm font-bold text-resonant-gold">${ES.storage.renamePrompt}</div>
+            <div class="px-panel px-panel-ornate w-full max-w-xs p-4 space-y-3">
+              <div class="text-sm font-bold text-resonant-gold">◆ ${ES.storage.renamePrompt}</div>
               <input data-rename-input type="text" maxlength="18" value="${box.name.replace(/"/g, '&quot;')}" class="w-full min-h-[44px] rounded-none border-2 border-cold-stone bg-crypt-ink px-3 text-sm text-porcelain" />
               <div class="flex justify-end gap-2">
-                <button data-rename-cancel class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.confirmNo}</button>
-                <button data-rename-save class="px-btn-primary min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.storage.saveName}</button>
+                <button data-rename-cancel class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.confirmNo}</button>
+                <button data-rename-save class="px-btn px-btn-primary min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.storage.saveName}</button>
               </div>
             </div>
           </div>
@@ -175,11 +175,11 @@ export class StorageScreen extends ModalOverlay {
             const name = target ? getCreatureDisplayName(target) : '';
             return `
               <div class="fixed inset-0 z-50 flex items-center justify-center bg-abyss-ink p-4">
-                <div class="px-panel-crimson w-full max-w-xs p-4 space-y-3">
-                  <div class="text-sm font-bold text-coral-red">${ES.storage.releaseConfirm(name)}</div>
+                <div class="px-panel px-panel-crimson px-panel-ornate w-full max-w-xs p-4 space-y-3">
+                  <div class="text-sm font-bold text-coral-red">◆ ${ES.storage.releaseConfirm(name)}</div>
                   <div class="flex justify-end gap-2">
-                    <button data-rel-no class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.confirmNo}</button>
-                    <button data-rel-yes class="px-btn-danger min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.storage.confirmYes}</button>
+                    <button data-rel-no class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.confirmNo}</button>
+                    <button data-rel-yes class="px-btn px-btn-danger min-h-[44px] px-4 text-xs font-bold whitespace-nowrap">${ES.storage.confirmYes}</button>
                   </div>
                 </div>
               </div>
@@ -189,12 +189,15 @@ export class StorageScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-4xl max-h-[calc(100dvh-1rem)] flex flex-col p-3 sm:p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-2 gap-2">
-            <div class="font-bold text-resonant-gold text-sm sm:text-base">${ES.storage.title}</div>
-            <div class="flex items-center gap-2">
-              <button data-open-rename class="px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.rename}</button>
-              <button data-close class="px-btn-secondary min-h-[44px] px-3.5 text-xs font-bold whitespace-nowrap">${ES.storage.back}</button>
+          <div class="mb-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold text-resonant-gold text-sm sm:text-base">${ES.storage.title}</div>
+              <div class="flex items-center gap-2">
+                <button data-open-rename class="px-btn px-btn-secondary min-h-[44px] px-3 text-xs font-bold whitespace-nowrap">${ES.storage.rename}</button>
+                <button data-close class="px-btn px-btn-secondary min-h-[44px] px-3.5 text-xs font-bold whitespace-nowrap">${ES.storage.back}</button>
+              </div>
             </div>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
 
           <div class="flex gap-1.5 overflow-x-auto pb-2 mb-2">${boxTabs}</div>

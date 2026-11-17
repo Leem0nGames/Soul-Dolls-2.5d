@@ -190,7 +190,8 @@ export function renderDollIntegrityHtml(
     ? computeBodyPartRatios(
         creature.containerId ?? 'cuerpo_aprendiz',
         creature.ivs,
-        creature.evBonuses
+        creature.evBonuses,
+        creature.vesselCalibration
       )
     : null;
 

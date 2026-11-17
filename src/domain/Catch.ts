@@ -1,11 +1,12 @@
 import type { Rng } from '../core/Rng.ts';
 import { getItem } from '../data/items.ts';
 import { getSpecies } from '../data/species.ts';
-import type { BattleBiome, CreatureInstance } from './types.ts';
+import type { BattleBiome, CreatureInstance, TimePhase } from './types.ts';
 
 export interface CatchContext {
   biome?: BattleBiome;
   turnCount?: number;
+  timePhase?: TimePhase;
 }
 
 export function computeCatchProbability(
@@ -22,8 +23,11 @@ export function computeCatchProbability(
       spec.types.includes('marea') || context?.biome === 'coast';
     ballMult = isWaterOrCoast ? ballMult : 1.0;
   } else if (item.catchCondition === 'cave_night') {
-    const isCave = context?.biome === 'cave';
-    ballMult = isCave ? ballMult : 1.0;
+    const isCaveOrNight =
+      context?.biome === 'cave' ||
+      context?.timePhase === 'night' ||
+      context?.timePhase === 'dusk';
+    ballMult = isCaveOrNight ? ballMult : 1.0;
   } else if (item.catchCondition === 'first_turn') {
     const isFirstTurn = (context?.turnCount ?? 1) <= 1;
     ballMult = isFirstTurn ? ballMult : 1.0;

@@ -96,7 +96,7 @@ export class CardAlbumScreen extends ModalOverlay {
       const filterBtns = filters
         .map(
           (f) =>
-            `<button data-filter="${f.id}" class="min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
+            `<button data-filter="${f.id}" class="px-btn min-h-[44px] px-3 text-xs font-bold whitespace-nowrap ${
               this.filter === f.id ? 'px-btn-primary' : 'px-btn-secondary'
             }">${f.label}</button>`
         )
@@ -210,15 +210,18 @@ export class CardAlbumScreen extends ModalOverlay {
 
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-4xl max-h-[calc(100dvh-1.5rem)] flex flex-col p-3.5 sm:p-4 text-porcelain">
-          <div class="flex flex-wrap items-center justify-between border-b-2 border-ash-purple pb-2 mb-2.5 gap-2">
-            <div>
-              <div class="font-bold text-resonant-gold">${ES.cards.title}</div>
-              <div class="text-xs text-bone-gray tabular-nums">${ES.cards.collected}: ${counts.collected}/${counts.total} · Copias totales: ${counts.totalCopies}</div>
+          <div class="mb-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="font-bold text-resonant-gold">${ES.cards.title}</div>
+                <div class="text-xs text-bone-gray tabular-nums">${ES.cards.collected}: ${counts.collected}/${counts.total} · Copias totales: ${counts.totalCopies}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                ${renderSoulDustCounter(getSoulDust(save), { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
+                <button data-close class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+              </div>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              ${renderSoulDustCounter(getSoulDust(save), { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
-              <button data-close class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
-            </div>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
           <div class="text-xs text-bone-gray mb-2">${ES.cards.subtitle}</div>
           <div class="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 mb-2">${filterBtns}</div>
@@ -282,12 +285,15 @@ export class CardAlbumScreen extends ModalOverlay {
     if (!owned) {
       this.root.innerHTML = `
         <div class="px-panel w-full max-w-md max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto ${rarityStyle.border} p-4 text-porcelain">
-          <div class="flex items-center justify-between border-b-2 border-ash-purple pb-2 mb-4 gap-2">
-            <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.cards.unknown}</div>
-            <div class="flex items-center gap-2 shrink-0">
-              ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
-              <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+          <div class="mb-4">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold text-bone-gray tabular-nums">#${String(speciesId).padStart(2, '0')} · ${ES.cards.unknown}</div>
+              <div class="flex items-center gap-2 shrink-0">
+                ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
+                <button data-back class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+              </div>
             </div>
+            <div class="px-divider mt-2" aria-hidden="true"></div>
           </div>
           <div class="flex flex-col items-center py-6 gap-3 text-center">
             <img src="${this.assets.getCreatureSilhouetteDataUrl(speciesId)}" data-souldoll-id="${speciesId}" data-souldoll-view="silhouette" class="souldoll-img w-28 h-28 object-contain" alt="${ES.cards.unknown}" />
@@ -334,7 +340,7 @@ export class CardAlbumScreen extends ModalOverlay {
 
     const partyHtml =
       save.party.length === 0
-        ? `<div class="px-card p-4 text-xs text-bone-gray text-center">${ES.cards.noParty}</div>`
+        ? `<div class="px-panel px-card p-4 text-xs text-bone-gray text-center">${ES.cards.noParty}</div>`
         : save.party
             .map((mon, idx) => {
               const hasThis = mon.socketedCardId === speciesId;
@@ -346,9 +352,9 @@ export class CardAlbumScreen extends ModalOverlay {
               const canDropHere = !hasThis && availCopies > 0;
               let btnHtml = '';
               if (hasThis) {
-                btnHtml = `<button data-unsocket="${idx}" class="px-btn-danger min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap">${ES.cards.unsocketAction}</button>`;
+                btnHtml = `<button data-unsocket="${idx}" class="px-btn px-btn-danger min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap">${ES.cards.unsocketAction}</button>`;
               } else if (availCopies > 0) {
-                btnHtml = `<button data-socket="${idx}" class="px-btn-arcane min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap">${
+                btnHtml = `<button data-socket="${idx}" class="px-btn px-btn-arcane min-h-[44px] px-3 text-xs font-bold shrink-0 whitespace-nowrap">${
                   otherCard ? ES.cards.swapAction : ES.cards.socketAction
                 }</button>`;
               } else {
@@ -374,7 +380,7 @@ export class CardAlbumScreen extends ModalOverlay {
                 .join(' · ');
 
               return `
-                <div data-party-drop-idx="${idx}" data-can-drop="${canDropHere ? '1' : '0'}" class="px-card ${
+                <div data-party-drop-idx="${idx}" data-can-drop="${canDropHere ? '1' : '0'}" class="px-panel px-card ${
                   hasThis
                     ? 'border-resonant-gold bg-ash-purple card-socket-active'
                     : 'border-ash-purple bg-crypt-ink'
@@ -415,7 +421,7 @@ export class CardAlbumScreen extends ModalOverlay {
     const canDragCard = availCopies > 0 && save.party.length > 0;
 
     const forgeHtml = `
-      <div class="px-card border-soul-violet p-3 space-y-2.5">
+      <div class="px-panel px-card border-soul-violet p-3 space-y-2.5">
         <div class="flex items-center justify-between gap-2 border-b border-ash-purple pb-1.5">
           <span class="text-xs font-bold uppercase tracking-wider text-ethereal-orchid">${ES.cards.forgeTitle}</span>
           <span class="text-[11px] font-bold text-ghost-violet tabular-nums">${ES.cards.rarity[card.rarity]} · Nivel +${statUpgradeLv}/${MAX_CARD_STAT_UPGRADE_LEVEL}</span>
@@ -424,10 +430,10 @@ export class CardAlbumScreen extends ModalOverlay {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           ${
             nextRarity
-              ? `<button data-upgrade-rarity ${canAffordRarity ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold flex flex-col items-start justify-center ${
+              ? `<button data-upgrade-rarity ${canAffordRarity ? '' : 'disabled'} class="px-btn px-btn-no-caret min-h-[44px] px-3 text-xs font-bold flex flex-col items-start justify-center ${
                   canAffordRarity
                     ? 'px-btn-primary'
-                    : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-bone-gray cursor-not-allowed'
+                    : 'px-btn-secondary'
                 }">
                   <span class="whitespace-nowrap">${ES.cards.upgradeRarityAction(ES.cards.rarity[nextRarity], rarityCost)}</span>
                   ${
@@ -441,10 +447,10 @@ export class CardAlbumScreen extends ModalOverlay {
 
           ${
             !statMaxed
-              ? `<button data-upgrade-stats ${canAffordStat ? '' : 'disabled'} class="min-h-[44px] px-3 text-xs font-bold flex flex-col items-start justify-center ${
+              ? `<button data-upgrade-stats ${canAffordStat ? '' : 'disabled'} class="px-btn px-btn-no-caret min-h-[44px] px-3 text-xs font-bold flex flex-col items-start justify-center ${
                   canAffordStat
                     ? 'px-btn-arcane'
-                    : 'rounded-none border-2 border-ash-purple bg-smoked-wood text-bone-gray cursor-not-allowed'
+                    : 'px-btn-secondary'
                 }">
                   <span class="whitespace-nowrap">${ES.cards.upgradeStatsAction(statUpgradeLv + 1, statCost)}</span>
                   <span class="text-[10px] ${canAffordStat ? 'text-ki-cyan' : 'text-bone-gray'} tabular-nums">${statPreview}</span>
@@ -457,7 +463,7 @@ export class CardAlbumScreen extends ModalOverlay {
           ${
             dismantleCheck.ok
               ? `<span class="text-[11px] text-bone-gray tabular-nums">${ES.cards.copiesLabel(availCopies, totalCopies)}</span>
-                 <button data-dismantle-card class="min-h-[44px] px-3 px-btn-secondary text-xs font-bold whitespace-nowrap">${ES.cards.dismantleAction(dismantleValue)}</button>`
+                 <button data-dismantle-card class="px-btn min-h-[44px] px-3 px-btn-secondary text-xs font-bold whitespace-nowrap">${ES.cards.dismantleAction(dismantleValue)}</button>`
               : `<span class="text-[11px] text-bone-gray">${
                   dismantleCheck.reason === 'all_socketed'
                     ? ES.cards.dismantleAllSocketed
@@ -470,12 +476,15 @@ export class CardAlbumScreen extends ModalOverlay {
 
     this.root.innerHTML = `
       <div class="px-panel w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] touch-scroll overflow-y-auto p-3.5 sm:p-4 text-porcelain">
-        <div class="flex flex-wrap items-center justify-between border-b-2 border-ash-purple pb-2 mb-3 gap-2">
-          <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${card.name}</div>
-          <div class="flex items-center gap-2 shrink-0">
-            ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
-            <button data-back class="px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+        <div class="mb-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="font-bold text-resonant-gold tabular-nums">#${String(speciesId).padStart(2, '0')} · ${card.name}</div>
+            <div class="flex items-center gap-2 shrink-0">
+              ${renderSoulDustCounter(soulDust, { compact: true, showLabel: true, dataAttr: 'data-album-soul-dust' })}
+              <button data-back class="px-btn px-btn-secondary min-h-[44px] px-4 text-sm font-bold whitespace-nowrap">${ES.cards.back}</button>
+            </div>
           </div>
+          <div class="px-divider mt-2" aria-hidden="true"></div>
         </div>
 
         ${this.notice ? `<div class="mb-3 rounded-none border-2 border-ki-cyan bg-deep-abyss px-3 py-2 text-xs font-bold text-frosted-glass">${this.notice}</div>` : ''}

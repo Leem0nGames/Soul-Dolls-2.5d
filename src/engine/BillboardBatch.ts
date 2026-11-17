@@ -3,6 +3,7 @@ import { createRng } from '../core/Rng.ts';
 import { getTileWorldY } from '../domain/TerrainRules.ts';
 import type { MapDef, PropKind } from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
+import { attachCameraOcclusionCutout } from './OcclusionCutout.ts';
 
 const _dummy = new THREE.Object3D();
 
@@ -120,6 +121,22 @@ function getPropDimensions(kind: PropKind): [number, number] {
     case 'stair_up':
     case 'stair_down':
       return [1.0, 1.1];
+    case 'forge_hearth':
+      return [1.35, 1.48];
+    case 'anvil_bench':
+      return [1.05, 0.95];
+    case 'doll_worktable':
+      return [1.32, 1.08];
+    case 'mannequin_rack':
+      return [1.28, 1.38];
+    case 'blueprint_desk':
+      return [1.05, 1.02];
+    case 'skill_altar':
+      return [1.26, 1.38];
+    case 'training_dummy':
+      return [1.18, 1.35];
+    case 'lab_console':
+      return [1.22, 1.28];
     default:
       return [0.95, 0.95];
   }
@@ -156,6 +173,33 @@ const SHADOW_CASTER_PROPS: ReadonlySet<PropKind> = new Set([
   'lamp_wood',
   'lamp_double',
   'lamp_stone',
+]);
+
+const OCCLUDABLE_PROPS: ReadonlySet<PropKind> = new Set([
+  'oak',
+  'birch',
+  'pine',
+  'snow_pine',
+  'mushroom_tree',
+  'mushroom_tree_arcane',
+  'bush',
+  'bush_arcane',
+  'boulder',
+  'well',
+  'pillar',
+  'cave_entrance',
+  'lamp_post',
+  'lamp_wood',
+  'lamp_double',
+  'lamp_stone',
+  'bookshelf',
+  'stove',
+  'forge_hearth',
+  'doll_worktable',
+  'mannequin_rack',
+  'skill_altar',
+  'training_dummy',
+  'lab_console',
 ]);
 
 export function createBottomPivotPlaneGeometry(
@@ -247,6 +291,9 @@ export function buildInstancedPropBatches(
     const geo = createBottomPivotPlaneGeometry(w, h, 1, windAmp > 0 ? 4 : 1);
     const tex = assets.getPropTexture(kind);
     const mat = createLitBillboardMaterial(tex, { windAmp });
+    if (OCCLUDABLE_PROPS.has(kind)) {
+      attachCameraOcclusionCutout(mat, { minRelY: -999 });
+    }
     const inst = new THREE.InstancedMesh(geo, mat, list.length);
     inst.receiveShadow = true;
     if (SHADOW_CASTER_PROPS.has(kind)) {

@@ -228,6 +228,22 @@ export const CHARACTER_PALETTES: Record<CharacterRole, CharacterPalette> = {
     hat: PALETTE.brightBrass,
     trim: PALETTE.paleGold,
   },
+  artisan: {
+    hair: PALETTE.burntUmber,
+    skin: PALETTE.porcelain,
+    shirt: PALETTE.rust,
+    pants: PALETTE.stoneShadow,
+    hat: PALETTE.oldBronze,
+    trim: PALETTE.brightBrass,
+  },
+  scholar: {
+    hair: PALETTE.frostedGlass,
+    skin: PALETTE.porcelain,
+    shirt: PALETTE.deepAmethyst,
+    pants: PALETTE.cryptInk,
+    hat: PALETTE.royalPurple,
+    trim: PALETTE.kiCyan,
+  },
   npc: {
     hair: PALETTE.ashPurple,
     skin: PALETTE.porcelain,
