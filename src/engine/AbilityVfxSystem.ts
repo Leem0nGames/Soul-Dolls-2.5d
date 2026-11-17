@@ -46,6 +46,8 @@ interface ActiveVfxItem {
   life: number;
   materials: THREE.Material[];
   ownedGeometries: THREE.BufferGeometry[];
+  ownedTextures?: THREE.Texture[];
+  parent?: THREE.Group;
   onUpdate: (t: number, dt: number) => void;
 }
 
@@ -157,6 +159,86 @@ function buildFlareTexture(): THREE.DataTexture {
   return tex;
 }
 
+function buildSmokeFlipbookTexture(): THREE.DataTexture {
+  const frameSize = 64;
+  const frames = 8;
+  const width = frameSize * frames;
+
+  const hash2 = (x: number, y: number, seed: number): number => {
+    const s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453123;
+    return s - Math.floor(s);
+  };
+
+  const valueNoise = (x: number, y: number, seed: number): number => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const xf = x - xi;
+    const yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi, seed);
+    const b = hash2(xi + 1, yi, seed);
+    const c = hash2(xi, yi + 1, seed);
+    const d = hash2(xi + 1, yi + 1, seed);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+
+  const fbm = (x: number, y: number, seed: number): number => {
+    let sum = 0;
+    let amp = 0.5;
+    let freq = 1;
+    for (let o = 0; o < 4; o++) {
+      sum += valueNoise(x * freq, y * freq, seed + o * 13.1) * amp;
+      amp *= 0.5;
+      freq *= 2.03;
+    }
+    return sum;
+  };
+
+  const data = new Uint8Array(width * frameSize * 4);
+  for (let f = 0; f < frames; f++) {
+    const phase = f / (frames - 1);
+    for (let y = 0; y < frameSize; y++) {
+      for (let x = 0; x < frameSize; x++) {
+        const u = (x / (frameSize - 1)) * 2 - 1;
+        const v = (y / (frameSize - 1)) * 2 - 1;
+        const r = Math.hypot(u, v);
+
+        const drift = (phase - 0.5) * 0.55;
+        const lobeA = Math.exp(-((u + 0.16 * drift) ** 2 * 6.5 + (v - 0.22) ** 2 * 7.2));
+        const lobeB = Math.exp(-((u - 0.22 * drift) ** 2 * 8.0 + (v + 0.14) ** 2 * 6.4));
+        const lobeC = Math.exp(-((u + 0.05) ** 2 * 12.0 + (v + 0.32) ** 2 * 9.5)) * 0.7;
+
+        const noise = fbm(u * 4.2 + phase * 1.4, v * 4.6 - phase * 1.1, f * 3.7);
+        const turbulence = 0.5 + 0.5 * noise;
+        const falloff = Math.max(0, 1 - r * 0.92);
+        const alpha =
+          (lobeA + lobeB + lobeC) *
+          (0.38 + 0.62 * turbulence) *
+          falloff *
+          falloff *
+          (0.55 + 0.45 * Math.sin(phase * Math.PI));
+        const a = Math.max(0, Math.min(1, alpha));
+
+        const i = ((y * width) + (f * frameSize + x)) * 4;
+        data[i] = 255;
+        data[i + 1] = 255;
+        data[i + 2] = 255;
+        data[i + 3] = Math.round(a * 255);
+      }
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, width, frameSize, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function buildHelixTubeGeometry(): THREE.TubeGeometry {
   const pts: THREE.Vector3[] = [];
   const turns = 2.5;
@@ -175,12 +257,16 @@ function buildHelixTubeGeometry(): THREE.TubeGeometry {
 export class AbilityVfxSystem {
   private readonly disposables = new DisposableRegistry();
   private readonly group = new THREE.Group();
+  private readonly refractionScene = new THREE.Scene();
+  private readonly refractionGroup = new THREE.Group();
   private readonly items: ActiveVfxItem[] = [];
   private qualityTier: FxQualityTier = 'high';
   private clockTime = 0;
+  private camera: THREE.Camera | null = null;
 
   // Shared unit geometries (disposed once on teardown)
   private readonly unitPlaneGeo: THREE.PlaneGeometry;
+  private readonly unitBillboardGeo: THREE.PlaneGeometry;
   private readonly unitBeamGeo: THREE.CylinderGeometry;
   private readonly unitHelixGeo: THREE.TubeGeometry;
   private readonly unitOrbGeo: THREE.SphereGeometry;
@@ -191,6 +277,7 @@ export class AbilityVfxSystem {
   private readonly unitTorusGeo: THREE.TorusGeometry;
   private readonly unitShardGeo: THREE.OctahedronGeometry;
   private readonly flareTexture: THREE.DataTexture;
+  private readonly smokeTexture: THREE.DataTexture;
   private readonly flashLights: THREE.PointLight[] = [];
   private flashLightCursor = 0;
   private flashLightToken = 0;
@@ -198,9 +285,12 @@ export class AbilityVfxSystem {
   constructor(scene: THREE.Scene) {
     this.group.renderOrder = 12;
     scene.add(this.group);
+    this.refractionGroup.renderOrder = 12;
+    this.refractionScene.add(this.refractionGroup);
 
     this.unitPlaneGeo = new THREE.PlaneGeometry(1, 1);
     this.unitPlaneGeo.rotateX(-Math.PI / 2);
+    this.unitBillboardGeo = new THREE.PlaneGeometry(1, 1);
 
     this.unitBeamGeo = new THREE.CylinderGeometry(0.18, 0.1, 1, 14, 10, true);
     this.unitHelixGeo = buildHelixTubeGeometry();
@@ -218,6 +308,7 @@ export class AbilityVfxSystem {
     this.unitTorusGeo.rotateX(Math.PI / 2);
     this.unitShardGeo = new THREE.OctahedronGeometry(0.13, 0);
     this.flareTexture = this.disposables.track(buildFlareTexture());
+    this.smokeTexture = this.disposables.track(buildSmokeFlipbookTexture());
 
     // Persistent lights keep the scene light count stable (avoids shader recompiles).
     for (let i = 0; i < 2; i++) {
@@ -228,6 +319,7 @@ export class AbilityVfxSystem {
     }
 
     this.disposables.track(this.unitPlaneGeo);
+    this.disposables.track(this.unitBillboardGeo);
     this.disposables.track(this.unitBeamGeo);
     this.disposables.track(this.unitHelixGeo);
     this.disposables.track(this.unitOrbGeo);
@@ -247,11 +339,21 @@ export class AbilityVfxSystem {
     return this.items.length;
   }
 
+  setCamera(camera: THREE.Camera): void {
+    this.camera = camera;
+  }
+
+  getRefractionScene(): THREE.Scene {
+    return this.refractionScene;
+  }
+
   private addItem(item: ActiveVfxItem): void {
     if (item.delay > 0) {
       item.object.visible = false;
     }
-    this.group.add(item.object);
+    const parent = item.parent ?? this.group;
+    item.parent = parent;
+    parent.add(item.object);
     this.items.push(item);
   }
 
@@ -320,11 +422,13 @@ export class AbilityVfxSystem {
     });
   }
 
-  private createScorchCraterMaterial(): THREE.ShaderMaterial {
+  private createScorchCraterMaterial(persistent = 0, opacity = 1): THREE.ShaderMaterial {
     return new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
         uProgress: { value: 0 },
+        uPersistent: { value: persistent },
+        uOpacity: { value: opacity },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -335,6 +439,8 @@ export class AbilityVfxSystem {
       `,
       fragmentShader: /* glsl */ `
         uniform float uProgress;
+        uniform float uPersistent;
+        uniform float uOpacity;
         varying vec2 vUv;
         ${GLSL_NOISE_LIB}
 
@@ -343,9 +449,10 @@ export class AbilityVfxSystem {
           float r = length(p);
           float n = vfxFbm(p * 4.2);
           float fadeIn = smoothstep(0.0, 0.12, uProgress);
-          float fadeOut = 1.0 - smoothstep(0.58, 1.0, uProgress);
+          float fadeStart = mix(0.58, 0.86, uPersistent);
+          float fadeOut = 1.0 - smoothstep(fadeStart, 1.0, uProgress);
           float crater = (1.0 - smoothstep(0.18, 0.78 + n * 0.18, r)) * 0.72;
-          gl_FragColor = vec4(0.04, 0.025, 0.06, crater * fadeIn * fadeOut);
+          gl_FragColor = vec4(0.04, 0.025, 0.06, crater * fadeIn * fadeOut * uOpacity);
         }
       `,
       transparent: true,
@@ -891,9 +998,11 @@ export class AbilityVfxSystem {
     z: number,
     maxScale: number,
     life: number,
-    delay = 0
+    delay = 0,
+    persistent = 0,
+    opacity = 1
   ): void {
-    const mat = this.createScorchCraterMaterial();
+    const mat = this.createScorchCraterMaterial(persistent, opacity);
     const mesh = new THREE.Mesh(this.unitPlaneGeo, mat);
     mesh.position.set(x, groundY + 0.032, z);
     mesh.scale.setScalar(maxScale * 0.5);
@@ -1040,6 +1149,245 @@ export class AbilityVfxSystem {
         if (light.userData.vfxToken !== token) return;
         const env = Math.sin(Math.min(1, t * 6) * Math.PI * 0.5);
         light.intensity = intensity * env * Math.pow(1 - t, 2.4);
+      },
+    });
+  }
+
+  private spawnRibbonTrail(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    width: number,
+    life: number,
+    colors: TypeColorPair,
+    arcHeight: number,
+    delay = 0
+  ): void {
+    if (this.qualityTier === 'low') return;
+
+    const segments = 22;
+    const positions = new Float32Array((segments + 1) * 2 * 3);
+    const uvs = new Float32Array((segments + 1) * 2 * 2);
+    const indices: number[] = [];
+
+    const dir = new THREE.Vector3().subVectors(to, from);
+    const cameraDir = this.camera
+      ? new THREE.Vector3().subVectors(from, this.camera.position)
+      : new THREE.Vector3(0, 0, 1);
+    const side = new THREE.Vector3().crossVectors(dir, cameraDir);
+    if (side.lengthSq() < 0.0001) side.crossVectors(dir, _up);
+    if (side.lengthSq() < 0.0001) side.set(1, 0, 0);
+    side.normalize();
+
+    const point = new THREE.Vector3();
+    const control = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
+    control.y += arcHeight;
+
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const inv = 1 - t;
+      point.copy(from).multiplyScalar(inv * inv);
+      point.addScaledVector(control, 2 * inv * t);
+      point.addScaledVector(to, t * t);
+
+      const half = width * 0.5 * (1.0 - t * 0.55);
+      const base = i * 2;
+      positions[base * 3] = point.x - side.x * half;
+      positions[base * 3 + 1] = point.y - side.y * half;
+      positions[base * 3 + 2] = point.z - side.z * half;
+      positions[(base + 1) * 3] = point.x + side.x * half;
+      positions[(base + 1) * 3 + 1] = point.y + side.y * half;
+      positions[(base + 1) * 3 + 2] = point.z + side.z * half;
+
+      uvs[base * 2] = 0;
+      uvs[base * 2 + 1] = t;
+      uvs[(base + 1) * 2] = 1;
+      uvs[(base + 1) * 2 + 1] = t;
+
+      if (i < segments) {
+        const a = base;
+        const b = base + 1;
+        const c = base + 2;
+        const d = base + 3;
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uProgress: { value: 0 },
+        uCoreColor: { value: new THREE.Color(colors.core) },
+        uOuterColor: { value: new THREE.Color(colors.outer) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uProgress;
+        uniform vec3 uCoreColor;
+        uniform vec3 uOuterColor;
+        varying vec2 vUv;
+
+        void main() {
+          float edge = smoothstep(0.5, 0.0, abs(vUv.x - 0.5) * 2.0);
+          float head = smoothstep(0.0, 0.28, vUv.y);
+          float tail = 1.0 - smoothstep(0.72, 1.0, vUv.y) * 0.55;
+          float streak = 0.72 + 0.28 * sin(vUv.y * 34.0 - uTime * 9.0);
+          float life = 1.0 - uProgress * uProgress;
+          vec3 col = mix(uOuterColor, uCoreColor, edge) * (1.0 + edge * 0.9);
+          float alpha = edge * head * tail * streak * life * 0.85;
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    this.addItem({
+      object: mesh,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [geo],
+      onUpdate: () => {
+        // Shader handles the fade.
+      },
+    });
+  }
+
+  private spawnFlipbookSprite(
+    pos: THREE.Vector3,
+    size: number,
+    life: number,
+    colorHex: number,
+    delay: number,
+    additive: boolean,
+    driftY = 0.35
+  ): void {
+    const frames = 8;
+    const map = this.smokeTexture.clone();
+    map.wrapS = THREE.ClampToEdgeWrapping;
+    map.wrapT = THREE.ClampToEdgeWrapping;
+    map.repeat.set(1 / frames, 1);
+    map.offset.set(0, 0);
+    map.needsUpdate = true;
+
+    const mat = new THREE.SpriteMaterial({
+      map,
+      color: colorHex,
+      transparent: true,
+      depthWrite: false,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      opacity: 0,
+      rotation: Math.random() * Math.PI * 2,
+    });
+    if (additive) mat.color.multiplyScalar(1.7);
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    sprite.scale.setScalar(size * 0.35);
+    const spin = (Math.random() - 0.5) * 0.9;
+    const sway = (Math.random() - 0.5) * 0.35;
+
+    this.addItem({
+      object: sprite,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      ownedTextures: [map],
+      onUpdate: (t, dt) => {
+        const frame = Math.min(frames - 1, Math.floor(t * frames));
+        map.offset.x = frame / frames;
+        const grow = Math.min(1, t * 2.6);
+        const s = size * (0.35 + 0.9 * grow);
+        sprite.scale.set(s, s, 1);
+        sprite.position.y += driftY * dt * (1 - t);
+        sprite.position.x += sway * dt * (1 - t);
+        mat.rotation += spin * dt;
+        const fadeIn = Math.min(1, t / 0.12);
+        const fadeOut = 1 - Math.max(0, (t - 0.62) / 0.38);
+        mat.opacity = fadeIn * fadeOut * (additive ? 0.85 : 0.52);
+      },
+    });
+  }
+
+  private spawnRefractionBurst(
+    pos: THREE.Vector3,
+    radius: number,
+    life: number,
+    strength: number,
+    delay = 0
+  ): void {
+    if (this.qualityTier !== 'high') return;
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uProgress: { value: 0 },
+        uStrength: { value: strength },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uProgress;
+        uniform float uStrength;
+        varying vec2 vUv;
+
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          vec2 dir = r > 0.0001 ? p / r : vec2(0.0);
+          float ringR = mix(0.18, 0.88, uProgress);
+          float ring = smoothstep(0.22, 0.0, abs(r - ringR));
+          float core = smoothstep(0.45, 0.0, r) * (1.0 - uProgress);
+          float fade = 1.0 - uProgress * uProgress;
+          vec2 offset = dir * (ring * 0.8 + core * 0.35) * uStrength * fade;
+          gl_FragColor = vec4(offset, 0.0, 1.0);
+        }
+      `,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(this.unitBillboardGeo, mat);
+    mesh.position.copy(pos);
+    mesh.scale.setScalar(radius * 2.2);
+    mesh.frustumCulled = false;
+
+    this.addItem({
+      object: mesh,
+      elapsed: 0,
+      delay,
+      life,
+      materials: [mat],
+      ownedGeometries: [],
+      parent: this.refractionGroup,
+      onUpdate: () => {
+        if (this.camera) mesh.quaternion.copy(this.camera.quaternion);
       },
     });
   }
@@ -1870,6 +2218,15 @@ export class AbilityVfxSystem {
         );
         for (let i = 0; i < shots; i++) {
           const stagger = i * 0.055;
+          this.spawnRibbonTrail(
+            from,
+            to,
+            0.09 * intensity * avgSilhouette,
+            0.4,
+            colors,
+            0.4 * avgSilhouette,
+            stagger
+          );
           this.spawnProjectileOrb(
             from,
             to,
@@ -1902,6 +2259,15 @@ export class AbilityVfxSystem {
       }
 
       case 'projectile':
+        this.spawnRibbonTrail(
+          from,
+          to,
+          0.17 * intensity * avgSilhouette,
+          0.48,
+          colors,
+          0.55 * avgSilhouette,
+          0.02
+        );
         this.spawnProjectileOrb(
           from,
           to,
@@ -1995,6 +2361,15 @@ export class AbilityVfxSystem {
           0.25 * toM.silhouette,
           false,
           0.04
+        );
+        this.spawnRibbonTrail(
+          _tmpStart,
+          to,
+          0.34 * intensity * toM.silhouette,
+          0.42,
+          colors,
+          0.08,
+          0.03
         );
         this.spawnLinearBeam(
           _tmpStart,
@@ -2563,7 +2938,7 @@ export class AbilityVfxSystem {
     colors: TypeColorPair,
     ctx: MoveVfxContext
   ): void {
-    const { intensity, impactDelay, fromM, toM } = ctx;
+    const { intensity, impactDelay, fromM, toM, toGroundY } = ctx;
     _tmpEnd.subVectors(to, from);
     if (_tmpEnd.lengthSq() < 0.0001) _tmpEnd.set(1, 0, 0);
     const dir = _tmpEnd;
@@ -2574,82 +2949,292 @@ export class AbilityVfxSystem {
         this.spawnFlare(to, 1.7 * intensity * toM.body, 0.34, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 0.95 * toM.silhouette, 0.32, colors, impactDelay);
         this.spawnLightFlash(to, 2.2 * intensity, lightLife, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.05 * toM.silhouette, 0.4, 0.032, impactDelay);
+        _tmpStart.set(to.x, toGroundY + 0.3 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          1.15 * intensity * toM.body,
+          0.8,
+          0x8d857b,
+          impactDelay,
+          false
+        );
+        this.spawnScorchCrater(
+          to.x,
+          toGroundY,
+          to.z,
+          2.0 * intensity * toM.ground,
+          9.0,
+          impactDelay,
+          0.82,
+          0.5
+        );
         break;
 
       case 'slash':
         this.spawnFlare(to, 1.3 * intensity * toM.body, 0.26, colors.core, 0);
         this.spawnShockRing(to, dir, 0.8 * toM.silhouette, 0.26, colors, 0.02);
         this.spawnLightFlash(to, 1.0 * intensity, lightLife, colors.outer, 0.02);
+        this.spawnRefractionBurst(to, 0.8 * toM.silhouette, 0.32, 0.024, 0.01);
         break;
 
       case 'pierce':
         this.spawnFlare(to, 0.95 * intensity * toM.body, 0.22, colors.core, 0.02);
         this.spawnShockRing(to, dir, 0.6 * toM.silhouette, 0.22, colors, 0.02);
         this.spawnLightFlash(to, 0.7 * intensity, lightLife, colors.outer, 0.02);
+        this.spawnRefractionBurst(to, 0.55 * toM.silhouette, 0.26, 0.018, 0.01);
         break;
 
       case 'bite':
         this.spawnFlare(to, 1.2 * intensity * toM.body, 0.28, colors.core, 0.04);
         this.spawnShockRing(to, dir, 0.7 * toM.silhouette, 0.28, colors, 0.03);
         this.spawnLightFlash(to, 1.2 * intensity, lightLife, colors.outer, 0.03);
+        _tmpStart.set(to.x, toGroundY + 0.25 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          0.7 * intensity * toM.body,
+          0.55,
+          0x7d6d60,
+          0.05,
+          false,
+          0.2
+        );
         break;
 
       case 'barrage':
         this.spawnFlare(to, 1.5 * intensity * toM.body, 0.4, colors.core, impactDelay + 0.12);
         this.spawnLightFlash(to, 1.4 * intensity, 0.3, colors.outer, impactDelay + 0.1);
+        this.spawnRefractionBurst(to, 0.95 * toM.silhouette, 0.36, 0.026, impactDelay + 0.08);
+        _tmpStart.set(to.x, toGroundY + 0.22 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          1.0 * intensity * toM.body,
+          0.7,
+          0x817468,
+          impactDelay + 0.1,
+          false
+        );
         break;
 
       case 'projectile':
         this.spawnFlare(to, 1.5 * intensity * toM.body, 0.32, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 0.9 * toM.silhouette, 0.3, colors, impactDelay);
         this.spawnLightFlash(to, 1.5 * intensity, lightLife, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 0.95 * toM.silhouette, 0.36, 0.028, impactDelay);
         break;
 
       case 'beam':
         this.spawnFlare(to, 1.8 * intensity * toM.body, 0.4, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 1.1 * toM.silhouette, 0.34, colors, impactDelay);
         this.spawnLightFlash(to, 2.2 * intensity, 0.3, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.15 * toM.silhouette, 0.42, 0.034, impactDelay);
         break;
 
       case 'meteor':
         this.spawnFlare(to, 3.0 * intensity * toM.body, 0.56, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 1.7 * toM.silhouette, 0.44, colors, impactDelay);
         this.spawnLightFlash(to, 4.2 * intensity, 0.34, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.5 * toM.silhouette, 0.5, 0.045, impactDelay);
+        _tmpStart.set(to.x, to.y, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          3.0 * intensity * toM.body,
+          0.55,
+          colors.core,
+          impactDelay,
+          true,
+          0.6
+        );
+        _tmpStart.set(to.x, toGroundY + 0.35 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.4 * intensity * toM.body,
+          1.45,
+          0x6f655c,
+          impactDelay + 0.08,
+          false,
+          0.85
+        );
+        this.spawnScorchCrater(
+          to.x,
+          toGroundY,
+          to.z,
+          2.35 * intensity * toM.ground,
+          10.0,
+          impactDelay,
+          0.84,
+          0.62
+        );
         break;
 
       case 'quake':
         this.spawnFlare(to, 2.6 * intensity * toM.body, 0.55, colors.core, impactDelay);
         this.spawnShockRing(to, _up, 1.8 * toM.silhouette, 0.46, colors, impactDelay);
         this.spawnLightFlash(to, 3.4 * intensity, 0.32, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.55 * toM.silhouette, 0.5, 0.044, impactDelay);
+        _tmpStart.set(to.x, toGroundY + 0.3 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.6 * intensity * toM.body,
+          1.5,
+          0x7a6a58,
+          impactDelay + 0.06,
+          false,
+          0.7
+        );
+        this.spawnScorchCrater(
+          to.x,
+          toGroundY,
+          to.z,
+          2.55 * intensity * toM.ground,
+          11.0,
+          impactDelay,
+          0.84,
+          0.66
+        );
         break;
 
       case 'cyclone':
         this.spawnFlare(to, 2.0 * intensity * toM.body, 0.45, colors.core, 0.05);
         this.spawnShockRing(to, dir, 1.2 * toM.silhouette, 0.36, colors, 0.04);
         this.spawnLightFlash(to, 1.8 * intensity, 0.28, colors.outer, 0.04);
+        this.spawnRefractionBurst(to, 1.1 * toM.silhouette, 0.4, 0.03, 0.04);
+        _tmpStart.set(to.x, toGroundY + 0.3 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          1.8 * intensity * toM.body,
+          1.2,
+          0x8a8378,
+          0.05,
+          false,
+          0.8
+        );
         break;
 
       case 'nova':
         this.spawnFlare(to, 3.4 * intensity * toM.body, 0.62, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 2.0 * toM.silhouette, 0.5, colors, impactDelay);
         this.spawnLightFlash(to, 5.0 * intensity, 0.38, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.65 * toM.silhouette, 0.55, 0.05, impactDelay);
+        _tmpStart.set(to.x, to.y, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          3.2 * intensity * toM.body,
+          0.6,
+          colors.core,
+          impactDelay,
+          true,
+          0.55
+        );
+        _tmpStart.set(to.x, toGroundY + 0.35 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.7 * intensity * toM.body,
+          1.6,
+          0x655c55,
+          impactDelay + 0.1,
+          false,
+          0.9
+        );
+        this.spawnScorchCrater(
+          to.x,
+          toGroundY,
+          to.z,
+          2.6 * intensity * toM.ground,
+          10.0,
+          impactDelay,
+          0.84,
+          0.6
+        );
         break;
 
       case 'lightning':
         this.spawnFlare(to, 2.5 * intensity * toM.body, 0.42, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 1.3 * toM.silhouette, 0.34, colors, impactDelay);
         this.spawnLightFlash(to, 4.0 * intensity, 0.3, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.15 * toM.silhouette, 0.4, 0.038, impactDelay);
+        _tmpStart.set(to.x, to.y, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.2 * intensity * toM.body,
+          0.42,
+          colors.core,
+          impactDelay,
+          true,
+          0.35
+        );
+        _tmpStart.set(to.x, toGroundY + 0.3 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          1.6 * intensity * toM.body,
+          0.95,
+          0x6b6560,
+          impactDelay + 0.05,
+          false,
+          0.5
+        );
+        this.spawnScorchCrater(
+          to.x,
+          toGroundY,
+          to.z,
+          1.9 * intensity * toM.ground,
+          8.0,
+          impactDelay,
+          0.82,
+          0.55
+        );
         break;
 
       case 'void':
         this.spawnFlare(to, 2.2 * intensity * toM.body, 0.56, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 1.5 * toM.silhouette, 0.42, colors, impactDelay);
         this.spawnLightFlash(to, 2.6 * intensity, 0.34, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.4 * toM.silhouette, 0.48, 0.042, impactDelay);
+        _tmpStart.set(to.x, to.y, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.4 * intensity * toM.body,
+          0.55,
+          colors.core,
+          impactDelay,
+          true,
+          0.4
+        );
+        _tmpStart.set(to.x, toGroundY + 0.3 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.0 * intensity * toM.body,
+          1.3,
+          0x2a1e3c,
+          impactDelay + 0.05,
+          false,
+          0.6
+        );
+        this.spawnScorchCrater(
+          to.x,
+          toGroundY,
+          to.z,
+          2.2 * intensity * toM.ground,
+          9.0,
+          impactDelay,
+          0.83,
+          0.58
+        );
         break;
 
       case 'haze':
         this.spawnFlare(to, 1.6 * intensity * toM.body, 0.46, colors.core, 0.04);
         this.spawnLightFlash(to, 0.8 * intensity, lightLife, colors.outer, 0.04);
+        _tmpStart.set(to.x, toGroundY + 0.3 * toM.body, to.z);
+        this.spawnFlipbookSprite(
+          _tmpStart,
+          2.0 * intensity * toM.body,
+          1.35,
+          0x8f8f9c,
+          0.02,
+          false,
+          0.55
+        );
         break;
 
       case 'drain':
@@ -2683,6 +3268,7 @@ export class AbilityVfxSystem {
         this.spawnFlare(to, 1.6 * intensity * toM.body, 0.32, colors.core, impactDelay);
         this.spawnShockRing(to, dir, 1.1 * toM.silhouette, 0.32, colors, impactDelay);
         this.spawnLightFlash(to, 1.4 * intensity, lightLife, colors.outer, impactDelay);
+        this.spawnRefractionBurst(to, 1.2 * toM.silhouette, 0.42, 0.036, impactDelay);
         break;
 
       case 'weather':
@@ -2783,9 +3369,10 @@ export class AbilityVfxSystem {
 
       const activeAge = item.elapsed - item.delay;
       if (activeAge >= item.life) {
-        this.group.remove(item.object);
+        item.parent?.remove(item.object);
         for (const m of item.materials) m.dispose();
         for (const g of item.ownedGeometries) g.dispose();
+        for (const tex of item.ownedTextures ?? []) tex.dispose();
         this.items.splice(i, 1);
         continue;
       }
@@ -2803,9 +3390,10 @@ export class AbilityVfxSystem {
 
   dispose(): void {
     for (const item of this.items) {
-      this.group.remove(item.object);
+      item.parent?.remove(item.object);
       for (const m of item.materials) m.dispose();
       for (const g of item.ownedGeometries) g.dispose();
+      for (const tex of item.ownedTextures ?? []) tex.dispose();
     }
     this.items.length = 0;
     this.disposables.disposeAll();

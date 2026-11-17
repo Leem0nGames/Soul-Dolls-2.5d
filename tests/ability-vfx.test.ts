@@ -223,7 +223,7 @@ describe('AbilityVfxSystem Procedural GLSL 3D Effects', () => {
         effectTarget: move.effect.target,
       });
       expect(vfx.getActiveCount(), `move ${move.id}`).toBeGreaterThan(0);
-      for (let i = 0; i < 30; i++) vfx.update(0.05);
+      for (let i = 0; i < 240; i++) vfx.update(0.05);
       expect(vfx.getActiveCount(), `cleanup ${move.id}`).toBe(0);
     }
 

@@ -14,6 +14,7 @@ import {
 import type { MoveImpactProfile } from './moveVfxProfiles.ts';
 
 const _impactColor = new THREE.Color();
+const _clearColor = new THREE.Color();
 
 export const ImpactShockwaveShader = {
   uniforms: {
@@ -37,6 +38,8 @@ export const ImpactShockwaveShader = {
     uImpactFlash: { value: 0 },
     uSpeedLines: { value: 0 },
     uSpeedLinePhase: { value: 0 },
+    tRefraction: { value: null },
+    uRefractionMix: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -66,6 +69,8 @@ export const ImpactShockwaveShader = {
     uniform float uImpactFlash;
     uniform float uSpeedLines;
     uniform float uSpeedLinePhase;
+    uniform sampler2D tRefraction;
+    uniform float uRefractionMix;
     varying vec2 vUv;
 
     vec3 sampleTiltOrRaw(vec2 uv, float blurAmt) {
@@ -91,6 +96,12 @@ export const ImpactShockwaveShader = {
       vec2 chroma = vec2(0.0);
       float radialBlur = 0.0;
       vec2 shockDir = vec2(0.0);
+
+      if (uRefractionMix > 0.0001) {
+        vec2 refr = texture2D(tRefraction, vUv).rg * uRefractionMix;
+        uv += refr;
+        chroma += refr * 1.8;
+      }
 
       if (uShockProgress > 0.001 && uShockProgress < 0.999 && uShockStrength > 0.0001) {
         vec2 diff = uv - uCenter;
@@ -179,6 +190,14 @@ export class BattlePostFx {
   private bloomPass: UnrealBloomPass | null = null;
   private impactPass: ShaderPass | null = null;
   private renderTarget: THREE.WebGLRenderTarget | null = null;
+  private refractionTarget: THREE.WebGLRenderTarget | null = null;
+  private refractionScene: THREE.Scene | null = null;
+  private readonly blackTexture = new THREE.DataTexture(
+    new Uint8Array([0, 0, 0, 0]),
+    1,
+    1,
+    THREE.RGBAFormat
+  );
   private lastWidth = 0;
   private lastHeight = 0;
   private qualityTier: FxQualityTier = 'high';
@@ -222,6 +241,7 @@ export class BattlePostFx {
     private readonly camera: THREE.Camera
   ) {
     this.isSoftwareGl = detectSoftwareWebGl(webgl);
+    this.blackTexture.needsUpdate = true;
     if (!this.isSoftwareGl) {
       this.initComposer();
     }
@@ -241,6 +261,19 @@ export class BattlePostFx {
         magFilter: THREE.LinearFilter,
       });
 
+      this.refractionTarget = new THREE.WebGLRenderTarget(
+        Math.max(1, Math.floor(w / 2)),
+        Math.max(1, Math.floor(h / 2)),
+        {
+          type: THREE.HalfFloatType,
+          format: THREE.RGBAFormat,
+          minFilter: THREE.LinearFilter,
+          magFilter: THREE.LinearFilter,
+          depthBuffer: false,
+          stencilBuffer: false,
+        }
+      );
+
       this.composer = new EffectComposer(this.webgl, this.renderTarget);
       this.composer.setPixelRatio(1);
       this.composer.setSize(w, h);
@@ -259,6 +292,8 @@ export class BattlePostFx {
       this.impactPass = new ShaderPass(ImpactShockwaveShader);
       this.impactPass.uniforms.uAspect.value = w / Math.max(1, h);
       this.impactPass.uniforms.uTexelSize.value.set(1 / w, 1 / h);
+      this.impactPass.uniforms.tRefraction.value =
+        this.refractionTarget.texture;
       this.composer.addPass(this.impactPass);
 
       const outputPass = new OutputPass();
@@ -272,6 +307,17 @@ export class BattlePostFx {
 
   setBiome(biome: BattleBiome, isBoss = false): void {
     this.profile = getBiomeVisualProfile(biome, { isBoss, isBattle: true });
+    this.applyProfileUniforms();
+  }
+
+  setRefractionScene(scene: THREE.Scene | null): void {
+    this.refractionScene = scene;
+    if (this.impactPass) {
+      this.impactPass.uniforms.tRefraction.value =
+        scene && this.refractionTarget
+          ? this.refractionTarget.texture
+          : this.blackTexture;
+    }
     this.applyProfileUniforms();
   }
 
@@ -327,6 +373,8 @@ export class BattlePostFx {
     u.uSaturation.value = this.profile.saturation;
     u.uGradeMix.value = this.postFxOptions.colorGrading ? 1.0 : 0.0;
     u.uVignette.value = this.postFxOptions.vignette ? this.profile.vignette : 0.0;
+    u.uRefractionMix.value =
+      this.refractionScene && this.qualityTier === 'high' && !this.pixelEffect ? 1 : 0;
   }
 
   triggerShockwave(screenX: number, screenY: number, strength = 0.022, duration = 0.32): void {
@@ -471,6 +519,7 @@ export class BattlePostFx {
       this.flashElapsed > 0 ||
       this.speedElapsed > 0 ||
       this.bloomPulseElapsed > 0 ||
+      (this.refractionScene !== null && this.qualityTier === 'high') ||
       (this.qualityTier !== 'low' && this.postFxOptions.bloom) ||
       (this.qualityTier === 'high' && !this.pixelEffect && this.postFxOptions.tiltShift) ||
       this.postFxOptions.colorGrading ||
@@ -487,26 +536,57 @@ export class BattlePostFx {
       this.lastHeight = h;
       this.composer.setSize(w, h);
       this.bloomPass?.resolution.set(w, h);
+      this.refractionTarget?.setSize(
+        Math.max(1, Math.floor(w / 2)),
+        Math.max(1, Math.floor(h / 2))
+      );
       if (this.impactPass) {
         this.impactPass.uniforms.uAspect.value = w / Math.max(1, h);
         this.impactPass.uniforms.uTexelSize.value.set(1 / w, 1 / h);
       }
     }
 
+    this.renderRefraction();
     this.composer.render();
+  }
+
+  private renderRefraction(): void {
+    if (
+      !this.refractionScene ||
+      !this.refractionTarget ||
+      this.qualityTier !== 'high' ||
+      this.pixelEffect
+    ) {
+      return;
+    }
+
+    const prevTarget = this.webgl.getRenderTarget();
+    this.webgl.getClearColor(_clearColor);
+    const prevAlpha = this.webgl.getClearAlpha();
+
+    this.webgl.setRenderTarget(this.refractionTarget);
+    this.webgl.setClearColor(0x000000, 0);
+    this.webgl.clear(true, false, false);
+    this.webgl.render(this.refractionScene, this.camera);
+
+    this.webgl.setRenderTarget(prevTarget);
+    this.webgl.setClearColor(_clearColor, prevAlpha);
   }
 
   private disposeComposer(): void {
     this.composer?.dispose();
     this.renderTarget?.dispose();
+    this.refractionTarget?.dispose();
     this.composer = null;
     this.bloomPass = null;
     this.impactPass = null;
     this.renderTarget = null;
+    this.refractionTarget = null;
   }
 
   dispose(): void {
     this.webgl.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.disposeComposer();
+    this.blackTexture.dispose();
   }
 }

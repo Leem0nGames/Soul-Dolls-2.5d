@@ -140,6 +140,14 @@ export class FxSystem {
     this.abilityVfx.setQualityTier(tier);
   }
 
+  setCamera(camera: THREE.Camera): void {
+    this.abilityVfx.setCamera(camera);
+  }
+
+  getRefractionScene(): THREE.Scene {
+    return this.abilityVfx.getRefractionScene();
+  }
+
   setFlashCallback(cb: (colorCss: string, durationMs: number) => void): void {
     this.flashCb = cb;
   }

@@ -162,8 +162,10 @@ export class BattleScene implements Scene {
     this.stage.setAmbientParticlesEnabled(game.renderer.areAmbientParticlesEnabled());
     this.battleCamera = new BattleCamera(game.cameraRig.camera);
     this.fx = new FxSystem(this.scene);
+    this.fx.setCamera(game.cameraRig.camera);
     this.fx.setFlashCallback((css, ms) => this.game.battleTransition.flashScreen(css, ms));
     this.postFx = new BattlePostFx(game.renderer.webgl, this.scene, game.cameraRig.camera);
+    this.postFx.setRefractionScene(this.fx.getRefractionScene());
     this.postFx.setBiome(this.biome, this.isBoss);
     this.postFx.setPixelEffect(game.renderer.isPixelEffectEnabled());
     this.postFx.setQualityTier(game.renderer.getQualityTier());
