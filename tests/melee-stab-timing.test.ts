@@ -36,7 +36,7 @@ describe('MeleeStabTiming', () => {
     );
   });
 
-  it('selects dedicated 4x5 sheet for SoulDoll #15 and fallback 5x5 for other species', () => {
+  it('selects dedicated attack sheets for SoulDolls #01 and #15 and fallback 5x5 for others', () => {
     const s15 = getAttackSheetSpecForSpecies(15);
     expect(s15.path).toBe('/assets/attacks/special_attack_15.webp');
     expect(s15.cols).toBe(4);
@@ -48,10 +48,10 @@ describe('MeleeStabTiming', () => {
     const s01 = getAttackSheetSpecForSpecies(1);
     expect(s01.path).toBe('/assets/attacks/physical_attack_01.webp');
     expect(s01.cols).toBe(4);
-    expect(s01.rows).toBe(5);
-    expect(s01.totalFrames).toBe(20);
-    expect(s01.impactFrame).toBe(8);
-    expect(s01.aspectRatio).toBeCloseTo(16 / 9);
+    expect(s01.rows).toBe(7);
+    expect(s01.totalFrames).toBe(27);
+    expect(s01.impactFrame).toBe(12);
+    expect(s01.aspectRatio).toBe(640 / 360);
     expect(s01.facing).toBe('left');
 
     const defaultSpec = getAttackSheetSpecForSpecies(2);

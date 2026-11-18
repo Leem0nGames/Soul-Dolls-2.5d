@@ -66,9 +66,9 @@ export const SOULDOLL_15_ATTACK_SHEET_PATH =
 export const SOULDOLL_01_ATTACK_SPEC: AttackSheetSpec = {
   path: SOULDOLL_01_ATTACK_SHEET_PATH,
   cols: 4,
-  rows: 5,
-  totalFrames: 20,
-  impactFrame: 8,
+  rows: 7,
+  totalFrames: 27,
+  impactFrame: 12,
   aspectRatio: 640 / 360,
   facing: 'left',
 };
@@ -102,7 +102,7 @@ export const SPECIES_ANIMATION_REGISTRY: SpeciesAnimationEntry[] = [
   {
     speciesId: 1,
     role: 'physical_attack',
-    label: 'SoulDoll #01 — Corte Cósmico (4×5)',
+    label: 'SoulDoll #01 — Brasito (4×7)',
     spec: SOULDOLL_01_ATTACK_SPEC,
   },
   {
