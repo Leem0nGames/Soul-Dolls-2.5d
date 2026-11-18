@@ -19,6 +19,11 @@ export const SOUL_FORM_REGISTRY: SoulFormEntry[] = [
     followerPetPath: '/assets/followers/01.webp',
   },
   {
+    speciesId: 4,
+    wildSoulPath: '/assets/souls/04.webp',
+    followerPetPath: '/assets/followers/04.webp',
+  },
+  {
     speciesId: 10,
     wildSoulPath: '/assets/souls/10.webp',
     followerPetPath: '/assets/followers/10.webp',

@@ -35,6 +35,18 @@ describe('soulForms registry and battle view resolution', () => {
     expect(getWildSoulSpriteUrl(99)).toBeNull();
     expect(getFollowerPetSpriteUrl(99)).toBeNull();
 
+    expect(ALL_SPECIES_IDS_WITH_WILD_SOUL).toContain(4);
+    expect(ALL_SPECIES_IDS_WITH_FOLLOWER_PET).toContain(4);
+    expect(getSoulFormEntry(4)).toEqual({
+      speciesId: 4,
+      wildSoulPath: '/assets/souls/04.webp',
+      followerPetPath: '/assets/followers/04.webp',
+    });
+    expect(hasWildSoulSprite(4)).toBe(true);
+    expect(hasFollowerPetSprite(4)).toBe(true);
+    expect(getWildSoulSpriteUrl(4)).toBe('/assets/souls/04.webp');
+    expect(getFollowerPetSpriteUrl(4)).toBe('/assets/followers/04.webp');
+
     expect(ALL_SPECIES_IDS_WITH_WILD_SOUL).toContain(10);
     expect(ALL_SPECIES_IDS_WITH_FOLLOWER_PET).toContain(10);
     expect(getSoulFormEntry(10)).toEqual({
@@ -55,8 +67,10 @@ describe('soulForms registry and battle view resolution', () => {
   it('uses unbodied wild soul sprite in wild encounters and embodied SoulDoll sprite against SoulTrainers', () => {
     // Wild encounter with registered wild soul -> wild unbodied form
     expect(resolveEnemyBattleSpriteView(1, true)).toBe('wild');
+    expect(resolveEnemyBattleSpriteView(4, true)).toBe('wild');
     // SoulTrainer battle (`isWild = false`) -> embodied SoulDoll form
     expect(resolveEnemyBattleSpriteView(1, false)).toBe('front');
+    expect(resolveEnemyBattleSpriteView(4, false)).toBe('front');
 
     // Species without a registered wild soul safely falls back to embodied front sprite
     expect(resolveEnemyBattleSpriteView(15, true)).toBe('front');
@@ -65,6 +79,7 @@ describe('soulForms registry and battle view resolution', () => {
 
   it('uses wild soul form for unbodied reserves when available and falls back otherwise', () => {
     expect(resolveReserveSoulSpriteView(1)).toBe('wild');
+    expect(resolveReserveSoulSpriteView(4)).toBe('wild');
     expect(resolveReserveSoulSpriteView(2)).toBe('front');
   });
 });
