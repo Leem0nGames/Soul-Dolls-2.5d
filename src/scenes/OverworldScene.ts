@@ -9,6 +9,7 @@ import {
 } from '../data/containers.ts';
 import { getItem } from '../data/items.ts';
 import { getMap, MAPS } from '../data/maps/index.ts';
+import { getPropAtlasDef, getPropAtlasKinds } from '../data/propAssets.ts';
 import { getMove } from '../data/moves.ts';
 import { getSpecies } from '../data/species.ts';
 import { getTrainer } from '../data/trainers.ts';
@@ -931,6 +932,11 @@ export class OverworldScene implements Scene {
     const rng = createRng(dec.seed);
     const height = map.grid.length;
     const width = map.grid[0]?.length ?? 0;
+    const atlasRocks = getPropAtlasKinds('rock');
+    const atlasBushes = getPropAtlasKinds('bush');
+    const atlasFlowers = getPropAtlasKinds('flower');
+    const atlasMushrooms = getPropAtlasKinds('mushroom');
+    const atlasGrass = getPropAtlasKinds('grass');
 
     for (let z = 1; z < height - 1; z++) {
       const row = map.grid[z];
@@ -1004,14 +1010,19 @@ export class OverworldScene implements Scene {
             }
           }
         } else if (roll < dec.treeDensity + dec.rockDensity) {
-          chosen = 'boulder';
+          chosen = atlasRocks.length > 0 ? rng.pick(atlasRocks) : 'boulder';
         } else if (roll < dec.treeDensity + dec.rockDensity + dec.bushDensity) {
-          chosen = rng.next() < 0.55 ? 'bush' : 'bush_arcane';
+          chosen =
+            atlasBushes.length > 0
+              ? rng.pick(atlasBushes)
+              : rng.next() < 0.55
+                ? 'bush'
+                : 'bush_arcane';
         } else if (
           roll <
           dec.treeDensity + dec.rockDensity + dec.bushDensity + dec.flowerDensity
         ) {
-          chosen = 'flower_patch';
+          chosen = atlasFlowers.length > 0 ? rng.pick(atlasFlowers) : 'flower_patch';
         } else if (
           roll <
           dec.treeDensity +
@@ -1020,15 +1031,21 @@ export class OverworldScene implements Scene {
             dec.flowerDensity +
             dec.mushroomDensity
         ) {
-          chosen = 'mushroom';
+          chosen = atlasMushrooms.length > 0 ? rng.pick(atlasMushrooms) : 'mushroom';
         } else if (leg.tile === 'grass' && rng.next() < 0.06) {
-          chosen = rng.next() < 0.5 ? 'tall_grass_clump' : 'tall_grass_flower';
+          chosen =
+            atlasGrass.length > 0
+              ? rng.pick(atlasGrass)
+              : rng.next() < 0.5
+                ? 'tall_grass_clump'
+                : 'tall_grass_flower';
         }
 
         if (chosen) {
           const scale = 0.88 + rng.next() * 0.26;
           placements.push({ kind: chosen, x, y: worldY, z, scale });
-          const isSolid = SOLID_SEED_PROPS.has(chosen) || leg.solid;
+          const isSolid =
+            SOLID_SEED_PROPS.has(chosen) || getPropAtlasDef(chosen)?.solid === true || leg.solid;
           mark(x, z, isSolid);
         }
       }

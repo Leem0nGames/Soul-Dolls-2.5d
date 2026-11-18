@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getPropAtlasDef } from '../data/propAssets.ts';
 import { createRng } from '../core/Rng.ts';
 import { getTileWorldY } from '../domain/TerrainRules.ts';
 import type { MapDef, PropKind } from '../domain/types.ts';
@@ -46,6 +47,9 @@ export function buildEncounterGrassPlacements(map: MapDef): PropInstancePlacemen
 }
 
 function getPropDimensions(kind: PropKind): [number, number] {
+  const atlasDef = getPropAtlasDef(kind);
+  if (atlasDef) return [atlasDef.width, atlasDef.height];
+
   switch (kind) {
     case 'oak':
       return [2.45, 2.2];
@@ -286,17 +290,18 @@ export function buildInstancedPropBatches(
 
   const groups: PropBatchGroup[] = [];
   for (const [kind, list] of grouped.entries()) {
+    const atlasDef = getPropAtlasDef(kind);
     const [w, h] = getPropDimensions(kind);
-    const windAmp = WIND_PROP_AMP[kind] ?? 0;
+    const windAmp = WIND_PROP_AMP[kind] ?? atlasDef?.windAmp ?? 0;
     const geo = createBottomPivotPlaneGeometry(w, h, 1, windAmp > 0 ? 4 : 1);
     const tex = assets.getPropTexture(kind);
     const mat = createLitBillboardMaterial(tex, { windAmp });
-    if (OCCLUDABLE_PROPS.has(kind)) {
+    if (OCCLUDABLE_PROPS.has(kind) || atlasDef?.occludable) {
       attachCameraOcclusionCutout(mat, { minRelY: -999 });
     }
     const inst = new THREE.InstancedMesh(geo, mat, list.length);
     inst.receiveShadow = true;
-    if (SHADOW_CASTER_PROPS.has(kind)) {
+    if (SHADOW_CASTER_PROPS.has(kind) || atlasDef?.shadow) {
       inst.castShadow = true;
       inst.customDepthMaterial = new THREE.MeshDepthMaterial({
         depthPacking: THREE.RGBADepthPacking,
@@ -329,7 +334,10 @@ export function updatePropBatchAnimation(
   _windTimeUniform.value = time;
 
   for (const g of groups) {
-    const isGrass = g.kind === 'tall_grass_clump' || g.kind === 'tall_grass_flower';
+    const isGrass =
+      g.kind === 'tall_grass_clump' ||
+      g.kind === 'tall_grass_flower' ||
+      getPropAtlasDef(g.kind)?.grass === true;
     if (!isGrass && g.lastYaw === yaw) {
       continue;
     }

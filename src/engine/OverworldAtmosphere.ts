@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getPropAtlasDef } from '../data/propAssets.ts';
 import type { FxQualityTier } from '../domain/FxPool.ts';
 import type { BattleBiome, MapDef, PropKind } from '../domain/types.ts';
 import type { PropInstancePlacement } from './BillboardBatch.ts';
@@ -327,7 +328,10 @@ export class OverworldAtmosphere {
     const shadowItems: Array<{ x: number; y: number; z: number; r: number }> = [];
     for (let i = 0; i < placements.length; i++) {
       const p = placements[i];
-      const baseR = PROP_SHADOW_RADIUS[p.kind];
+      const atlasDef = getPropAtlasDef(p.kind);
+      const baseR =
+        PROP_SHADOW_RADIUS[p.kind] ??
+        (atlasDef?.shadow ? Math.max(atlasDef.width, atlasDef.height) * 0.38 : undefined);
       if (!baseR) continue;
       shadowItems.push({
         x: p.x,

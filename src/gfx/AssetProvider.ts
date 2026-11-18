@@ -1,4 +1,11 @@
 import * as THREE from 'three';
+import {
+  getPropAtlasCropRect,
+  getPropAtlasDef,
+  getPropAtlasSheetPaths,
+  PROP_ATLAS_REGISTRY,
+  type PropAtlasDef,
+} from '../data/propAssets.ts';
 import type { CharacterFrame, CharacterRole, Direction, PropKind } from '../domain/types.ts';
 import { generateCharacterSpriteCanvas } from './CharacterSprites.ts';
 import { generateCreatureSpriteCanvas } from './CreatureSpriteGen.ts';
@@ -433,6 +440,7 @@ export class ProceduralAssetProvider implements AssetProvider {
   private battleIconUrls = new Map<BattleIconKind, string>();
 
   private propImages = new Map<PropKind, HTMLImageElement>();
+  private propAtlasImages = new Map<string, HTMLImageElement>();
   private itemImages = new Map<string, HTMLImageElement>();
   private tileSheetAlbedoImg: HTMLImageElement | null = null;
   private tileSheetNormalImg: HTMLImageElement | null = null;
@@ -477,6 +485,23 @@ export class ProceduralAssetProvider implements AssetProvider {
 
     this.preloadSoulDollSheets();
     this.preloadCharacterSpriteSheets();
+
+    for (const sheetPath of getPropAtlasSheetPaths()) {
+      const img = new Image();
+      img.onload = () => {
+        if (this.disposed) return;
+        this.propAtlasImages.set(sheetPath, img);
+        for (const def of PROP_ATLAS_REGISTRY) {
+          if (def.sheetPath !== sheetPath) continue;
+          const existing = this.propCache.get(def.kind);
+          if (existing) {
+            this.applyAtlasPropTexture(existing, def, img);
+          }
+        }
+      };
+      img.onerror = () => console.error(`Failed to load prop atlas: ${sheetPath}`);
+      img.src = sheetPath;
+    }
 
     for (const [kind, url] of Object.entries(EXTERNAL_PROP_URLS) as Array<[PropKind, string]>) {
       const img = new Image();
@@ -977,6 +1002,16 @@ export class ProceduralAssetProvider implements AssetProvider {
     tex.needsUpdate = true;
   }
 
+  private applyAtlasPropTexture(
+    tex: THREE.CanvasTexture,
+    def: PropAtlasDef,
+    img: HTMLImageElement
+  ): void {
+    const crop = getPropAtlasCropRect(def, img.naturalWidth, img.naturalHeight);
+    if (!crop) return;
+    this.applyImageToTexture(tex, img, crop.sx, crop.sy, crop.sw, crop.sh);
+  }
+
   private stampSheetCellToTexture(
     tex: THREE.CanvasTexture,
     sheetImg: HTMLImageElement,
@@ -1326,20 +1361,26 @@ export class ProceduralAssetProvider implements AssetProvider {
       tex = makePixelTexture(generatePropCanvas(kind));
       this.propCache.set(kind, tex);
 
-      const propImg = this.propImages.get(kind);
-      if (propImg) {
-        this.applyImageToTexture(
-          tex,
-          propImg,
-          0,
-          0,
-          propImg.naturalWidth,
-          propImg.naturalHeight
-        );
+      const atlasDef = getPropAtlasDef(kind);
+      const atlasImg = atlasDef ? this.propAtlasImages.get(atlasDef.sheetPath) : undefined;
+      if (atlasDef && atlasImg) {
+        this.applyAtlasPropTexture(tex, atlasDef, atlasImg);
       } else {
-        const crop = LAMP_SHEET_CROPS[kind];
-        if (crop && this.lampsSheetImg) {
-          this.applyImageToTexture(tex, this.lampsSheetImg, crop.sx, crop.sy, crop.sw, crop.sh);
+        const propImg = this.propImages.get(kind);
+        if (propImg) {
+          this.applyImageToTexture(
+            tex,
+            propImg,
+            0,
+            0,
+            propImg.naturalWidth,
+            propImg.naturalHeight
+          );
+        } else {
+          const crop = LAMP_SHEET_CROPS[kind];
+          if (crop && this.lampsSheetImg) {
+            this.applyImageToTexture(tex, this.lampsSheetImg, crop.sx, crop.sy, crop.sw, crop.sh);
+          }
         }
       }
     }
@@ -1375,6 +1416,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     for (const t of this.propCache.values()) t.dispose();
     this.propCache.clear();
     this.propImages.clear();
+    this.propAtlasImages.clear();
     for (const t of this.roofCache.values()) t.dispose();
     this.roofCache.clear();
     for (const t of this.roofNormalCache.values()) t.dispose();

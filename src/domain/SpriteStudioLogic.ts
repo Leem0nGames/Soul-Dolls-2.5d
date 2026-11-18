@@ -14,7 +14,7 @@ import {
 } from '../data/soulForms.ts';
 import type { SpeciesDef } from './types.ts';
 
-export type StudioDestination = 'catalog' | 'create' | 'inspect';
+export type StudioDestination = 'catalog' | 'create' | 'inspect' | 'assets';
 export type CatalogViewMode = 'front' | 'back' | 'wild';
 export type GrimoireFilter = 'all' | 'animated' | 'wild' | 'pending';
 export type BgMode = 'checker' | 'dark' | 'sand' | 'grey';

@@ -412,7 +412,10 @@ export type TileKind =
   | 'bridge'
   | 'arena_floor';
 
+export type AtlasPropKind = `atlas_${string}`;
+
 export type PropKind =
+  | AtlasPropKind
   | 'oak'
   | 'pine'
   | 'birch'

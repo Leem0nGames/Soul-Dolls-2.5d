@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ALL_SPECIES_IDS_WITH_ANIMATION } from '../../data/animations.ts';
+import { PROP_ATLAS_REGISTRY } from '../../data/propAssets.ts';
 import type {
   StudioCreationMode,
   StudioDestination,
@@ -10,6 +11,7 @@ import { PxPanel, PxPanelHeader } from './PxPanel.tsx';
 import { PxTabs, type PxTabItem } from './PxTabs.tsx';
 import { CreateAnimationWizard } from './sprite-studio/CreateAnimationWizard.tsx';
 import { GrimoireCatalogTab } from './sprite-studio/GrimoireCatalogTab.tsx';
+import { PropAssetStudioTab } from './sprite-studio/PropAssetStudioTab.tsx';
 import {
   QUICK_INSPECTOR_PRESETS,
   QuickInspectorTab,
@@ -42,6 +44,7 @@ export const SpriteInspectorView: React.FC<SpriteInspectorViewProps> = ({ onClos
   const tabItems: PxTabItem<StudioDestination>[] = [
     { id: 'catalog', label: 'Catálogo' },
     { id: 'create', label: 'Crear' },
+    { id: 'assets', label: 'Assets' },
     { id: 'inspect', label: 'Probar' },
   ];
 
@@ -55,7 +58,7 @@ export const SpriteInspectorView: React.FC<SpriteInspectorViewProps> = ({ onClos
       <PxPanelHeader
         title="Sprite Studio"
         ornate
-        subtitle={`${ALL_SPECIES_IDS_WITH_ANIMATION.length} animadas · ${SOULDOLL_MAX_SHEET_ID} SoulDolls`}
+        subtitle={`${ALL_SPECIES_IDS_WITH_ANIMATION.length} animadas · ${SOULDOLL_MAX_SHEET_ID} SoulDolls · ${PROP_ATLAS_REGISTRY.length} props`}
         className="mb-1 shrink-0"
         right={
           <PxButton
@@ -75,7 +78,7 @@ export const SpriteInspectorView: React.FC<SpriteInspectorViewProps> = ({ onClos
         items={tabItems}
         value={destination}
         onChange={setDestination}
-        columns={3}
+        columns={4}
         size="md"
         className="shrink-0"
       />
@@ -101,6 +104,8 @@ export const SpriteInspectorView: React.FC<SpriteInspectorViewProps> = ({ onClos
           onOpenCatalog={() => setDestination('catalog')}
         />
       )}
+
+      {destination === 'assets' && <PropAssetStudioTab />}
 
       {destination === 'inspect' && (
         <QuickInspectorTab
