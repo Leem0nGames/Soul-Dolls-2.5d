@@ -197,9 +197,32 @@ async function main() {
     }
   }
 
+  let finalBuffer = await sharp(data, { raw: { width, height, channels: 4 } })
+    .png()
+    .toBuffer();
+  let outWidth = width;
+  let outHeight = height;
+
+  if (args.trim === 'true') {
+    const trimmed = sharp(finalBuffer).trim({ threshold: 10 });
+    const meta = await trimmed.toBuffer({ resolveWithObject: true });
+    finalBuffer = meta.data;
+    outWidth = meta.info.width;
+    outHeight = meta.info.height;
+  }
+
+  const maxWidth = Number(args.maxWidth ?? 0);
+  if (maxWidth > 0 && outWidth > maxWidth) {
+    const resized = sharp(finalBuffer).resize({ width: maxWidth, kernel: 'lanczos3' });
+    const meta = await resized.toBuffer({ resolveWithObject: true });
+    finalBuffer = meta.data;
+    outWidth = meta.info.width;
+    outHeight = meta.info.height;
+  }
+
   fs.mkdirSync(path.dirname(output), { recursive: true });
-  await sharp(data, { raw: { width, height, channels: 4 } })
-    .webp({ quality: 94, effort: 4 })
+  await sharp(finalBuffer)
+    .webp({ quality: 94, effort: 5 })
     .toFile(output);
 
   console.log(

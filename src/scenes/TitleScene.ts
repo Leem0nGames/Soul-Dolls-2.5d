@@ -519,22 +519,27 @@ export class TitleScene implements Scene {
         </div>
       </header>
 
-      <div class="pt-3 sm:pt-4 flex flex-col items-center text-center">
+      <div class="pt-2 sm:pt-3 flex flex-col items-center text-center">
         <div class="inline-block bg-crypt-ink border-2 border-ki-cyan px-3 py-1 text-[11px] font-bold tracking-[0.2em] uppercase text-ki-cyan shadow-[2px_2px_0_#050505]">
           RPG Táctico 2.5D · 50 Marionetas
         </div>
-        <svg viewBox="0 0 388 84" shape-rendering="crispEdges" class="mt-1.5 w-[min(88vw,400px)] h-auto" aria-label="SoulDolls">
-          <defs>
-            <clipPath id="pxTitleTopClip">
-              <rect x="0" y="0" width="388" height="35" />
-            </clipPath>
-          </defs>
-          <text x="194" y="58" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.uiInk}" stroke="${PALETTE.uiInk}" stroke-width="10" stroke-linejoin="miter">${ES.app.title}</text>
-          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.cryptInk}" stroke="${PALETTE.cryptInk}" stroke-width="8" stroke-linejoin="miter">${ES.app.title}</text>
-          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.resonantGold}">${ES.app.title}</text>
-          <text x="190" y="54" text-anchor="middle" font-family="monospace" font-weight="900" font-size="50" letter-spacing="4" fill="${PALETTE.paleGold}" clip-path="url(#pxTitleTopClip)">${ES.app.title}</text>
-        </svg>
-        <div class="mt-1 flex items-center justify-center gap-2.5 text-xs sm:text-sm font-bold tracking-wider text-porcelain px-text-outline">
+        <img
+          data-title-logo
+          src="/assets/souldolls_logo.webp"
+          width="1200"
+          height="510"
+          alt="${ES.app.title}"
+          referrerpolicy="no-referrer"
+          decoding="async"
+          class="mt-1 w-[min(92vw,440px)] sm:w-[min(74vw,540px)] max-h-[24vh] sm:max-h-[28vh] h-auto object-contain select-none pointer-events-none"
+        />
+        <div
+          data-title-fallback
+          class="hidden mt-1.5 text-4xl sm:text-5xl font-black tracking-[0.12em] uppercase text-resonant-gold px-text-outline"
+        >
+          ${ES.app.title}
+        </div>
+        <div class="mt-0.5 flex items-center justify-center gap-2.5 text-xs sm:text-sm font-bold tracking-wider text-porcelain px-text-outline">
           <span class="h-[2px] w-6 bg-resonant-gold"></span>
           <span>${ES.app.subtitle}</span>
           <span class="h-[2px] w-6 bg-resonant-gold"></span>
@@ -557,6 +562,13 @@ export class TitleScene implements Scene {
         </div>
       </footer>
     `;
+
+    const logoEl = this.overlay.querySelector<HTMLImageElement>('[data-title-logo]');
+    const fallbackEl = this.overlay.querySelector<HTMLDivElement>('[data-title-fallback]');
+    logoEl?.addEventListener('error', () => {
+      logoEl.classList.add('hidden');
+      fallbackEl?.classList.remove('hidden');
+    });
 
     this.overlay.querySelector('[data-new]')?.addEventListener('click', () => {
       this.game.synth.unlock();
