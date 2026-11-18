@@ -64,8 +64,11 @@ import {
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { TweenRunner } from '../engine/Tween.ts';
 import {
+  DEFAULT_IDLE_FPS,
+  getIdleAnimationSpecForSpecies,
   hasSpeciesAnimationRole,
   SPECIES_ANIMATION_REGISTRY,
+  type AnimationSheetSpec,
 } from '../data/animations.ts';
 import {
   hasWildSoulSprite,
@@ -133,6 +136,12 @@ export class BattleScene implements Scene {
   private enemyMatHandle: BattleSpriteMaterialHandle;
   private meleeStabMatHandle: MeleeStabMaterialHandle;
   private attackTextureCache = new Map<string, THREE.Texture>();
+  private playerIdleSpec: AnimationSheetSpec | null = null;
+  private enemyIdleSpec: AnimationSheetSpec | null = null;
+  private playerIdleElapsed = 0;
+  private enemyIdleElapsed = 0;
+  private playerIdleFrame = -1;
+  private enemyIdleFrame = -1;
   private playerRig: SoulDollIdleRig;
   private enemyRig: SoulDollIdleRig;
   private unsubCreatureLoad: (() => void) | null = null;
@@ -250,12 +259,10 @@ export class BattleScene implements Scene {
         const p = this.engine.getActive('player');
         const e = this.engine.getActive('enemy');
         if (p.speciesId === loadedId) {
-          this.playerMatHandle.setTexture(game.assets.getCreatureTexture(p.speciesId, 'back'));
+          this.applyIdleSheet('player');
         }
         if (e.speciesId === loadedId) {
-          this.enemyMatHandle.setTexture(
-            game.assets.getCreatureTexture(e.speciesId, this.getEnemyBattleView(e.speciesId))
-          );
+          this.applyIdleSheet('enemy');
         }
         this.syncRigAnchors();
       });
@@ -354,6 +361,8 @@ export class BattleScene implements Scene {
     this.disposables.track(this.meleeStabMatHandle.material);
 
     this.scene.add(this.playerMesh, this.enemyMesh, this.meleeStabMesh, this.capsuleMesh);
+    this.applyIdleSheet('player');
+    this.applyIdleSheet('enemy');
   }
 
   onEnter(): void {
@@ -531,6 +540,78 @@ export class BattleScene implements Scene {
     );
   }
 
+  private getSheetTexture(path: string): THREE.Texture {
+    const cached = this.attackTextureCache.get(path);
+    if (cached) return cached;
+    const tex = loadMeleeStabTexture(path);
+    this.attackTextureCache.set(path, tex);
+    this.disposables.track(tex);
+    return tex;
+  }
+
+  private applyIdleSheet(
+    side: 'player' | 'enemy',
+    viewOverride?: 'front' | 'back'
+  ): void {
+    const isPlayer = side === 'player';
+    const creature = this.engine.getActive(side);
+    const view =
+      viewOverride ?? (isPlayer ? 'back' : this.getEnemyBattleView(creature.speciesId));
+    const mat = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
+    const rig = isPlayer ? this.playerRig : this.enemyRig;
+    const spec =
+      view === 'wild'
+        ? null
+        : getIdleAnimationSpecForSpecies(creature.speciesId, view);
+
+    if (isPlayer) {
+      this.playerIdleSpec = spec;
+      this.playerIdleElapsed = 0;
+      this.playerIdleFrame = -1;
+    } else {
+      this.enemyIdleSpec = spec;
+      this.enemyIdleElapsed = 0;
+      this.enemyIdleFrame = -1;
+    }
+
+    if (spec) {
+      mat.setTexture(this.getSheetTexture(spec.path));
+      mat.setSheetFrame(0, spec.cols, spec.rows);
+      rig.setBreathingEnabled(false);
+      return;
+    }
+
+    mat.setTexture(this.game.assets.getCreatureTexture(creature.speciesId, view));
+    mat.clearFrameRect();
+    rig.setBreathingEnabled(true);
+  }
+
+  private tickIdleAnimation(side: 'player' | 'enemy', dt: number): void {
+    if (dt <= 0) return;
+    const isPlayer = side === 'player';
+    const spec = isPlayer ? this.playerIdleSpec : this.enemyIdleSpec;
+    if (!spec) return;
+
+    const safeTotal = Math.max(1, Math.min(spec.totalFrames, spec.cols * spec.rows));
+    if (safeTotal <= 1) return;
+    const fps = Math.max(1, spec.fps ?? DEFAULT_IDLE_FPS);
+    const cycle = safeTotal / fps;
+    const elapsed = ((isPlayer ? this.playerIdleElapsed : this.enemyIdleElapsed) + dt) % cycle;
+    const frame = Math.floor(elapsed * fps) % safeTotal;
+
+    if (isPlayer) {
+      this.playerIdleElapsed = elapsed;
+      if (frame === this.playerIdleFrame) return;
+      this.playerIdleFrame = frame;
+      this.playerMatHandle.setSheetFrame(frame, spec.cols, spec.rows);
+    } else {
+      this.enemyIdleElapsed = elapsed;
+      if (frame === this.enemyIdleFrame) return;
+      this.enemyIdleFrame = frame;
+      this.enemyMatHandle.setSheetFrame(frame, spec.cols, spec.rows);
+    }
+  }
+
   private sendOutCreature(side: 'player' | 'enemy', onDone: () => void): void {
     const isPlayer = side === 'player';
     const station = isPlayer ? PLAYER_STATION_POS : ENEMY_STATION_POS;
@@ -543,13 +624,8 @@ export class BattleScene implements Scene {
     matHandle.setDissolve(0);
     matHandle.setOpacity(1);
     matHandle.setFlash(0);
-    matHandle.setTexture(
-      this.game.assets.getCreatureTexture(
-        creature.speciesId,
-        isPlayer ? 'back' : this.getEnemyBattleView(creature.speciesId)
-      )
-    );
     this.syncRigAnchors();
+    this.applyIdleSheet(side);
     rig.resetSprings();
 
     const startX = isPlayer ? station.x - 2.6 : station.x + 2.6;
@@ -1724,15 +1800,13 @@ export class BattleScene implements Scene {
           this.playerMatHandle.setOpacity(1);
           this.playerMatHandle.setDissolve(0);
           this.playerMatHandle.setFlash(0);
-          this.playerMatHandle.setTexture(
-            this.game.assets.getCreatureTexture(activePlayer.speciesId, 'front')
-          );
           this.playerRig.setView('front', true);
           const frontAnchor = this.game.assets.getCreatureRigAnchor?.(
             activePlayer.speciesId,
             'front'
           );
           if (frontAnchor) this.playerRig.setAnchor(frontAnchor);
+          this.applyIdleSheet('player', 'front');
           this.playerRig.injectImpulse(0, 0.55, 0.24);
 
           const pFx = computeVfxScaleMetrics(this.playerScale).silhouette;
@@ -1938,6 +2012,8 @@ export class BattleScene implements Scene {
       if (this.enemyMesh.visible) {
         this.enemyRig.update(scaledDt);
       }
+      this.tickIdleAnimation('player', scaledDt);
+      this.tickIdleAnimation('enemy', scaledDt);
     }
 
     // Grounded torso-driven idle breathing (feet strictly anchored at grounded station Y, POSE_ACTUAL = POSE_BASE * BREATH_QUAT)

@@ -1,6 +1,8 @@
-export type AnimationRole = 'physical_attack' | 'special_attack';
+export type AttackRole = 'physical_attack' | 'special_attack';
+export type IdleRole = 'idle_front' | 'idle_back';
+export type AnimationRole = AttackRole | IdleRole;
 
-export interface AttackSheetSpec {
+export interface AnimationSheetSpec {
   path: string;
   cols: number;
   rows: number;
@@ -8,6 +10,43 @@ export interface AttackSheetSpec {
   impactFrame: number;
   aspectRatio: number;
   facing?: 'left' | 'right';
+  loop?: boolean;
+  fps?: number;
+}
+
+export type AttackSheetSpec = AnimationSheetSpec;
+
+export const ATTACK_SHEET_DIR = '/assets/attacks';
+export const IDLE_SHEET_DIR = '/assets/idles';
+export const DEFAULT_IDLE_FPS = 8;
+
+export function isAttackRole(role: AnimationRole): role is AttackRole {
+  return role === 'physical_attack' || role === 'special_attack';
+}
+
+export function isIdleRole(role: AnimationRole): role is IdleRole {
+  return role === 'idle_front' || role === 'idle_back';
+}
+
+export function getIdleRoleForView(view: 'front' | 'back'): IdleRole {
+  return view === 'back' ? 'idle_back' : 'idle_front';
+}
+
+export function getAnimationSheetDir(role: AnimationRole): string {
+  return isIdleRole(role) ? IDLE_SHEET_DIR : ATTACK_SHEET_DIR;
+}
+
+export function getAnimationRoleLabel(role: AnimationRole): string {
+  switch (role) {
+    case 'physical_attack':
+      return 'ataque físico';
+    case 'special_attack':
+      return 'ataque especial';
+    case 'idle_front':
+      return 'idle frontal';
+    case 'idle_back':
+      return 'idle trasero';
+  }
 }
 
 export interface SpeciesAnimationEntry {
@@ -78,8 +117,40 @@ export const ALL_SPECIES_IDS_WITH_ANIMATION: number[] = Array.from(
   new Set(SPECIES_ANIMATION_REGISTRY.map((entry) => entry.speciesId))
 ).sort((a, b) => a - b);
 
+export const ALL_SPECIES_IDS_WITH_ATTACK: number[] = Array.from(
+  new Set(
+    SPECIES_ANIMATION_REGISTRY.filter((entry) => isAttackRole(entry.role)).map(
+      (entry) => entry.speciesId
+    )
+  )
+).sort((a, b) => a - b);
+
+export const ALL_SPECIES_IDS_WITH_IDLE: number[] = Array.from(
+  new Set(
+    SPECIES_ANIMATION_REGISTRY.filter((entry) => isIdleRole(entry.role)).map(
+      (entry) => entry.speciesId
+    )
+  )
+).sort((a, b) => a - b);
+
 export function getSpeciesRegisteredAnimations(speciesId: number): SpeciesAnimationEntry[] {
   return SPECIES_ANIMATION_REGISTRY.filter((entry) => entry.speciesId === speciesId);
+}
+
+export function getSpeciesAnimationEntry(
+  speciesId: number,
+  role: AnimationRole
+): SpeciesAnimationEntry | undefined {
+  return SPECIES_ANIMATION_REGISTRY.find(
+    (entry) => entry.speciesId === speciesId && entry.role === role
+  );
+}
+
+export function getIdleAnimationSpecForSpecies(
+  speciesId: number,
+  view: 'front' | 'back'
+): AnimationSheetSpec | null {
+  return getSpeciesAnimationEntry(speciesId, getIdleRoleForView(view))?.spec ?? null;
 }
 
 export function hasSpeciesAnimationRole(
@@ -94,7 +165,7 @@ export function hasSpeciesAnimationRole(
 
 export function getSpeciesAttackSpec(
   speciesId?: number,
-  role: AnimationRole = 'physical_attack'
+  role: AttackRole = 'physical_attack'
 ): AttackSheetSpec {
   if (speciesId === undefined) return PLACEHOLDER_ATTACK_SPEC;
   const exact = SPECIES_ANIMATION_REGISTRY.find(
@@ -102,6 +173,8 @@ export function getSpeciesAttackSpec(
   );
   if (exact) return exact.spec;
 
-  const anyRole = SPECIES_ANIMATION_REGISTRY.find((entry) => entry.speciesId === speciesId);
-  return anyRole ? anyRole.spec : PLACEHOLDER_ATTACK_SPEC;
+  const anyAttack = SPECIES_ANIMATION_REGISTRY.find(
+    (entry) => entry.speciesId === speciesId && isAttackRole(entry.role)
+  );
+  return anyAttack ? anyAttack.spec : PLACEHOLDER_ATTACK_SPEC;
 }

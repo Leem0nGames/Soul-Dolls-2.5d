@@ -34,6 +34,14 @@ describe('soulForms registry and battle view resolution', () => {
     expect(hasFollowerPetSprite(2)).toBe(false);
     expect(getWildSoulSpriteUrl(99)).toBeNull();
     expect(getFollowerPetSpriteUrl(99)).toBeNull();
+
+    expect(ALL_SPECIES_IDS_WITH_WILD_SOUL).toContain(10);
+    expect(ALL_SPECIES_IDS_WITH_FOLLOWER_PET).toContain(10);
+    expect(getSoulFormEntry(10)).toEqual({
+      speciesId: 10,
+      wildSoulPath: '/assets/souls/10.webp',
+      followerPetPath: '/assets/followers/10.webp',
+    });
   });
 
   it('uses unbodied wild soul sprite in wild encounters and embodied SoulDoll sprite against SoulTrainers', () => {

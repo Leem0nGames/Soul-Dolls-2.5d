@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { computeStabFrameUvRect } from '../domain/MeleeStabTiming.ts';
 
 const VERTEX_SHADER = `
 uniform float uBreathWeight;
@@ -84,6 +85,7 @@ void main() {
 
 const FRAGMENT_SHADER = `
 uniform sampler2D map;
+uniform vec4 uFrameRect;
 uniform float uDissolve;
 uniform float uOpacity;
 uniform float uFlash;
@@ -120,7 +122,11 @@ float bayer4x4(vec2 p) {
 void main() {
   // Sample strictly at interpolated mesh vUv without fragment-level UV warping,
   // preventing mipmap LOD pumping, cel-outline shimmer, and luminosity flicker across breath phases.
-  vec2 sampleUv = clamp(vUv, vec2(0.001), vec2(0.999));
+  vec2 baseUv = clamp(vUv, vec2(0.001), vec2(0.999));
+  vec2 cellMin = vec2(min(uFrameRect.x, uFrameRect.x + uFrameRect.z), uFrameRect.y);
+  vec2 cellMax = vec2(max(uFrameRect.x, uFrameRect.x + uFrameRect.z), uFrameRect.y + uFrameRect.w);
+  vec2 inset = vec2(0.0008);
+  vec2 sampleUv = clamp(uFrameRect.xy + baseUv * uFrameRect.zw, cellMin + inset, cellMax - inset);
 
   vec4 texel = texture2D(map, sampleUv);
   if (texel.a < 0.45) discard;
@@ -145,8 +151,15 @@ void main() {
   float soulFlicker = mix(1.0, 0.76 + 0.24 * soulNoise, chestCoreMask);
 
   // Subtle HD-2D silhouette rim highlight along upper/outer cutout edges
-  float aUp = texture2D(map, clamp(sampleUv + vec2(0.0, 0.0055), vec2(0.001), vec2(0.999))).a;
-  float aSide = texture2D(map, clamp(sampleUv + vec2(0.0055 * uFlipSign, 0.0), vec2(0.001), vec2(0.999))).a;
+  vec2 rimStep = abs(vec2(uFrameRect.z, uFrameRect.w)) * 0.0055;
+  float aUp = texture2D(
+    map,
+    clamp(sampleUv + vec2(0.0, rimStep.y), cellMin + inset, cellMax - inset)
+  ).a;
+  float aSide = texture2D(
+    map,
+    clamp(sampleUv + vec2(rimStep.x * uFlipSign, 0.0), cellMin + inset, cellMax - inset)
+  ).a;
   float rimMask = clamp((1.0 - min(aUp, aSide)) * 1.4, 0.0, 1.0) * smoothstep(0.25, 0.9, charY);
   vec3 rimTint = mix(vec3(1.06, 0.98, 0.84), vec3(1.25, 1.15, 0.95), clamp(uFlash, 0.0, 1.0));
   vec3 litTex = texel.rgb + rimTint * rimMask * (0.14 + uFlash * 0.25);
@@ -163,6 +176,9 @@ void main() {
 export interface BattleSpriteMaterialHandle {
   material: THREE.ShaderMaterial;
   setTexture(tex: THREE.Texture): void;
+  setFrameRect(uMin: number, vMin: number, uSize: number, vSize: number): void;
+  setSheetFrame(frameIndex: number, cols: number, rows: number, flipX?: boolean): void;
+  clearFrameRect(): void;
   setDissolve(v: number): void;
   setOpacity(v: number): void;
   setFlash(v: number): void;
@@ -189,10 +205,12 @@ export function createBattleSpriteMaterial(
   const bustJiggle = new THREE.Vector2(0, 0);
   const torsoRecoil = new THREE.Vector2(0, 0);
   const torsoAnchor = new THREE.Vector2(0.5, 0.635);
+  const frameRect = new THREE.Vector4(0, 0, 1, 1);
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
       map: { value: initialTexture },
+      uFrameRect: { value: frameRect },
       uDissolve: { value: 0 },
       uOpacity: { value: 1 },
       uFlash: { value: 0 },
@@ -218,6 +236,16 @@ export function createBattleSpriteMaterial(
     material,
     setTexture(tex: THREE.Texture) {
       material.uniforms.map.value = tex;
+    },
+    setFrameRect(uMin: number, vMin: number, uSize: number, vSize: number) {
+      frameRect.set(uMin, vMin, uSize, vSize);
+    },
+    setSheetFrame(frameIndex: number, cols: number, rows: number, flipX = false) {
+      const rect = computeStabFrameUvRect(frameIndex, flipX, cols, rows);
+      frameRect.set(rect.uMin, rect.vMin, rect.uSize, rect.vSize);
+    },
+    clearFrameRect() {
+      frameRect.set(0, 0, 1, 1);
     },
     setDissolve(v: number) {
       material.uniforms.uDissolve.value = v;

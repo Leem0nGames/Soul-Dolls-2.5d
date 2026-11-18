@@ -1,5 +1,6 @@
 import {
   type AnimationRole,
+  type AttackRole,
   type AttackSheetSpec,
   getSpeciesAttackSpec,
   PLACEHOLDER_ATTACK_SHEET_PATH,
@@ -8,7 +9,7 @@ import {
   SOULDOLL_15_ATTACK_SPEC,
 } from '../data/animations.ts';
 
-export type { AnimationRole, AttackSheetSpec };
+export type { AnimationRole, AttackRole, AttackSheetSpec };
 export {
   PLACEHOLDER_ATTACK_SHEET_PATH,
   PLACEHOLDER_ATTACK_SPEC,
@@ -22,7 +23,7 @@ export const SOULDOLL_PORTRAIT_PLACEHOLDER_PATH =
 
 export function getAttackSheetSpecForSpecies(
   speciesId?: number,
-  role: AnimationRole = 'physical_attack'
+  role: AttackRole = 'physical_attack'
 ): AttackSheetSpec {
   return getSpeciesAttackSpec(speciesId, role);
 }

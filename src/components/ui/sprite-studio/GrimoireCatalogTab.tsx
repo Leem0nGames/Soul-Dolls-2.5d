@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ALL_SPECIES_IDS_WITH_ANIMATION,
+  isIdleRole,
   SPECIES_ANIMATION_REGISTRY,
   type SpeciesAnimationEntry,
 } from '../../../data/animations.ts';
@@ -100,7 +101,7 @@ export const GrimoireCatalogTab: React.FC<GrimoireCatalogTabProps> = ({
             onClick={() => setFilter('animated')}
             className="px-1 min-h-[44px] whitespace-nowrap"
           >
-            Ataques ({ALL_SPECIES_IDS_WITH_ANIMATION.length})
+            Animadas ({ALL_SPECIES_IDS_WITH_ANIMATION.length})
           </PxButton>
           <PxButton
             size="sm"
@@ -267,7 +268,7 @@ export const GrimoireCatalogTab: React.FC<GrimoireCatalogTabProps> = ({
                           onClick={() => onInspectAnimation(primaryAnim)}
                           className="px-2 text-xs"
                         >
-                          Probar Ataque
+                          {isIdleRole(primaryAnim.role) ? 'Probar Idle' : 'Probar Ataque'}
                         </PxButton>
                         <PxButton
                           size="sm"

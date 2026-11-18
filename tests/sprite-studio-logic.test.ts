@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { SPECIES_ANIMATION_REGISTRY } from '../src/data/animations.ts';
+import {
+  DEFAULT_IDLE_FPS,
+  getAnimationRoleLabel,
+  getAnimationSheetDir,
+  getIdleAnimationSpecForSpecies,
+  getIdleRoleForView,
+  isAttackRole,
+  isIdleRole,
+  SPECIES_ANIMATION_REGISTRY,
+} from '../src/data/animations.ts';
 import { SPECIES } from '../src/data/species.ts';
 import {
   applyChromaKeyRgba,
@@ -22,9 +31,25 @@ describe('SpriteStudioLogic', () => {
     expect(pad2(15)).toBe('15');
     expect(buildOutputFileName(1, 'physical_attack')).toBe('physical_attack_01.webp');
     expect(buildOutputFileName(15, 'special_attack')).toBe('special_attack_15.webp');
+    expect(buildOutputFileName(3, 'idle_front')).toBe('idle_front_03.webp');
+    expect(buildOutputFileName(3, 'idle_back')).toBe('idle_back_03.webp');
     expect(stepBounded(4, 1, 1, 10)).toBe(5);
     expect(stepBounded(1, -1, 1, 10)).toBe(1);
     expect(stepBounded(10, 5, 1, 10)).toBe(10);
+  });
+
+  it('maps idle roles to views, directories, and labels without treating them as attacks', () => {
+    expect(DEFAULT_IDLE_FPS).toBe(8);
+    expect(getIdleRoleForView('front')).toBe('idle_front');
+    expect(getIdleRoleForView('back')).toBe('idle_back');
+    expect(getAnimationSheetDir('idle_front')).toBe('/assets/idles');
+    expect(getAnimationSheetDir('idle_back')).toBe('/assets/idles');
+    expect(getAnimationSheetDir('physical_attack')).toBe('/assets/attacks');
+    expect(isIdleRole('special_attack')).toBe(false);
+    expect(isAttackRole('idle_back')).toBe(false);
+    expect(getAnimationRoleLabel('idle_front')).toBe('idle frontal');
+    expect(getAnimationRoleLabel('idle_back')).toBe('idle trasero');
+    expect(getIdleAnimationSpecForSpecies(1, 'back')).toBeNull();
   });
 
   it('computes clamped video trim sampling plan and grid rows', () => {
@@ -69,7 +94,7 @@ describe('SpriteStudioLogic', () => {
       speciesMap: SPECIES,
       registry: SPECIES_ANIMATION_REGISTRY,
     });
-    expect(wildOnly.map((e) => e.id)).toEqual([1]);
+    expect(wildOnly.map((e) => e.id)).toEqual([1, 10]);
     expect(wildOnly[0]?.hasWildSoul).toBe(true);
     expect(wildOnly[0]?.hasFollowerPet).toBe(true);
 
@@ -116,6 +141,35 @@ describe('SpriteStudioLogic', () => {
     const snippet = buildTsSnippet(meta);
     expect(snippet).toContain("path: '/assets/attacks/special_attack_04.webp'");
     expect(snippet).toContain("facing: 'left'");
+  });
+
+  it('emits idle snippets with loop, fps, zero impact frame, and idles directory', () => {
+    const meta = {
+      speciesId: 7,
+      speciesName: 'Lumín',
+      role: 'idle_back' as const,
+      cols: 4,
+      rows: 2,
+      totalFrames: 8,
+      impactFrame: 0,
+      fps: 6,
+      cellW: 512,
+      cellH: 512,
+      facing: 'left' as const,
+      sourceKind: 'video' as const,
+    };
+
+    const snippet = buildTsSnippet(meta);
+    expect(snippet).toContain("path: '/assets/idles/idle_back_07.webp'");
+    expect(snippet).toContain('loop: true');
+    expect(snippet).toContain('fps: 6');
+    expect(snippet).toContain('impactFrame: 0');
+    expect(snippet).not.toContain("facing: 'left'");
+
+    const prompt = buildAgentPromptSummary(meta);
+    expect(prompt).toContain('idle trasero');
+    expect(prompt).toContain('loop true, fps 6');
+    expect(prompt).not.toContain('impactFrame');
   });
 
   it('detects dual soul and follower pet bounding boxes automatically and with manual split override', () => {

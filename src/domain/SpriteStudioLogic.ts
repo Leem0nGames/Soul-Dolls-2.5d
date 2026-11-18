@@ -1,4 +1,11 @@
-import type { AnimationRole, SpeciesAnimationEntry } from '../data/animations.ts';
+import {
+  type AnimationRole,
+  DEFAULT_IDLE_FPS,
+  getAnimationRoleLabel,
+  getAnimationSheetDir,
+  isIdleRole,
+  type SpeciesAnimationEntry,
+} from '../data/animations.ts';
 import {
   getFollowerPetSpriteUrl,
   getWildSoulSpriteUrl,
@@ -62,6 +69,7 @@ export interface ExportMetaInput {
   cellH: number;
   facing: 'left' | 'right';
   sourceKind: StudioSourceKind;
+  fps?: number;
 }
 
 export function pad2(n: number): string {
@@ -112,27 +120,36 @@ export function computeTrimSamplingPlan(params: {
 
 export function buildTsSnippet(meta: ExportMetaInput): string {
   const fileName = buildOutputFileName(meta.speciesId, meta.role);
+  const idle = isIdleRole(meta.role);
+  const frameMeta = idle
+    ? `    loop: true,
+    fps: ${meta.fps ?? DEFAULT_IDLE_FPS},`
+    : `    impactFrame: ${meta.impactFrame},
+    facing: '${meta.facing}',`;
   return `{
   speciesId: ${meta.speciesId},
   role: '${meta.role}',
   label: 'SoulDoll #${pad2(meta.speciesId)} — ${meta.speciesName} (${meta.cols}×${meta.rows})',
   spec: {
-    path: '/assets/attacks/${fileName}',
+    path: '${getAnimationSheetDir(meta.role)}/${fileName}',
     cols: ${meta.cols},
     rows: ${meta.rows},
     totalFrames: ${meta.totalFrames},
-    impactFrame: ${meta.impactFrame},
+    impactFrame: ${idle ? 0 : meta.impactFrame},
     aspectRatio: ${meta.cellW} / ${meta.cellH},
-    facing: '${meta.facing}',
+${frameMeta}
   },
 }`;
 }
 
 export function buildAgentPromptSummary(meta: ExportMetaInput): string {
   const fileName = buildOutputFileName(meta.speciesId, meta.role);
-  const roleLabel = meta.role === 'physical_attack' ? 'ataque físico' : 'ataque especial';
+  const roleLabel = getAnimationRoleLabel(meta.role);
   const sourceLabel = meta.sourceKind === 'video' ? 'video convertido' : 'spritesheet';
-  return `Registra este ${sourceLabel} (${fileName}) como ${roleLabel} de SoulDoll #${pad2(meta.speciesId)} (${meta.speciesName}): ${meta.cols} columnas × ${meta.rows} filas, ${meta.totalFrames} frames, impactFrame ${meta.impactFrame}, aspectRatio ${meta.cellW}/${meta.cellH}, facing '${meta.facing}'.`;
+  const loopText = isIdleRole(meta.role)
+    ? `, loop true, fps ${meta.fps ?? DEFAULT_IDLE_FPS}`
+    : `, impactFrame ${meta.impactFrame}, facing '${meta.facing}'`;
+  return `Registra este ${sourceLabel} (${fileName}) como ${roleLabel} de SoulDoll #${pad2(meta.speciesId)} (${meta.speciesName}): ${meta.cols} columnas × ${meta.rows} filas, ${meta.totalFrames} frames${loopText}, aspectRatio ${meta.cellW}/${meta.cellH}.`;
 }
 
 export function buildDualSoulFileNames(speciesId: number): {

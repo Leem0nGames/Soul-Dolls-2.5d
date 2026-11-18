@@ -225,11 +225,40 @@ describe('SoulDollIdleRig torso-driven breathing & luminosity isolation', () => 
     expect(u.uSecondaryWeight.value).toBe(rig.getSecondaryWeight());
     expect(u.uBustJiggle.value.y).toBe(rig.getState().jiggleY);
     expect(u.uVolumeScale.value).toBe(rig.getState().volumeScaleX);
-    expect(frag).toContain('vec2 sampleUv = clamp(vUv,');
+    expect(frag).toContain('uniform vec4 uFrameRect;');
+    expect(frag).toContain(
+      'vec2 sampleUv = clamp(uFrameRect.xy + baseUv * uFrameRect.zw'
+    );
     expect(frag).toContain('smoothstep(0.45, 0.60, texel.a)');
     expect(frag).toContain('#include <tonemapping_fragment>');
     expect(frag).toContain('#include <colorspace_fragment>');
     expect(matHandle.material.premultipliedAlpha).toBe(false);
+
+    matHandle.material.dispose();
+    tex.dispose();
+  });
+
+  it('maps sheet frames into uFrameRect and restores full-texture sampling', () => {
+    const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    const matHandle = createBattleSpriteMaterial(tex);
+    const rect = matHandle.material.uniforms.uFrameRect.value as THREE.Vector4;
+
+    expect([rect.x, rect.y, rect.z, rect.w]).toEqual([0, 0, 1, 1]);
+
+    matHandle.setSheetFrame(3, 4, 2);
+    expect(rect.x).toBeCloseTo(0.75, 6);
+    expect(rect.y).toBeCloseTo(0.5, 6);
+    expect(rect.z).toBeCloseTo(0.25, 6);
+    expect(rect.w).toBeCloseTo(0.5, 6);
+
+    matHandle.setSheetFrame(1, 4, 2, true);
+    expect(rect.x).toBeCloseTo(0.5, 6);
+    expect(rect.y).toBeCloseTo(0.5, 6);
+    expect(rect.z).toBeCloseTo(-0.25, 6);
+    expect(rect.w).toBeCloseTo(0.5, 6);
+
+    matHandle.clearFrameRect();
+    expect([rect.x, rect.y, rect.z, rect.w]).toEqual([0, 0, 1, 1]);
 
     matHandle.material.dispose();
     tex.dispose();

@@ -19,6 +19,12 @@ Sigue este flujo exactamente cada vez que el usuario suba una imagen o video (`.
 - `'physical_attack'`: Ataques físicos (`move.category === 'physical'`). La SoulDoll avanza hacia el rival, reproduce la hoja junto al objetivo e impacta en `impactFrame`.
 - `'special_attack'`: Ataques especiales (`move.category === 'special'`). Si se registra explícitamente, la animación se reproduce en la estación del atacante y lanza los VFX elementales al alcanzar `impactFrame`.
 
+## Idle (Frente / Espalda)
+- `'idle_front'` e `'idle_back'`: bucles de reposo para la vista frontal y trasera.
+- Se guardan en **`/public/assets/idles/idle_front_XX.webp`** o **`idle_back_XX.webp`** con fondo transparente.
+- En el registro usan `impactFrame: 0`, `loop: true` y `fps` (6, 8 o 12). BattleScene reproduce el bucle y desactiva la respiración procedural mientras el idle esté activo.
+- **No** usar las hojas base `1×2` de `/public/assets/souldolls/` como idle: solo contienen frente/espalda estáticos.
+
 ## Flujo de Trabajo
 
 ### Caso A: El usuario sube un Video (`.mp4` / `.webm`)

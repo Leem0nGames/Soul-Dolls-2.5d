@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  isIdleRole,
   PLACEHOLDER_ATTACK_SHEET_PATH,
   SPECIES_ANIMATION_REGISTRY,
 } from '../../../data/animations.ts';
@@ -17,6 +18,7 @@ export interface QuickInspectorPreset {
   totalFrames: number;
   impactFrame: number;
   aspect: number;
+  isIdle?: boolean;
 }
 
 export const QUICK_INSPECTOR_PRESETS: QuickInspectorPreset[] = [
@@ -29,6 +31,7 @@ export const QUICK_INSPECTOR_PRESETS: QuickInspectorPreset[] = [
     totalFrames: entry.spec.totalFrames,
     impactFrame: entry.spec.impactFrame,
     aspect: entry.spec.aspectRatio,
+    isIdle: isIdleRole(entry.role),
   })),
   {
     id: 'placeholder-5x5',
@@ -41,8 +44,8 @@ export const QUICK_INSPECTOR_PRESETS: QuickInspectorPreset[] = [
     aspect: 1,
   },
   {
-    id: 'doll-01-idle',
-    name: 'SoulDoll #01 — Hoja Idle (1×2)',
+    id: 'doll-01-views',
+    name: 'SoulDoll #01 — Frente / Espalda base (1×2)',
     path: getSoulDollSheetUrl(1),
     cols: 2,
     rows: 1,
@@ -117,7 +120,7 @@ export const QuickInspectorTab: React.FC<QuickInspectorTabProps> = ({
             totalFrames={totalFrames}
             impactFrame={impactFrame}
             fallbackAspect={activePreset.aspect}
-            onImpactFrameChange={setImpactFrame}
+            onImpactFrameChange={activePreset.isIdle ? undefined : setImpactFrame}
             showTechnicalDetails
           />
         </div>

@@ -18,6 +18,11 @@ export const SOUL_FORM_REGISTRY: SoulFormEntry[] = [
     wildSoulPath: '/assets/souls/01.webp',
     followerPetPath: '/assets/followers/01.webp',
   },
+  {
+    speciesId: 10,
+    wildSoulPath: '/assets/souls/10.webp',
+    followerPetPath: '/assets/followers/10.webp',
+  },
 ];
 
 const SOUL_FORM_MAP = new Map<number, SoulFormEntry>(

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AnimationRole,
+  DEFAULT_IDLE_FPS,
+  isIdleRole,
   SPECIES_ANIMATION_REGISTRY,
 } from '../../../data/animations.ts';
 import { SPECIES } from '../../../data/species.ts';
@@ -97,6 +99,9 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
   const [sourceLabel, setSourceLabel] = useState<string>('');
   const [facing, setFacing] = useState<'left' | 'right'>('left');
 
+  // Idle playback
+  const [idleFps, setIdleFps] = useState<number>(DEFAULT_IDLE_FPS);
+
   // Video settings
   const [videoDuration, setVideoDuration] = useState<number>(6);
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
@@ -136,8 +141,8 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isDualMode = mode === 'soul_dual';
-  const attackRole: AnimationRole =
-    mode === 'special_attack' ? 'special_attack' : 'physical_attack';
+  const isIdleMode = mode !== 'soul_dual' && isIdleRole(mode);
+  const sheetRole: AnimationRole = mode === 'soul_dual' ? 'physical_attack' : mode;
 
   useEffect(() => {
     setMode(initialMode);
@@ -159,8 +164,11 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
   const speciesDef = SPECIES[speciesId];
   const speciesName = speciesDef?.name ?? `SoulDoll #${pad2(speciesId)}`;
   const existingSpeciesAnim = useMemo(
-    () => SPECIES_ANIMATION_REGISTRY.find((a) => a.speciesId === speciesId),
-    [speciesId]
+    () =>
+      SPECIES_ANIMATION_REGISTRY.find(
+        (a) => a.speciesId === speciesId && a.role === sheetRole
+      ),
+    [speciesId, sheetRole]
   );
 
   const trimPlan = useMemo(
@@ -171,9 +179,9 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
         fps: sampleFps,
         cols,
         duration: videoDuration,
-        maxFrames: 36,
+        maxFrames: isIdleMode ? 8 : 36,
       }),
-    [trimStart, trimEnd, sampleFps, cols, videoDuration]
+    [trimStart, trimEnd, sampleFps, cols, videoDuration, isIdleMode]
   );
 
   const drawVideoCanvas = useCallback(() => {
@@ -312,8 +320,8 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
       setSourceLabel(file.name);
       setChromaMode(isDualMode ? 'green' : 'grey');
       setCols(4);
-      setRows(5);
-      setTotalFrames(20);
+      setRows(isIdleMode ? 2 : 5);
+      setTotalFrames(isIdleMode ? 8 : 20);
       setStep(2);
     }
   };
@@ -360,6 +368,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     setRows(existingSpeciesAnim.spec.rows);
     setTotalFrames(existingSpeciesAnim.spec.totalFrames);
     setFacing(existingSpeciesAnim.spec.facing ?? 'right');
+    setIdleFps(existingSpeciesAnim.spec.fps ?? DEFAULT_IDLE_FPS);
     setChromaMode('none');
     setStep(2);
   };
@@ -428,7 +437,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
           totalFrames: trimPlan.totalFrames,
           cellW,
           cellH,
-          impactFrame: Math.floor(trimPlan.totalFrames * 0.45),
+          impactFrame: isIdleMode ? 0 : Math.floor(trimPlan.totalFrames * 0.45),
           sourceKind: 'video',
         });
         setStep(3);
@@ -550,7 +559,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
           totalFrames: safeTotal,
           cellW: Math.round(w / safeCols),
           cellH: Math.round(h / safeRows),
-          impactFrame: Math.floor(safeTotal * 0.45),
+          impactFrame: isIdleMode ? 0 : Math.floor(safeTotal * 0.45),
           sourceKind: 'image',
         });
         setStep(3);
@@ -564,7 +573,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     ? {
         speciesId,
         speciesName,
-        role: attackRole,
+        role: sheetRole,
         cols: result.cols,
         rows: result.rows,
         totalFrames: result.totalFrames,
@@ -573,10 +582,11 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
         cellH: result.cellH,
         facing,
         sourceKind: result.sourceKind,
+        fps: isIdleMode ? idleFps : undefined,
       }
     : null;
 
-  const outputFileName = buildOutputFileName(speciesId, attackRole);
+  const outputFileName = buildOutputFileName(speciesId, sheetRole);
   const agentPromptText = isDualMode && dualResult
     ? buildDualSoulAgentPrompt({
         speciesId,
@@ -620,8 +630,8 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
           </div>
         </div>
 
-        {/* Mode Selector (Físico / Especial / Alma + Pet) */}
-        <div className="grid grid-cols-3 gap-1 shrink-0">
+        {/* Mode Selector (Físico / Especial / Idle / Alma + Pet) */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 shrink-0">
           <PxButton
             size="sm"
             variant={mode === 'physical_attack' ? 'primary' : 'ghost'}
@@ -645,6 +655,30 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             className="min-h-[44px] px-2 whitespace-nowrap"
           >
             Especial
+          </PxButton>
+          <PxButton
+            size="sm"
+            variant={mode === 'idle_front' ? 'success' : 'ghost'}
+            showSelector={false}
+            onClick={() => {
+              setMode('idle_front');
+              setDualResult(null);
+            }}
+            className="min-h-[44px] px-2 whitespace-nowrap"
+          >
+            Idle Frente
+          </PxButton>
+          <PxButton
+            size="sm"
+            variant={mode === 'idle_back' ? 'success' : 'ghost'}
+            showSelector={false}
+            onClick={() => {
+              setMode('idle_back');
+              setDualResult(null);
+            }}
+            className="min-h-[44px] px-2 whitespace-nowrap"
+          >
+            Idle Espalda
           </PxButton>
           <PxButton
             size="sm"
@@ -705,12 +739,16 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
               <h3 className="text-sm sm:text-base font-bold text-pale-gold">
                 {isDualMode
                   ? 'Paso 1: Sube tu hoja Alma Salvaje + Mascota'
-                  : 'Paso 1: Sube tu video o spritesheet'}
+                  : isIdleMode
+                    ? `Paso 1: Sube el idle ${mode === 'idle_back' ? 'trasero' : 'frontal'}`
+                    : 'Paso 1: Sube tu video o spritesheet'}
               </h3>
               <p className="text-xs text-bone-gray mt-1 leading-relaxed">
                 {isDualMode
                   ? 'Imagen vertical con el alma sin cuerpo arriba y la mascota pixel art abajo sobre fondo verde/gris.'
-                  : 'Acepta videos con fondo verde/gris (MP4, WebM) o imágenes en rejilla (PNG, WebP).'}
+                  : isIdleMode
+                    ? 'Video o spritesheet del bucle idle. Se guardará en /assets/idles y se reproducirá en bucle en la vista correspondiente.'
+                    : 'Acepta videos con fondo verde/gris (MP4, WebM) o imágenes en rejilla (PNG, WebP).'}
               </p>
             </div>
 
@@ -997,16 +1035,16 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                     </PxButton>
                     <PxButton
                       size="sm"
-                      variant={cols === 2 && rows === 1 ? 'primary' : 'ghost'}
+                      variant={cols === 4 && rows === 2 ? 'primary' : 'ghost'}
                       showSelector={false}
                       onClick={() => {
-                        setCols(2);
-                        setRows(1);
-                        setTotalFrames(2);
+                        setCols(4);
+                        setRows(2);
+                        setTotalFrames(8);
                       }}
                       className="min-h-[44px]"
                     >
-                      1×2 Idle
+                      4×2 Idle (8f)
                     </PxButton>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1058,8 +1096,29 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                 </div>
               </div>
 
+              {/* Idle Playback Speed */}
+              {isIdleMode && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold text-pale-gold">Velocidad del bucle</span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[6, 8, 12].map((fps) => (
+                      <PxButton
+                        key={fps}
+                        size="sm"
+                        variant={idleFps === fps ? 'success' : 'ghost'}
+                        showSelector={false}
+                        onClick={() => setIdleFps(fps)}
+                        className="min-h-[44px]"
+                      >
+                        {fps} fps
+                      </PxButton>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Facing Direction (attack modes only) */}
-              {!isDualMode && (
+              {!isDualMode && !isIdleMode && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-bold text-pale-gold">Hacia dónde ataca</span>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1306,8 +1365,13 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                 totalFrames={result.totalFrames}
                 impactFrame={result.impactFrame}
                 fallbackAspect={result.cellW / result.cellH}
-                onImpactFrameChange={(nextImpact) =>
-                  setResult((prev) => (prev ? { ...prev, impactFrame: nextImpact } : prev))
+                onImpactFrameChange={
+                  isIdleMode
+                    ? undefined
+                    : (nextImpact) =>
+                        setResult((prev) =>
+                          prev ? { ...prev, impactFrame: nextImpact } : prev
+                        )
                 }
               />
             </div>
@@ -1315,11 +1379,12 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             <div className="bg-abyss-ink border-2 border-resonant-gold p-3 flex flex-col gap-3">
               <div>
                 <h3 className="text-sm sm:text-base font-bold text-neon-mint">
-                  Spritesheet listo para usar
+                  {isIdleMode ? 'Hoja idle lista para usar' : 'Spritesheet listo para usar'}
                 </h3>
                 <p className="text-xs text-bone-gray font-mono mt-1 tabular-nums">
                   {outputFileName} · {result.cols}×{result.rows} ({result.totalFrames} frames) ·
-                  celda {result.cellW}×{result.cellH} · impacto #{result.impactFrame}
+                  celda {result.cellW}×{result.cellH}
+                  {isIdleMode ? ` · bucle ${idleFps} fps` : ` · impacto #${result.impactFrame}`}
                 </p>
               </div>
 
