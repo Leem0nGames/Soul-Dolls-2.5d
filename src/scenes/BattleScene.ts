@@ -5,6 +5,11 @@ import { getBodyContainer } from '../data/containers.ts';
 import { getMove } from '../data/moves.ts';
 import { BattleEngine } from '../domain/BattleEngine.ts';
 import {
+  computeImpactIntensity,
+  takeMoveImpactDamageEvents,
+  type DamageEvent,
+} from '../domain/BattleImpactSync.ts';
+import {
   BODY_PART_LABELS,
   consumeVessel,
   ensureSaveVesselState,
@@ -51,6 +56,11 @@ import {
   loadMeleeStabTexture,
   type MeleeStabMaterialHandle,
 } from '../engine/MeleeStabSprite.ts';
+import {
+  getMoveImpactProfile,
+  getMoveVfxStyle,
+  type MoveImpactProfile,
+} from '../engine/moveVfxProfiles.ts';
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { TweenRunner } from '../engine/Tween.ts';
 import {
@@ -82,6 +92,22 @@ const _stabFwd = new THREE.Vector3();
 const _stabRight = new THREE.Vector3();
 const _stabTipPos = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
+
+function scaleImpactProfile(
+  profile: MoveImpactProfile,
+  factor: number
+): MoveImpactProfile {
+  return {
+    ...profile,
+    shake: profile.shake * factor,
+    hitStop: profile.hitStop * factor,
+    flash: Math.min(0.7, profile.flash * factor),
+    distortion: Math.min(0.05, profile.distortion * factor),
+    speedLines: Math.min(0.6, profile.speedLines * factor),
+    bloom: Math.min(0.75, profile.bloom * factor),
+    dim: Math.min(0.26, profile.dim * factor),
+  };
+}
 
 export class BattleScene implements Scene {
   readonly name = 'battle';
@@ -702,6 +728,136 @@ export class BattleScene implements Scene {
     this.game.battleHud.spawnFloatingNumber(nx, ny, text, tone);
   }
 
+  private hold(seconds: number, done: () => void): void {
+    this.tweens.start(seconds, () => {}, done);
+  }
+
+  private resolveDamageEvent(
+    ev: DamageEvent,
+    fromImpact: boolean,
+    onDone: () => void
+  ): void {
+    if (this.exited) {
+      onDone();
+      return;
+    }
+
+    this.refreshHud();
+    if (ev.damagedPart) {
+      this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart, {
+        amount: ev.amount,
+        crit: ev.crit,
+        effectiveness: ev.effectiveness,
+        broken: Boolean(ev.partBroken),
+      });
+    }
+
+    const isPlayer = ev.target === 'player';
+    const mesh = isPlayer ? this.playerMesh : this.enemyMesh;
+    const matHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
+    const targetRig = isPlayer ? this.playerRig : this.enemyRig;
+    const home = isPlayer ? PLAYER_STATION_POS : ENEMY_STATION_POS;
+    const targetCreature = this.engine.getActive(ev.target);
+    const sfx = ev.crit
+      ? 'crit'
+      : ev.effectiveness >= 2
+        ? 'super'
+        : ev.effectiveness < 1
+          ? 'hit_weak'
+          : 'hit';
+    this.game.bus.emit('audio:sfx', { sfx });
+
+    if (ev.partBroken) {
+      this.game.battleHud.showBanner(
+        '¡Parte Quebrada!',
+        `${getCreatureDisplayName(targetCreature)}: ${BODY_PART_LABELS[ev.partBroken]}`
+      );
+    }
+
+    const strongHit =
+      ev.crit ||
+      ev.effectiveness >= 2 ||
+      ev.amount >= Math.max(4, Math.round(targetCreature.stats.hp * 0.28));
+
+    if (!fromImpact) {
+      if (strongHit) {
+        this.battleCamera.triggerHitStop(0.055);
+        this.battleCamera.triggerShake(
+          ev.effectiveness >= 2 || ev.crit ? 0.24 : 0.14,
+          8
+        );
+      } else {
+        this.battleCamera.triggerShake(0.08, 10);
+      }
+
+      const targetScale = isPlayer ? this.playerScale : this.enemyScale;
+      _projVec.set(home.x, home.y + targetScale * 0.5, home.z);
+      _projVec.project(this.game.cameraRig.camera);
+      this.postFx.triggerShockwave(
+        (_projVec.x + 1) * 0.5,
+        (_projVec.y + 1) * 0.5,
+        strongHit ? 0.026 : 0.012,
+        strongHit ? 0.34 : 0.22
+      );
+
+      if (ev.crit) {
+        this.battleCamera.playImmediate('crit_punch', 0.36, true);
+      }
+      if (ev.effectiveness >= 2) {
+        this.game.battleTransition.flashScreen('rgba(255, 249, 240, 0.72)', 160);
+      }
+    }
+
+    const tone = ev.crit
+      ? 'crit'
+      : ev.effectiveness >= 2
+        ? 'super'
+        : ev.effectiveness < 1
+          ? 'resist'
+          : 'normal';
+    this.spawnFloatingDamage(ev.target, `-${ev.amount}`, tone);
+
+    if (isPlayer) this.playerAnimating = true;
+    else this.enemyAnimating = true;
+    matHandle.setFlash(0.92);
+    targetRig.injectImpulse(
+      isPlayer ? -0.45 : 0.45,
+      strongHit ? -0.78 : -0.48,
+      strongHit ? 0.26 : 0.15
+    );
+
+    const targetScale = isPlayer ? this.playerScale : this.enemyScale;
+    const groundedY = this.getGroundedY(ev.target);
+    const direction = isPlayer ? -1 : 1;
+    const knockback = strongHit ? 0.24 : 0.13;
+    const squash = strongHit ? 0.12 : 0.06;
+
+    this.tweens.start(
+      0.38,
+      (t) => {
+        const env = Math.sin(Math.min(1, t * 1.35) * Math.PI);
+        const jitter = Math.sin(t * Math.PI * 7) * 0.07 * (1 - t);
+        mesh.position.x = home.x + direction * knockback * env + jitter;
+        mesh.position.y = groundedY - (strongHit ? 0.035 : 0.018) * env;
+        mesh.scale.set(
+          targetScale * (1 + squash * 0.6 * env),
+          targetScale * (1 - squash * env),
+          1
+        );
+        matHandle.setFlash(Math.max(0, 0.92 * Math.max(0, 1 - t * 2.2)));
+      },
+      () => {
+        if (this.exited) return;
+        if (isPlayer) this.playerAnimating = false;
+        else this.enemyAnimating = false;
+        mesh.position.set(home.x, groundedY, home.z);
+        mesh.scale.setScalar(targetScale);
+        matHandle.setFlash(0);
+        onDone();
+      }
+    );
+  }
+
   private pumpEvents(): void {
     if (this.processingEvent || this.exited) return;
     const ev = this.eventQueue.shift();
@@ -733,6 +889,28 @@ export class BattleScene implements Scene {
         const targetScale = isPlayer ? this.enemyScale : this.playerScale;
 
         const move = getMove(ev.moveId);
+        const usedMoveText = this.eventQueue[0];
+        if (
+          usedMoveText?.type === 'text' &&
+          usedMoveText.message.includes(ev.moveName)
+        ) {
+          this.eventQueue.shift();
+        }
+        this.game.battleHud.showBanner(
+          ev.moveName,
+          getCreatureDisplayName(this.engine.getActive(ev.side))
+        );
+        const vfxStyle = getMoveVfxStyle(
+          move.id,
+          move.category,
+          move.effect.kind,
+          move.effect.target
+        );
+        const baseImpactProfile = getMoveImpactProfile(
+          vfxStyle,
+          move.power,
+          move.category
+        );
         this.battleCamera.enqueueShot(
           isPlayer ? 'attack_player' : 'attack_enemy',
           0.45,
@@ -750,10 +928,17 @@ export class BattleScene implements Scene {
         const actorRig = isPlayer ? this.playerRig : this.enemyRig;
 
         const attackerMatHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
-        const targetRig = isPlayer ? this.enemyRig : this.playerRig;
         const targetSide = isPlayer ? 'enemy' : 'player';
 
         const groundedY = this.getGroundedY(isPlayer ? 'player' : 'enemy');
+        let animFinished = false;
+        let pendingImpactReactions = 0;
+        let impactResolved = false;
+
+        const maybeFinishMove = () => {
+          if (animFinished && pendingImpactReactions === 0) done();
+        };
+
         const finishMoveAnim = () => {
           if (isPlayer) this.playerAnimating = false;
           else this.enemyAnimating = false;
@@ -763,7 +948,57 @@ export class BattleScene implements Scene {
           mesh.position.set(home.x, groundedY, home.z);
           mesh.scale.setScalar(baseScale);
           actorRig.injectImpulse(isPlayer ? -0.24 : 0.24, -0.45, 0.14);
-          done();
+          animFinished = true;
+          maybeFinishMove();
+        };
+
+        const resolveImpact = () => {
+          if (impactResolved) return;
+          impactResolved = true;
+
+          const damages =
+            move.category === 'status'
+              ? []
+              : takeMoveImpactDamageEvents(this.eventQueue);
+          const hasImpact = move.category === 'status' || damages.length > 0;
+          if (!hasImpact) return;
+
+          const intensity = computeImpactIntensity(damages);
+          const profile = scaleImpactProfile(baseImpactProfile, intensity);
+          const accentHex = hexToNumber(TYPE_PALETTES[move.type].accent);
+
+          _projVec.set(target.x, target.y + targetScale * 0.5, target.z);
+          _projVec.project(this.game.cameraRig.camera);
+          this.postFx.triggerMoveImpact(
+            profile,
+            accentHex,
+            (_projVec.x + 1) * 0.5,
+            (_projVec.y + 1) * 0.5
+          );
+          if (move.category !== 'status') {
+            this.battleCamera.triggerHitStop(profile.hitStop);
+            this.battleCamera.triggerShake(profile.shake, profile.shakeDecay);
+            const isCrit = damages.some((damage) => damage.crit);
+            this.battleCamera.triggerImpactKick(
+              0.22 + profile.shake * 1.35,
+              0.24,
+              isCrit ? 0.028 : 0.012
+            );
+          }
+
+          if (damages.length > 0) {
+            pendingImpactReactions += damages.length;
+            damages.forEach((damage, index) => {
+              const apply = () => {
+                this.resolveDamageEvent(damage, true, () => {
+                  pendingImpactReactions = Math.max(0, pendingImpactReactions - 1);
+                  maybeFinishMove();
+                });
+              };
+              if (index === 0) apply();
+              else this.hold(index * 0.075, apply);
+            });
+          }
         };
 
         const fromFx = computeVfxScaleMetrics(baseScale).silhouette;
@@ -786,7 +1021,6 @@ export class BattleScene implements Scene {
           const elemBaseHex = typePal.base;
           const elemLightHex = typePal.light;
           const elemNum = hexToNumber(elemBaseHex);
-          const elemAccentNum = hexToNumber(elemAccentHex);
           const elemLightNum = hexToNumber(elemLightHex);
           const stabScale = targetScale * 1.18;
           const targetGroundedY = this.getGroundedY(targetSide);
@@ -865,34 +1099,6 @@ export class BattleScene implements Scene {
                 if (st.impactTriggered && !impactFired) {
                   impactFired = true;
 
-                  // Dynamic camera shake + hit-stop + close attack framing
-                  this.battleCamera.playImmediate(
-                    isPlayer ? 'attack_player' : 'attack_enemy',
-                    0.42,
-                    true
-                  );
-                  this.battleCamera.triggerHitStop(0.048);
-                  this.battleCamera.triggerShake(move.power >= 75 ? 0.28 : 0.2, 8.0);
-                  targetRig.injectImpulse(isPlayer ? 0.46 : -0.46, -0.64, 0.22);
-
-                  // Arena dim + radial shockwave centered on enemy torso
-                  this.postFx.pulseArenaDim(0.24, 0.44);
-                  _projVec.set(target.x, target.y + targetScale * 0.5, target.z);
-                  _projVec.project(this.game.cameraRig.camera);
-                  this.postFx.triggerShockwave(
-                    (_projVec.x + 1) * 0.5,
-                    (_projVec.y + 1) * 0.5,
-                    0.022,
-                    0.3
-                  );
-
-                  // Elemental flash tint on screen
-                  const r = (elemAccentNum >> 16) & 0xff;
-                  const g = (elemAccentNum >> 8) & 0xff;
-                  const b = elemAccentNum & 0xff;
-                  this.fx.flash(`rgba(${r}, ${g}, ${b}, 0.30)`, 120);
-
-                  // Elemental VFX + stab spark burst & expanding ring right where the blade strikes
                   _stabTipPos.set(
                     this.meleeStabMesh.position.x - _stabRight.x * (stabScale * 0.25),
                     target.y + targetScale * 0.52,
@@ -927,6 +1133,7 @@ export class BattleScene implements Scene {
                     colorHex: elemLightNum,
                     vy: 0.4 * toFx,
                   });
+                  resolveImpact();
                 }
               } else {
                 // Return phase: restore attacker at home station and fade cleanly back in
@@ -988,6 +1195,7 @@ export class BattleScene implements Scene {
                     fromScale: baseScale,
                     toScale: targetScale,
                   });
+                  resolveImpact();
                 }
               },
               finishMoveAnim
@@ -1024,6 +1232,7 @@ export class BattleScene implements Scene {
                     fromScale: baseScale,
                     toScale: targetScale,
                   });
+                  resolveImpact();
                 }
               },
               finishMoveAnim
@@ -1038,6 +1247,7 @@ export class BattleScene implements Scene {
             fromScale: baseScale,
             toScale: targetScale,
           });
+          resolveImpact();
           this.tweens.start(
             0.36,
             (t) => {
@@ -1050,102 +1260,9 @@ export class BattleScene implements Scene {
         break;
       }
 
-      case 'damage': {
-        this.refreshHud();
-        if (ev.damagedPart) {
-          this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart, {
-            amount: ev.amount,
-            crit: ev.crit,
-            effectiveness: ev.effectiveness,
-            broken: Boolean(ev.partBroken),
-          });
-        }
-        const isPlayer = ev.target === 'player';
-        const mesh = isPlayer ? this.playerMesh : this.enemyMesh;
-        const matHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
-        const targetRig = isPlayer ? this.playerRig : this.enemyRig;
-        const home = isPlayer ? PLAYER_STATION_POS : ENEMY_STATION_POS;
-        const targetCreature = this.engine.getActive(ev.target);
-
-        const sfx = ev.crit
-          ? 'crit'
-          : ev.effectiveness >= 2
-            ? 'super'
-            : ev.effectiveness < 1
-              ? 'hit_weak'
-              : 'hit';
-        this.game.bus.emit('audio:sfx', { sfx });
-        if (ev.partBroken) {
-          this.game.battleHud.showBanner(
-            '¡Parte Quebrada!',
-            `${getCreatureDisplayName(targetCreature)}: ${BODY_PART_LABELS[ev.partBroken]}`
-          );
-        }
-
-        const strongHit =
-          ev.crit ||
-          ev.effectiveness >= 2 ||
-          ev.amount >= Math.max(4, Math.round(targetCreature.stats.hp * 0.28));
-
-        if (strongHit) {
-          this.battleCamera.triggerHitStop(0.055);
-          this.battleCamera.triggerShake(ev.effectiveness >= 2 || ev.crit ? 0.24 : 0.14, 8);
-        } else {
-          this.battleCamera.triggerShake(0.08, 10);
-        }
-
-        const targetScale = isPlayer ? this.playerScale : this.enemyScale;
-        _projVec.set(home.x, home.y + targetScale * 0.5, home.z);
-        _projVec.project(this.game.cameraRig.camera);
-        this.postFx.triggerShockwave(
-          (_projVec.x + 1) * 0.5,
-          (_projVec.y + 1) * 0.5,
-          strongHit ? 0.026 : 0.012,
-          strongHit ? 0.34 : 0.22
-        );
-
-        if (ev.crit) {
-          this.battleCamera.playImmediate('crit_punch', 0.36, true);
-        }
-        if (ev.effectiveness >= 2) {
-          this.game.battleTransition.flashScreen('rgba(255, 249, 240, 0.72)', 160);
-        }
-
-        const tone = ev.crit
-          ? 'crit'
-          : ev.effectiveness >= 2
-            ? 'super'
-            : ev.effectiveness < 1
-              ? 'resist'
-              : 'normal';
-        this.spawnFloatingDamage(ev.target, `-${ev.amount}`, tone);
-
-        if (isPlayer) this.playerAnimating = true;
-        else this.enemyAnimating = true;
-        matHandle.setFlash(0.92);
-        targetRig.injectImpulse(
-          isPlayer ? -0.45 : 0.45,
-          strongHit ? -0.78 : -0.48,
-          strongHit ? 0.26 : 0.15
-        );
-
-        this.tweens.start(
-          0.34,
-          (t) => {
-            mesh.position.x = home.x + Math.sin(t * Math.PI * 7) * 0.14 * (1 - t);
-            matHandle.setFlash(Math.max(0, 0.92 * Math.max(0, 1 - t * 2.2)));
-          },
-          () => {
-            if (this.exited) return;
-            if (isPlayer) this.playerAnimating = false;
-            else this.enemyAnimating = false;
-            mesh.position.set(home.x, this.getGroundedY(ev.target), home.z);
-            matHandle.setFlash(0);
-            done();
-          }
-        );
+      case 'damage':
+        this.resolveDamageEvent(ev, false, done);
         break;
-      }
 
       case 'heal': {
         this.refreshHud();
@@ -1166,7 +1283,7 @@ export class BattleScene implements Scene {
           vy: 1.2 * fxScale,
         });
         this.spawnFloatingDamage(ev.target, `+${ev.amount}`, 'heal');
-        done();
+        this.hold(0.28, done);
         break;
       }
 
@@ -1193,7 +1310,7 @@ export class BattleScene implements Scene {
           ),
           vy: 0.8 * fxScale,
         });
-        done();
+        this.hold(0.24, done);
         break;
       }
 
@@ -1202,7 +1319,7 @@ export class BattleScene implements Scene {
           ev.abilityName,
           getCreatureDisplayName(this.engine.getActive(ev.side))
         );
-        done();
+        this.hold(0.35, done);
         break;
 
       case 'held_item_triggered':
@@ -1211,19 +1328,19 @@ export class BattleScene implements Scene {
           ev.itemName,
           getCreatureDisplayName(this.engine.getActive(ev.side))
         );
-        done();
+        this.hold(0.35, done);
         break;
 
       case 'flinch':
       case 'miss':
         this.refreshHud();
-        done();
+        this.hold(0.18, done);
         break;
 
       case 'xp_gain':
         this.totalXpEarned += ev.amount;
         this.refreshHud();
-        done();
+        this.hold(0.15, done);
         break;
 
       case 'status_tick':
@@ -1232,7 +1349,7 @@ export class BattleScene implements Scene {
         if (ev.damage > 0) {
           this.spawnFloatingDamage(ev.target, `-${ev.damage}`, 'resist');
         }
-        done();
+        this.hold(0.22, done);
         break;
 
       case 'faint': {
@@ -1495,7 +1612,7 @@ export class BattleScene implements Scene {
           vy: 1.5 * playerFx,
         });
         this.refreshHud();
-        done();
+        this.hold(0.55, done);
         break;
       }
 
@@ -1575,7 +1692,7 @@ export class BattleScene implements Scene {
           formatCardBonuses(card.bonuses)
         );
         this.game.showToast(`[${rarityTag}] ${card.name} · ${formatCardBonuses(card.bonuses)}`);
-        done();
+        this.hold(0.45, done);
         break;
       }
 

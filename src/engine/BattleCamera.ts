@@ -16,6 +16,10 @@ export class BattleCamera {
     fov: DEFAULT_BATTLE_POSE.fov,
     timeScale: 1,
   };
+  private kickElapsed = 0;
+  private kickDuration = 0;
+  private kickStrength = 0;
+  private kickRoll = 0;
 
   constructor(private readonly camera: THREE.PerspectiveCamera) {}
 
@@ -50,6 +54,13 @@ export class BattleCamera {
     this.script.triggerHitStop(seconds);
   }
 
+  triggerImpactKick(strength: number, duration = 0.24, roll = 0): void {
+    this.kickElapsed = 0.0001;
+    this.kickDuration = Math.max(0.06, duration);
+    this.kickStrength = Math.max(0, strength);
+    this.kickRoll = roll;
+  }
+
   isHitStopped(): boolean {
     return this.script.isHitStopped();
   }
@@ -60,6 +71,14 @@ export class BattleCamera {
 
   update(dt: number): void {
     this.script.step(dt, this.pose);
+    if (this.kickElapsed > 0) {
+      this.kickElapsed += dt;
+      if (this.kickElapsed >= this.kickDuration) {
+        this.kickElapsed = 0;
+        this.kickStrength = 0;
+        this.kickRoll = 0;
+      }
+    }
     this.applyPose();
   }
 
@@ -122,6 +141,20 @@ export class BattleCamera {
       }
     }
 
+    let kickEnvelope = 0;
+    if (this.kickElapsed > 0 && this.kickStrength > 0) {
+      const kt = Math.min(1, this.kickElapsed / this.kickDuration);
+      kickEnvelope = (1 - kt) * (1 - kt);
+      const dx = lx - px;
+      const dy = ly - py;
+      const dz = lz - pz;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const push = this.kickStrength * kickEnvelope;
+      px += (dx / len) * push;
+      py += (dy / len) * push * 0.35;
+      pz += (dz / len) * push;
+    }
+
     this.camera.position.set(px, py, pz);
     const targetFov = this.getAdaptiveFov(this.pose.fov);
     if (Math.abs(this.camera.fov - targetFov) > 0.02) {
@@ -129,6 +162,9 @@ export class BattleCamera {
       this.camera.updateProjectionMatrix();
     }
     this.camera.lookAt(lx, ly, lz);
+    if (kickEnvelope > 0 && this.kickRoll !== 0) {
+      this.camera.rotateZ(this.kickRoll * kickEnvelope);
+    }
     this.camera.updateMatrixWorld();
   }
 
