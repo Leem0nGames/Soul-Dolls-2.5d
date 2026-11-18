@@ -5,6 +5,7 @@ import {
   getBodyContainer,
   SHARDS_PER_CONTAINER,
 } from '../../data/containers.ts';
+import { resolveReserveSoulSpriteView } from '../../data/soulForms.ts';
 import { getSpecies } from '../../data/species.ts';
 import {
   BODY_PART_LABELS,
@@ -506,6 +507,7 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
                     })
                   : reserve.map((soul) => {
                       const sp = getSpecies(soul.speciesId);
+                      const soulView = resolveReserveSoulSpriteView(soul.speciesId);
                       const active = (activeSoul?.uid ?? '') === soul.uid;
                       return (
                         <button
@@ -517,9 +519,9 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
                           }`}
                         >
                           <img
-                            src={assets.getCreatureDataUrl(soul.speciesId, 'front')}
+                            src={assets.getCreatureDataUrl(soul.speciesId, soulView)}
                             data-souldoll-id={soul.speciesId}
-                            data-souldoll-view="front"
+                            data-souldoll-view={soulView}
                             className="souldoll-img w-10 h-10 object-contain shrink-0"
                             alt={sp.name}
                           />

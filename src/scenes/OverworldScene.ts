@@ -1903,7 +1903,8 @@ export class OverworldScene implements Scene {
       this.game.skillAcademyScreen.isOpen() ||
       this.game.questJournal.isOpen() ||
       this.game.chestScreen.isOpen() ||
-      this.game.achievementsScreen.isOpen()
+      this.game.achievementsScreen.isOpen() ||
+      this.game.spriteInspectorModal.isOpen()
     );
   }
 
@@ -3000,6 +3001,9 @@ export class OverworldScene implements Scene {
       },
       onQuests: () => {
         this.openQuestJournal();
+      },
+      onSpriteInspector: () => {
+        this.game.spriteInspectorModal.open(() => {});
       },
       onSave: () => {
         const ok = this.game.saveGame();

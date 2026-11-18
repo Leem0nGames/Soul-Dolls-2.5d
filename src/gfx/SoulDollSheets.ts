@@ -34,6 +34,11 @@ export interface NormalizedSoulDollPair {
   backAnchor: SoulDollTorsoAnchor;
 }
 
+export interface NormalizedWildSoul {
+  canvas: HTMLCanvasElement;
+  anchor: SoulDollTorsoAnchor;
+}
+
 export function getSoulDollSheetId(speciesId: number): number {
   const clamped = Math.max(1, Math.min(SOULDOLL_MAX_SHEET_ID, Math.floor(speciesId)));
   return clamped;
@@ -303,4 +308,74 @@ export function extractAndNormalizeSoulDollPair(
     frontAnchor: frontHalf.anchor,
     backAnchor: backHalf.anchor,
   };
+}
+
+export function normalizeWildSoulImage(
+  image: HTMLImageElement,
+  targetSize = SOULDOLL_SPRITE_SIZE
+): NormalizedWildSoul | null {
+  const w = image.naturalWidth;
+  const h = image.naturalHeight;
+  if (w < 4 || h < 4) return null;
+
+  const scratch = document.createElement('canvas');
+  scratch.width = w;
+  scratch.height = h;
+  const sCtx = scratch.getContext('2d');
+  if (!sCtx) return null;
+
+  sCtx.clearRect(0, 0, w, h);
+  sCtx.drawImage(image, 0, 0);
+  const { data } = sCtx.getImageData(0, 0, w, h);
+
+  const bounds = findRegionAlphaBounds(data, w, h, 0, w) ?? {
+    x0: 0,
+    y0: 0,
+    x1: w - 1,
+    y1: h - 1,
+    w,
+    h,
+  };
+
+  const wildPadX = 8;
+  const wildPadTop = 8;
+  const wildPadBottom = 16;
+  const availW = Math.max(16, targetSize - wildPadX * 2);
+  const availH = Math.max(16, targetSize - wildPadTop - wildPadBottom);
+  const scale = Math.min(availW / Math.max(1, bounds.w), availH / Math.max(1, bounds.h));
+
+  const out = document.createElement('canvas');
+  out.width = targetSize;
+  out.height = targetSize;
+  const ctx = out.getContext('2d');
+  if (!ctx) {
+    return {
+      canvas: out,
+      anchor: { torsoX: 0.5, bustY: 0.635, charHeight: 0.92 },
+    };
+  }
+
+  const drawW = Math.max(1, Math.round(bounds.w * scale));
+  const drawH = Math.max(1, Math.round(bounds.h * scale));
+  const dx = Math.round((targetSize - drawW) * 0.5);
+  const dy = targetSize - wildPadBottom - drawH;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.clearRect(0, 0, targetSize, targetSize);
+  ctx.drawImage(scratch, bounds.x0, bounds.y0, bounds.w, bounds.h, dx, dy, drawW, drawH);
+
+  const imgData = ctx.getImageData(0, 0, targetSize, targetSize);
+  const px = imgData.data;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] < ALPHA_CLEAN_THRESHOLD) {
+      px[i] = TRANSPARENT_R;
+      px[i + 1] = TRANSPARENT_G;
+      px[i + 2] = TRANSPARENT_B;
+      px[i + 3] = 0;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  const anchor = detectSoulDollTorsoAnchor(px, targetSize, targetSize, drawH);
+  return { canvas: out, anchor };
 }

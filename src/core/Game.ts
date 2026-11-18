@@ -19,6 +19,7 @@ import { QuestJournalModal } from '../ui/QuestJournalModal.ts';
 import { SkillAcademyScreen } from '../ui/SkillAcademyScreen.ts';
 import { StorageScreen } from '../ui/StorageScreen.ts';
 import { SummaryScreen } from '../ui/SummaryScreen.ts';
+import { SpriteInspectorModal } from '../ui/SpriteInspectorModal.ts';
 import { TouchControls } from '../ui/TouchControls.ts';
 import { UiLayerManager } from '../ui/UiLayerManager.ts';
 import { VesselScreen } from '../ui/VesselScreen.ts';
@@ -81,6 +82,7 @@ export class Game {
   readonly questJournal: QuestJournalModal;
   readonly chestScreen: ChestScreen;
   readonly achievementsScreen: AchievementsScreen;
+  readonly spriteInspectorModal: SpriteInspectorModal;
 
   saveData: SaveData;
   private currentSlot: SaveSlotId | null = null;
@@ -132,6 +134,7 @@ export class Game {
     this.questJournal = new QuestJournalModal(this.uiLayer);
     this.chestScreen = new ChestScreen(this.uiLayer, this.assets);
     this.achievementsScreen = new AchievementsScreen(this.uiLayer);
+    this.spriteInspectorModal = new SpriteInspectorModal(this.uiLayer);
 
     this.toastEl = document.createElement('div');
     this.toastEl.className =
@@ -195,13 +198,17 @@ export class Game {
     );
 
     this.applyOptions();
-    if (new URLSearchParams(window.location.search).has('gallery')) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('gallery')) {
       this.touchControls.setVisible(false);
       this.battleHud.hide();
       this.battleTransition.hide();
       this.scenes.replace(new GalleryScene(this));
     } else {
       this.startTitle();
+      if (params.has('studio')) {
+        this.spriteInspectorModal.open(() => {});
+      }
     }
     this.loop.start();
   }

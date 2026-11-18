@@ -1,4 +1,5 @@
 import { getItem } from '../data/items.ts';
+import { resolveReserveSoulSpriteView } from '../data/soulForms.ts';
 import { getSpecies } from '../data/species.ts';
 import {
   CARD_RARITY_ORDER,
@@ -478,10 +479,11 @@ export class ChestScreen extends ModalOverlay {
       );
       for (const soul of reserve) {
         const spec = getSpecies(soul.speciesId);
+        const soulView = resolveReserveSoulSpriteView(soul.speciesId);
         activeChunks.push(`
           <div class="px-panel px-card p-2 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-1">
-              <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
+              <img src="${this.assets.getCreatureDataUrl(soul.speciesId, soulView)}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="${soulView}" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
               <div class="min-w-0">
                 <div class="font-bold text-xs text-porcelain truncate">Alma de ${spec.name}</div>
                 <div class="text-[11px] text-bone-gray tabular-nums">${ES.party.lv}${soul.level} · Sin cuerpo</div>
@@ -531,10 +533,11 @@ export class ChestScreen extends ModalOverlay {
       );
       for (const soul of chestSouls) {
         const spec = getSpecies(soul.speciesId);
+        const soulView = resolveReserveSoulSpriteView(soul.speciesId);
         chestChunks.push(`
           <div class="px-panel px-card p-2 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0 flex-1">
-              <img src="${this.assets.getCreatureDataUrl(soul.speciesId, 'front')}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="front" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
+              <img src="${this.assets.getCreatureDataUrl(soul.speciesId, soulView)}" data-souldoll-id="${soul.speciesId}" data-souldoll-view="${soulView}" class="souldoll-img w-10 h-10 object-contain shrink-0" alt="${spec.name}" />
               <div class="min-w-0">
                 <div class="font-bold text-xs text-porcelain truncate">Alma de ${spec.name}</div>
                 <div class="text-[11px] text-bone-gray tabular-nums">${ES.party.lv}${soul.level} · Guardada</div>

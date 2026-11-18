@@ -18,6 +18,7 @@ export interface MenuCallbacks {
   onBestiary?: () => void;
   onCards?: () => void;
   onQuests?: () => void;
+  onSpriteInspector?: () => void;
   onSave: () => boolean;
   onOptionsChanged: (options: GameOptions) => void;
   onClose: () => void;
@@ -113,6 +114,12 @@ export class PauseMenu {
         ? () => {
             this.close();
             callbacks.onQuests?.();
+          }
+        : undefined,
+      onSpriteInspector: callbacks.onSpriteInspector
+        ? () => {
+            this.close();
+            callbacks.onSpriteInspector?.();
           }
         : undefined,
       onSave: callbacks.onSave,

@@ -29,6 +29,7 @@ export interface PauseMenuViewCallbacks {
   onBestiary?: () => void;
   onCards?: () => void;
   onQuests?: () => void;
+  onSpriteInspector?: () => void;
   onSave: () => boolean;
   onOptionsChanged: (options: GameOptions) => void;
   onClose: () => void;
@@ -567,6 +568,16 @@ export const PauseMenuView: React.FC<PauseMenuViewProps> = ({
             {save.completedSideQuests?.length ?? 0}/5
           </span>
         </PxButton>
+        {callbacks.onSpriteInspector && (
+          <PxButton
+            variant="secondary"
+            fullWidth
+            align="start"
+            onClick={callbacks.onSpriteInspector}
+          >
+            🎬 Sprite Studio / Inspector
+          </PxButton>
+        )}
         <PxButton
           variant="secondary"
           fullWidth

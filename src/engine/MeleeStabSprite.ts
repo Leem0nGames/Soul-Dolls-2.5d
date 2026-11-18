@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import {
-  computeGridFrameUvRect,
+  computeStabFrameUvRect,
   MELEE_STAB_COLS,
   MELEE_STAB_ROWS,
   MELEE_STAB_SHEET_PATH,
-  MELEE_STAB_TOTAL_FRAMES,
 } from '../domain/MeleeStabTiming.ts';
 import { hexToNumber } from '../gfx/Palette.ts';
 
@@ -23,7 +22,6 @@ uniform vec4 uFrameRect;
 uniform float uOpacity;
 uniform vec3 uElementColor;
 uniform float uElementGlow;
-uniform float uTintStrength;
 
 varying vec2 vUv;
 
@@ -44,12 +42,8 @@ void main() {
   float magentaMask = smoothstep(0.14, 0.42, chroma) * step(texel.g + 0.04, max(texel.r, texel.b));
 
   vec3 slashColored = uElementColor * (0.45 + maxC * 0.85);
-  vec3 color = mix(texel.rgb, slashColored, magentaMask * (0.65 + 0.35 * uElementGlow) * uTintStrength);
-  color = mix(
-    color,
-    uElementColor * 1.15 + vec3(0.18),
-    clamp(uElementGlow * 0.34 * uTintStrength, 0.0, 0.42)
-  );
+  vec3 color = mix(texel.rgb, slashColored, magentaMask * (0.65 + 0.35 * uElementGlow));
+  color = mix(color, uElementColor * 1.15 + vec3(0.18), clamp(uElementGlow * 0.34, 0.0, 0.42));
 
   float cleanAlpha = smoothstep(0.42, 0.58, texel.a);
   gl_FragColor = vec4(color, cleanAlpha * uOpacity);
@@ -61,15 +55,9 @@ void main() {
 export interface MeleeStabMaterialHandle {
   material: THREE.ShaderMaterial;
   setTexture(tex: THREE.Texture): void;
-  setFrame(
-    frameIndex: number,
-    flipX: boolean,
-    cols?: number,
-    rows?: number,
-    totalFrames?: number
-  ): void;
+  setFrame(frameIndex: number, flipX: boolean, cols?: number, rows?: number): void;
   setOpacity(opacity: number): void;
-  setElementEffect(hexColor: string, glow: number, tintStrength?: number): void;
+  setElementEffect(hexColor: string, glow: number): void;
 }
 
 export function createFallbackStabTexture(): THREE.DataTexture {
@@ -79,33 +67,35 @@ export function createFallbackStabTexture(): THREE.DataTexture {
   return tex;
 }
 
-export function loadAttackSheetTexture(
-  sheetPath: string,
+export function loadMeleeStabTexture(
+  pathOrOnLoaded?: string | ((tex: THREE.Texture) => void),
   onLoaded?: (tex: THREE.Texture) => void
 ): THREE.Texture {
+  let path = MELEE_STAB_SHEET_PATH;
+  let cb = onLoaded;
+  if (typeof pathOrOnLoaded === 'string') {
+    path = pathOrOnLoaded;
+  } else if (typeof pathOrOnLoaded === 'function') {
+    cb = pathOrOnLoaded;
+  }
+
   if (typeof Image === 'undefined') {
     return createFallbackStabTexture();
   }
   const loader = new THREE.TextureLoader();
-  const tex = loader.load(sheetPath, (loaded) => {
+  const tex = loader.load(path, (loaded) => {
     loaded.colorSpace = THREE.SRGBColorSpace;
     loaded.magFilter = THREE.NearestFilter;
     loaded.minFilter = THREE.NearestFilter;
     loaded.generateMipmaps = false;
     loaded.needsUpdate = true;
-    onLoaded?.(loaded);
+    cb?.(loaded);
   });
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
   return tex;
-}
-
-export function loadMeleeStabTexture(
-  onLoaded?: (tex: THREE.Texture) => void
-): THREE.Texture {
-  return loadAttackSheetTexture(MELEE_STAB_SHEET_PATH, onLoaded);
 }
 
 export function createMeleeStabMaterial(
@@ -121,7 +111,6 @@ export function createMeleeStabMaterial(
       uOpacity: { value: 1 },
       uElementColor: { value: elementColor },
       uElementGlow: { value: 0 },
-      uTintStrength: { value: 1 },
     },
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
@@ -135,24 +124,16 @@ export function createMeleeStabMaterial(
     setTexture(tex: THREE.Texture) {
       material.uniforms.map.value = tex;
     },
-    setFrame(
-      frameIndex: number,
-      flipX: boolean,
-      cols = MELEE_STAB_COLS,
-      rows = MELEE_STAB_ROWS,
-      totalFrames = MELEE_STAB_TOTAL_FRAMES
-    ) {
-      const r = computeGridFrameUvRect(frameIndex, cols, rows, totalFrames, flipX);
+    setFrame(frameIndex: number, flipX: boolean, cols = MELEE_STAB_COLS, rows = MELEE_STAB_ROWS) {
+      const r = computeStabFrameUvRect(frameIndex, flipX, cols, rows);
       frameRect.set(r.uMin, r.vMin, r.uSize, r.vSize);
     },
     setOpacity(opacity: number) {
       material.uniforms.uOpacity.value = Math.max(0, Math.min(1, opacity));
     },
-    setElementEffect(hexColor: string, glow: number, tintStrength = 1) {
+    setElementEffect(hexColor: string, glow: number) {
       elementColor.setHex(hexToNumber(hexColor));
       material.uniforms.uElementGlow.value = Math.max(0, Math.min(1, glow));
-      material.uniforms.uTintStrength.value = Math.max(0, Math.min(1, tintStrength));
     },
   };
 }
-

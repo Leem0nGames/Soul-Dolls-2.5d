@@ -20,11 +20,18 @@ import {
 } from './ProceduralTiles.ts';
 import { generatePropCanvas } from './PropSprites.ts';
 import {
+  ALL_SPECIES_IDS_WITH_WILD_SOUL,
+  getWildSoulSpriteUrl,
+  type CreatureSpriteView,
+} from '../data/soulForms.ts';
+import {
   extractAndNormalizeSoulDollPair,
   getSoulDollSheetId,
   getSoulDollSheetUrl,
+  normalizeWildSoulImage,
   SOULDOLL_MAX_SHEET_ID,
   type NormalizedSoulDollPair,
+  type NormalizedWildSoul,
   type SoulDollTorsoAnchor,
 } from './SoulDollSheets.ts';
 import npcSheet07Url from '../assets/chars/NPC07.jpg';
@@ -43,11 +50,11 @@ export interface AssetProvider {
   getRoofNormalTexture(kind: RoofTextureKind): THREE.CanvasTexture;
   getWallTexture(key: TileAtlasKey): THREE.CanvasTexture;
   getWallNormalTexture(key: TileAtlasKey): THREE.CanvasTexture;
-  getCreatureTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
-  getCreatureSilhouetteTexture(speciesId: number, view: 'front' | 'back'): THREE.CanvasTexture;
-  getCreatureDataUrl(speciesId: number, view?: 'front' | 'back'): string;
+  getCreatureTexture(speciesId: number, view: CreatureSpriteView): THREE.CanvasTexture;
+  getCreatureSilhouetteTexture(speciesId: number, view: CreatureSpriteView): THREE.CanvasTexture;
+  getCreatureDataUrl(speciesId: number, view?: CreatureSpriteView): string;
   getCreatureSilhouetteDataUrl(speciesId: number): string;
-  getCreatureRigAnchor?(speciesId: number, view: 'front' | 'back'): SoulDollTorsoAnchor;
+  getCreatureRigAnchor?(speciesId: number, view: CreatureSpriteView): SoulDollTorsoAnchor;
   onCreatureLoaded?(listener: (speciesId: number) => void): () => void;
   getItemIconDataUrl(itemId: string): string;
   getItemTexture(itemId: string): THREE.CanvasTexture;
@@ -405,6 +412,9 @@ export class ProceduralAssetProvider implements AssetProvider {
   private creatureUrls = new Map<string, string>();
   private silhouetteUrls = new Map<number, string>();
   private souldollPairs = new Map<number, NormalizedSoulDollPair>();
+  private wildSoulForms = new Map<number, NormalizedWildSoul>();
+  private wildSoulLoading = new Set<number>();
+  private wildSoulAttempted = new Set<number>();
   private souldollLoading = new Set<number>();
   private souldollAttempted = new Set<number>();
   private souldollQueue: number[] = [];
@@ -765,12 +775,65 @@ export class ProceduralAssetProvider implements AssetProvider {
   }
 
   private preloadSoulDollSheets(): void {
-    // Prioritize starter SoulDolls first, then queue remaining sheets 1..SOULDOLL_MAX_SHEET_ID
+    // Prioritize starter SoulDolls and registered wild soul sprites first
     for (const id of [1, 4, 7]) {
       this.enqueueSoulDollLoad(id, true);
     }
+    for (const wildId of ALL_SPECIES_IDS_WITH_WILD_SOUL) {
+      this.enqueueWildSoulLoad(wildId);
+    }
     for (let id = 1; id <= SOULDOLL_MAX_SHEET_ID; id++) {
       this.enqueueSoulDollLoad(id, false);
+    }
+  }
+
+  private enqueueWildSoulLoad(speciesId: number): void {
+    if (this.disposed || typeof Image === 'undefined') return;
+    const sheetId = getSoulDollSheetId(speciesId);
+    const wildUrl = getWildSoulSpriteUrl(sheetId);
+    if (
+      !wildUrl ||
+      this.wildSoulForms.has(sheetId) ||
+      this.wildSoulLoading.has(sheetId) ||
+      this.wildSoulAttempted.has(sheetId)
+    ) {
+      return;
+    }
+
+    this.wildSoulLoading.add(sheetId);
+    this.wildSoulAttempted.add(sheetId);
+    const img = new Image();
+    img.onload = () => {
+      this.wildSoulLoading.delete(sheetId);
+      if (this.disposed) return;
+      const normalized = normalizeWildSoulImage(img);
+      if (normalized) {
+        this.wildSoulForms.set(sheetId, normalized);
+        this.refreshWildSoulAssets(sheetId, normalized);
+      }
+    };
+    img.onerror = () => {
+      this.wildSoulLoading.delete(sheetId);
+    };
+    img.src = wildUrl;
+  }
+
+  private refreshWildSoulAssets(sheetId: number, wildForm: NormalizedWildSoul): void {
+    const key = `${sheetId}_wild`;
+    this.creatureUrls.delete(key);
+    const tex = this.creatureCache.peek(key);
+    if (tex) {
+      this.updateTextureFromCanvas(tex, wildForm.canvas);
+    }
+    const silTex = this.silhouetteCache.peek(key);
+    if (silTex) {
+      this.updateTextureFromCanvas(
+        silTex,
+        makeTintedSilhouetteCanvas(wildForm.canvas, PALETTE.warmWhite)
+      );
+    }
+    for (const listener of this.creatureListeners) {
+      listener(sheetId);
     }
   }
 
@@ -860,14 +923,21 @@ export class ProceduralAssetProvider implements AssetProvider {
     }
   }
 
-  private getCreatureCanvas(speciesId: number, view: 'front' | 'back'): HTMLCanvasElement {
+  private getCreatureCanvas(speciesId: number, view: CreatureSpriteView): HTMLCanvasElement {
     const sheetId = getSoulDollSheetId(speciesId);
+    if (view === 'wild') {
+      this.enqueueWildSoulLoad(sheetId);
+      const wildForm = this.wildSoulForms.get(sheetId);
+      if (wildForm) {
+        return wildForm.canvas;
+      }
+    }
     this.enqueueSoulDollLoad(sheetId, true);
     const pair = this.souldollPairs.get(sheetId);
     if (pair) {
-      return pair[view];
+      return view === 'back' ? pair.back : pair.front;
     }
-    return generateCreatureSpriteCanvas(speciesId, view);
+    return generateCreatureSpriteCanvas(speciesId, view === 'back' ? 'back' : 'front');
   }
 
   private refreshCharacterTextures(): void {
@@ -1119,23 +1189,33 @@ export class ProceduralAssetProvider implements AssetProvider {
     };
   }
 
-  getCreatureRigAnchor(speciesId: number, view: 'front' | 'back'): SoulDollTorsoAnchor {
+  getCreatureRigAnchor(speciesId: number, view: CreatureSpriteView): SoulDollTorsoAnchor {
     const sheetId = getSoulDollSheetId(speciesId);
+    if (view === 'wild') {
+      this.enqueueWildSoulLoad(sheetId);
+      const wildForm = this.wildSoulForms.get(sheetId);
+      if (wildForm) {
+        return wildForm.anchor;
+      }
+    }
     this.enqueueSoulDollLoad(sheetId, true);
     const pair = this.souldollPairs.get(sheetId);
     if (pair) {
-      return view === 'front' ? pair.frontAnchor : pair.backAnchor;
+      return view === 'back' ? pair.backAnchor : pair.frontAnchor;
     }
     return { torsoX: 0.5, bustY: 0.635, charHeight: 0.96 };
   }
 
   getCreatureTexture(
     speciesId: number,
-    view: 'front' | 'back'
+    view: CreatureSpriteView
   ): THREE.CanvasTexture {
     const key = `${speciesId}_${view}`;
     const hit = this.creatureCache.get(key);
     if (hit) {
+      if (view === 'wild') {
+        this.enqueueWildSoulLoad(getSoulDollSheetId(speciesId));
+      }
       this.enqueueSoulDollLoad(getSoulDollSheetId(speciesId), true);
       return hit;
     }
@@ -1146,11 +1226,14 @@ export class ProceduralAssetProvider implements AssetProvider {
 
   getCreatureSilhouetteTexture(
     speciesId: number,
-    view: 'front' | 'back'
+    view: CreatureSpriteView
   ): THREE.CanvasTexture {
     const key = `${speciesId}_${view}`;
     const hit = this.silhouetteCache.get(key);
     if (hit) {
+      if (view === 'wild') {
+        this.enqueueWildSoulLoad(getSoulDollSheetId(speciesId));
+      }
       this.enqueueSoulDollLoad(getSoulDollSheetId(speciesId), true);
       return hit;
     }
@@ -1160,7 +1243,7 @@ export class ProceduralAssetProvider implements AssetProvider {
     return tex;
   }
 
-  getCreatureDataUrl(speciesId: number, view: 'front' | 'back' = 'front'): string {
+  getCreatureDataUrl(speciesId: number, view: CreatureSpriteView = 'front'): string {
     const key = `${speciesId}_${view}`;
     let url = this.creatureUrls.get(key);
     if (!url) {

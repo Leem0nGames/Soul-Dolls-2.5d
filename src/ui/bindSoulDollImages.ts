@@ -17,6 +17,8 @@ export function bindSoulDollImageUpdates(
         img.src = assets.getCreatureSilhouetteDataUrl(speciesId);
       } else if (view === 'back') {
         img.src = assets.getCreatureDataUrl(speciesId, 'back');
+      } else if (view === 'wild') {
+        img.src = assets.getCreatureDataUrl(speciesId, 'wild');
       } else {
         img.src = assets.getCreatureDataUrl(speciesId, 'front');
       }

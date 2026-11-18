@@ -1,80 +1,104 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
-  computeGridFrameUvRect,
   computeStabFrameUvRect,
-  evaluateAttackAnimPhase,
   evaluateMeleeStabPhase,
-  getSpeciesAttackSheetConfig,
-  mapSpecies15ProgressToFrame,
+  getAttackSheetSpecForSpecies,
   mapStabProgressToFrame,
   MELEE_ADVANCE_DURATION,
   MELEE_STAB_DURATION,
   MELEE_STAB_IMPACT_FRAME,
   MELEE_STAB_SHEET_PATH,
   MELEE_STAB_TOTAL_DURATION,
-  SOULDOLL_15_ADVANCE_DURATION,
-  SOULDOLL_15_ATTACK_DURATION,
-  SOULDOLL_15_ATTACK_SHEET,
+  PLACEHOLDER_ATTACK_SHEET_PATH,
   SOULDOLL_15_ATTACK_SHEET_PATH,
-  SOULDOLL_15_COLS,
-  SOULDOLL_15_IMPACT_FRAME,
-  SOULDOLL_15_ROWS,
-  SOULDOLL_15_TOTAL_DURATION,
-  SOULDOLL_15_TOTAL_FRAMES,
   SOULDOLL_PORTRAIT_PLACEHOLDER_PATH,
 } from '../src/domain/MeleeStabTiming.ts';
+import {
+  getSpeciesAttackSpec,
+  hasSpeciesAnimationRole,
+  SPECIES_ANIMATION_REGISTRY,
+} from '../src/data/animations.ts';
 import {
   createFallbackStabTexture,
   createMeleeStabMaterial,
 } from '../src/engine/MeleeStabSprite.ts';
 
 describe('MeleeStabTiming', () => {
-  it('exposes the uploaded placeholder asset paths', () => {
-    expect(MELEE_STAB_SHEET_PATH).toBe('/assets/aistudio/004-special_attack-v1_5431e7bd.png');
+  it('exposes the uploaded attack asset paths', () => {
+    expect(MELEE_STAB_SHEET_PATH).toBe('/assets/attacks/special_attack_15.webp');
+    expect(SOULDOLL_15_ATTACK_SHEET_PATH).toBe('/assets/attacks/special_attack_15.webp');
+    expect(PLACEHOLDER_ATTACK_SHEET_PATH).toBe(
+      '/assets/aistudio/004-special_attack-v1_5431e7bd.png'
+    );
     expect(SOULDOLL_PORTRAIT_PLACEHOLDER_PATH).toBe(
       '/assets/aistudio/004-portrait-frame_5c78ef77.png'
     );
   });
 
-  it('maps 5x5 top-down grid cells accurately with flipY=true UV orientation and horizontal mirror', () => {
+  it('selects dedicated 4x5 sheet for SoulDoll #15 and fallback 5x5 for other species', () => {
+    const s15 = getAttackSheetSpecForSpecies(15);
+    expect(s15.path).toBe('/assets/attacks/special_attack_15.webp');
+    expect(s15.cols).toBe(4);
+    expect(s15.rows).toBe(5);
+    expect(s15.totalFrames).toBe(20);
+    expect(s15.impactFrame).toBe(9);
+    expect(s15.aspectRatio).toBeCloseTo(16 / 9);
+
+    const s01 = getAttackSheetSpecForSpecies(1);
+    expect(s01.path).toBe('/assets/attacks/physical_attack_01.webp');
+    expect(s01.cols).toBe(4);
+    expect(s01.rows).toBe(5);
+    expect(s01.totalFrames).toBe(20);
+    expect(s01.impactFrame).toBe(8);
+    expect(s01.aspectRatio).toBeCloseTo(16 / 9);
+    expect(s01.facing).toBe('left');
+
+    const defaultSpec = getAttackSheetSpecForSpecies(2);
+    expect(defaultSpec.path).toBe('/assets/aistudio/004-special_attack-v1_5431e7bd.png');
+    expect(defaultSpec.cols).toBe(5);
+    expect(defaultSpec.rows).toBe(5);
+    expect(defaultSpec.totalFrames).toBe(25);
+    expect(defaultSpec.impactFrame).toBe(11);
+    expect(defaultSpec.aspectRatio).toBe(1);
+  });
+
+  it('maps 4x5 top-down grid cells accurately with flipY=true UV orientation and horizontal mirror', () => {
     const f0 = computeStabFrameUvRect(0, false);
     expect(f0.row).toBe(0);
     expect(f0.col).toBe(0);
     expect(f0.uMin).toBeCloseTo(0);
     expect(f0.vMin).toBeCloseTo(0.8);
-    expect(f0.uSize).toBeCloseTo(0.2);
+    expect(f0.uSize).toBeCloseTo(0.25);
     expect(f0.vSize).toBeCloseTo(0.2);
 
-    // Frame 11 is [row=2, col=1] — when flipped horizontally (right side of enemy stabbing left),
-    // u runs right-to-left from 0.4 down to 0.2 while v spans [0.4, 0.6].
-    const f11Mirrored = computeStabFrameUvRect(MELEE_STAB_IMPACT_FRAME, true);
-    expect(f11Mirrored.row).toBe(2);
-    expect(f11Mirrored.col).toBe(1);
-    expect(f11Mirrored.uMin).toBeCloseTo(0.4);
-    expect(f11Mirrored.uSize).toBeCloseTo(-0.2);
-    expect(f11Mirrored.vMin).toBeCloseTo(0.4);
-    expect(f11Mirrored.vSize).toBeCloseTo(0.2);
+    const f9Mirrored = computeStabFrameUvRect(MELEE_STAB_IMPACT_FRAME, true);
+    expect(f9Mirrored.row).toBe(2);
+    expect(f9Mirrored.col).toBe(1);
+    expect(f9Mirrored.uMin).toBeCloseTo(0.5);
+    expect(f9Mirrored.uSize).toBeCloseTo(-0.25);
+    expect(f9Mirrored.vMin).toBeCloseTo(0.4);
+    expect(f9Mirrored.vSize).toBeCloseTo(0.2);
 
-    const f24 = computeStabFrameUvRect(24, false);
-    expect(f24.row).toBe(4);
-    expect(f24.col).toBe(4);
-    expect(f24.uMin).toBeCloseTo(0.8);
-    expect(f24.vMin).toBeCloseTo(0);
+    const f19 = computeStabFrameUvRect(19, false);
+    expect(f19.row).toBe(4);
+    expect(f19.col).toBe(3);
+    expect(f19.uMin).toBeCloseTo(0.75);
+    expect(f19.vMin).toBeCloseTo(0);
   });
 
-  it('progresses monotonically across all 25 frames and triggers impact precisely at frame 11', () => {
+  it('progresses monotonically across all 20 frames and triggers impact precisely at frame 9', () => {
     const visited = new Set<number>();
     let prev = -1;
     for (let i = 0; i <= 200; i++) {
       const f = mapStabProgressToFrame(i / 200);
       expect(f).toBeGreaterThanOrEqual(prev);
       expect(f).toBeGreaterThanOrEqual(0);
-      expect(f).toBeLessThanOrEqual(24);
+      expect(f).toBeLessThanOrEqual(19);
       prev = f;
       visited.add(f);
     }
-    expect(visited.size).toBe(25);
+    expect(visited.size).toBe(20);
   });
 
   it('sequences advance+fade -> right-side stab with elemental glow -> return fade-in', () => {
@@ -107,100 +131,34 @@ describe('MeleeStabTiming', () => {
   it('updates MeleeStabSprite shader uniforms cleanly', () => {
     const tex = createFallbackStabTexture();
     const handle = createMeleeStabMaterial(tex);
-    handle.setFrame(11, true);
+    handle.setFrame(9, true);
     handle.setOpacity(0.75);
     handle.setElementEffect('#FF8FB8', 0.9);
 
     const rect = handle.material.uniforms.uFrameRect.value as THREE.Vector4;
-    expect(rect.x).toBeCloseTo(0.4);
+    expect(rect.x).toBeCloseTo(0.5);
     expect(rect.y).toBeCloseTo(0.4);
-    expect(rect.z).toBeCloseTo(-0.2);
+    expect(rect.z).toBeCloseTo(-0.25);
     expect(rect.w).toBeCloseTo(0.2);
     expect(handle.material.uniforms.uOpacity.value).toBeCloseTo(0.75);
     expect(handle.material.uniforms.uElementGlow.value).toBeCloseTo(0.9);
-    expect(handle.material.uniforms.uTintStrength.value).toBeCloseTo(1);
-
-    handle.setFrame(7, false, SOULDOLL_15_COLS, SOULDOLL_15_ROWS, SOULDOLL_15_TOTAL_FRAMES);
-    handle.setElementEffect('#F4D073', 1, 0.42);
-    expect(rect.x).toBeCloseTo(0.75);
-    expect(rect.y).toBeCloseTo(0.6);
-    expect(rect.z).toBeCloseTo(0.25);
-    expect(rect.w).toBeCloseTo(0.2);
-    expect(handle.material.uniforms.uTintStrength.value).toBeCloseTo(0.42);
 
     handle.material.dispose();
     tex.dispose();
   });
 
-  it('resolves SoulDoll #15 custom 18-frame attack config and leaves other species on default', () => {
-    const cfg15 = getSpeciesAttackSheetConfig(15);
-    expect(cfg15).not.toBeNull();
-    expect(cfg15?.sheetPath).toBe(SOULDOLL_15_ATTACK_SHEET_PATH);
-    expect(cfg15?.cols).toBe(4);
-    expect(cfg15?.rows).toBe(5);
-    expect(cfg15?.totalFrames).toBe(18);
-    expect(cfg15?.impactFrame).toBe(7);
-    expect(cfg15?.totalDuration).toBeCloseTo(1.36);
-
-    expect(getSpeciesAttackSheetConfig(1)).toBeNull();
-    expect(getSpeciesAttackSheetConfig(14)).toBeNull();
-  });
-
-  it('progresses monotonically across all 18 valid frames of SoulDoll #15 without touching blank cells', () => {
-    const visited = new Set<number>();
-    let prev = -1;
-    for (let i = 0; i <= 200; i++) {
-      const f = mapSpecies15ProgressToFrame(i / 200);
-      expect(f).toBeGreaterThanOrEqual(prev);
-      expect(f).toBeGreaterThanOrEqual(0);
-      expect(f).toBeLessThan(SOULDOLL_15_TOTAL_FRAMES);
-      prev = f;
-      visited.add(f);
-    }
-    expect(visited.size).toBe(18);
-
-    // Clamping grid UV mapper prevents sampling cells 18 or 19
-    const clampedRect = computeGridFrameUvRect(
-      19,
-      SOULDOLL_15_COLS,
-      SOULDOLL_15_ROWS,
-      SOULDOLL_15_TOTAL_FRAMES,
-      false
+  it('tracks registered animation roles per species in SPECIES_ANIMATION_REGISTRY', () => {
+    expect(SPECIES_ANIMATION_REGISTRY.length).toBeGreaterThanOrEqual(2);
+    expect(hasSpeciesAnimationRole(1, 'physical_attack')).toBe(true);
+    expect(hasSpeciesAnimationRole(1, 'special_attack')).toBe(false);
+    expect(hasSpeciesAnimationRole(15, 'physical_attack')).toBe(true);
+    expect(hasSpeciesAnimationRole(15, 'special_attack')).toBe(false);
+    expect(hasSpeciesAnimationRole(undefined, 'physical_attack')).toBe(false);
+    expect(getSpeciesAttackSpec(1, 'physical_attack').path).toBe(
+      '/assets/attacks/physical_attack_01.webp'
     );
-    expect(clampedRect.row).toBe(4);
-    expect(clampedRect.col).toBe(1);
-    expect(clampedRect.uMin).toBeCloseTo(0.25);
-    expect(clampedRect.vMin).toBeCloseTo(0);
-  });
-
-  it('evaluates SoulDoll #15 recalculated phases with impact at frame 7', () => {
-    const start = evaluateAttackAnimPhase(0, SOULDOLL_15_ATTACK_SHEET);
-    expect(start.phase).toBe('advance');
-    expect(start.impactTriggered).toBe(false);
-
-    const windup = evaluateAttackAnimPhase(
-      SOULDOLL_15_ADVANCE_DURATION + SOULDOLL_15_ATTACK_DURATION * 0.2,
-      SOULDOLL_15_ATTACK_SHEET
+    expect(getSpeciesAttackSpec(15, 'physical_attack').path).toBe(
+      '/assets/attacks/special_attack_15.webp'
     );
-    expect(windup.phase).toBe('stab');
-    expect(windup.frameIndex).toBeLessThan(SOULDOLL_15_IMPACT_FRAME);
-    expect(windup.impactTriggered).toBe(false);
-
-    const impact = evaluateAttackAnimPhase(
-      SOULDOLL_15_ADVANCE_DURATION + SOULDOLL_15_ATTACK_DURATION * 0.4,
-      SOULDOLL_15_ATTACK_SHEET
-    );
-    expect(impact.phase).toBe('stab');
-    expect(impact.frameIndex).toBe(SOULDOLL_15_IMPACT_FRAME);
-    expect(impact.impactTriggered).toBe(true);
-    expect(impact.elementGlow).toBe(1);
-
-    const returning = evaluateAttackAnimPhase(
-      SOULDOLL_15_TOTAL_DURATION - 0.02,
-      SOULDOLL_15_ATTACK_SHEET
-    );
-    expect(returning.phase).toBe('return');
-    expect(returning.frameIndex).toBe(17);
   });
 });
-
