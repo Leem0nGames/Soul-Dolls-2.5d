@@ -3,6 +3,7 @@ import type { Game } from '../core/Game.ts';
 import type { Scene } from '../core/SceneStack.ts';
 import { getBodyContainer } from '../data/containers.ts';
 import { getMove } from '../data/moves.ts';
+import { getSpecies } from '../data/species.ts';
 import { BattleEngine } from '../domain/BattleEngine.ts';
 import {
   computeImpactIntensity,
@@ -1583,33 +1584,38 @@ export class BattleScene implements Scene {
                 );
                 if (ev.caught) {
                   this.game.bus.emit('audio:sfx', { sfx: 'capture' });
-                  this.fx.abilityVfx.playCaptureBurst(
+                  _fromPos.set(
+                    PLAYER_STATION_POS.x,
+                    PLAYER_STATION_POS.y + 1.0,
+                    PLAYER_STATION_POS.z
+                  );
+                  this.fx.playArcaneBinding(
+                    _fromPos,
                     _toPos,
                     ENEMY_STATION_POS.y,
-                    true,
                     this.enemyScale
                   );
-                  this.fx.burst(_toPos, {
-                    count: 34,
-                    speedMin: 1.8 * enemyFx,
-                    speedMax: 4.5 * enemyFx,
-                    lifeMin: 0.4,
-                    lifeMax: 0.75,
-                    sizeStart: 0.3 * enemyFx,
-                    sizeEnd: 0.05 * enemyFx,
-                    colorHex: hexToNumber(PALETTE.uiGold),
-                    gravity: -2.5 * enemyFx,
-                    spreadScale: enemyFx,
-                  });
+                  this.battleCamera.triggerShake(0.16, 12);
+                  _projVec.set(_toPos.x, _toPos.y, _toPos.z);
+                  _projVec.project(this.game.cameraRig.camera);
+                  this.postFx.triggerShockwave(
+                    (_projVec.x + 1) * 0.5,
+                    (_projVec.y + 1) * 0.5,
+                    0.032,
+                    0.4
+                  );
+
                   const wild = this.engine.getActive('enemy');
                   ensureSaveVesselState(this.game.saveData);
                   const vesselId = pickBestVesselForSpecies(this.game.saveData, wild.speciesId);
                   this.game.markSpeciesCaught(wild.speciesId, wild.level, true);
                   this.game.saveData.stats.creaturesCaught += 1;
 
+                  let boundVesselName: string | undefined;
                   if (vesselId) {
                     consumeVessel(this.game.saveData, vesselId);
                     rebindCreatureContainer(wild, vesselId);
+                    boundVesselName = getBodyContainer(vesselId).name;
                     const dest = addCapturedCreature(
                       this.game.saveData.party,
                       this.game.saveData.storageBoxes,
@@ -1628,7 +1634,7 @@ export class BattleScene implements Scene {
                       this.game.showToast(
                         ES.battle.caughtBound(
                           getCreatureDisplayName(wild),
-                          getBodyContainer(vesselId).name
+                          boundVesselName
                         )
                       );
                     }
@@ -1644,6 +1650,19 @@ export class BattleScene implements Scene {
                       ES.battle.caughtSoulOnly(getCreatureDisplayName(wild))
                     );
                   }
+
+                  const spec = getSpecies(wild.speciesId);
+                  this.game.battleHud.showArcaneBindingOverlay({
+                    speciesId: wild.speciesId,
+                    creatureName: getCreatureDisplayName(wild),
+                    level: wild.level,
+                    creatureType: spec.types[0],
+                    vesselName: boundVesselName,
+                    durationMs: 2400,
+                    onDone: () => {
+                      done();
+                    },
+                  });
                 } else {
                   this.fx.burst(_toPos, {
                     count: 18,
@@ -1660,8 +1679,8 @@ export class BattleScene implements Scene {
                   this.capsuleMesh.visible = false;
                   this.enemyMesh.visible = true;
                   this.stage.setShadowScale('enemy', 1, true);
+                  done();
                 }
-                done();
               }
             );
           }

@@ -45,7 +45,10 @@ export interface RingOptions {
   vy?: number;
 }
 
-function createSparkTexture(): THREE.CanvasTexture {
+function createSparkTexture(): THREE.Texture {
+  if (typeof document === 'undefined') {
+    return new THREE.Texture();
+  }
   const canvas = document.createElement('canvas');
   canvas.width = 16;
   canvas.height = 16;
@@ -251,6 +254,52 @@ export class FxSystem {
         b: _color.b,
       });
     }
+  }
+
+  playArcaneBinding(
+    fromPos: THREE.Vector3,
+    toPos: THREE.Vector3,
+    groundY: number,
+    targetScale = DEFAULT_VFX_SPRITE_SCALE
+  ): void {
+    this.abilityVfx.playArcaneBinding(fromPos, toPos, groundY, targetScale);
+
+    const m = computeVfxScaleMetrics(targetScale);
+    this.burst(toPos, {
+      count: 28,
+      speedMin: 1.5 * m.silhouette,
+      speedMax: 4.2 * m.silhouette,
+      lifeMin: 0.5,
+      lifeMax: 0.9,
+      sizeStart: 0.28 * m.silhouette,
+      sizeEnd: 0.04 * m.silhouette,
+      colorHex: hexToNumber(PALETTE.soulViolet),
+      gravity: -1.8,
+    });
+
+    this.burst(toPos, {
+      count: 18,
+      speedMin: 2.0 * m.silhouette,
+      speedMax: 3.8 * m.silhouette,
+      lifeMin: 0.4,
+      lifeMax: 0.8,
+      sizeStart: 0.22 * m.silhouette,
+      sizeEnd: 0.04 * m.silhouette,
+      colorHex: hexToNumber(PALETTE.kiCyan),
+      gravity: -1.2,
+    });
+
+    const ringCenter = new THREE.Vector3(toPos.x, groundY + 0.35, toPos.z);
+    this.ring(ringCenter, {
+      count: 16,
+      radius: 0.85 * m.silhouette,
+      speed: 1.8 * m.silhouette,
+      life: 0.7,
+      sizeStart: 0.2 * m.silhouette,
+      sizeEnd: 0.03 * m.silhouette,
+      colorHex: hexToNumber(PALETTE.paleGold),
+      vy: 1.4,
+    });
   }
 
   playTypeMove(

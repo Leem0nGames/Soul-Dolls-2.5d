@@ -4,6 +4,7 @@ import {
   computeIncomingAbilityEffect,
   computeOutgoingAbilityMultiplier,
 } from './Abilities.ts';
+import { getContainerAffinityMatch } from './BodyParts.ts';
 import { computeHeldDamageMultiplier } from './HeldItems.ts';
 import { getTypeMultiplier } from './TypeChart.ts';
 import type {
@@ -139,16 +140,44 @@ export function calculateDamage(
   const outAb = computeOutgoingAbilityMultiplier(attacker, move);
   const heldMod = computeHeldDamageMultiplier(attacker, move);
 
+  // Resonancia de armazón (cuerpo contenedor) y estado de extremidades
+  const attackerMatch = getContainerAffinityMatch(attacker);
+  const defenderMatch = getContainerAffinityMatch(defender);
+
+  const attackerResonanceMult =
+    attackerMatch.level === 'full' ? 1.04 : attackerMatch.level === 'partial' ? 1.02 : 1.0;
+  const defenderResistanceMult =
+    defenderMatch.level === 'full' ? 0.92 : defenderMatch.level === 'partial' ? 0.96 : 1.0;
+
+  let limbIntegrityMult = 1.0;
+  if (attacker.bodyParts) {
+    const brokenPen =
+      attackerMatch.level === 'full' ? 0.94 : attackerMatch.level === 'partial' ? 0.9 : 0.85;
+    if (isPhysical && attacker.bodyParts.arms.current <= 0) {
+      limbIntegrityMult = brokenPen;
+    } else if (!isPhysical && attacker.bodyParts.head.current <= 0) {
+      limbIntegrityMult = brokenPen;
+    }
+  }
+
+  const rawStackedMult =
+    stabMult *
+    weatherMult *
+    effectiveness *
+    critMult *
+    outAb.multiplier *
+    heldMod.multiplier *
+    incomingAb.damageMultiplier;
+  const effectiveStackedMult =
+    rawStackedMult > 3.8 ? 3.8 + (rawStackedMult - 3.8) * 0.55 : rawStackedMult;
+
   const raw = Math.floor(
     base *
-      stabMult *
-      weatherMult *
-      effectiveness *
-      critMult *
+      effectiveStackedMult *
       randMult *
-      outAb.multiplier *
-      heldMod.multiplier *
-      incomingAb.damageMultiplier
+      attackerResonanceMult *
+      defenderResistanceMult *
+      limbIntegrityMult
   );
 
   return {

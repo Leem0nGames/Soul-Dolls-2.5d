@@ -11,8 +11,12 @@ export function computeBattleXp(
   const trainerBonus = isTrainer ? 1.5 : 1.0;
   return Math.max(
     1,
-    Math.floor((spec.baseXpYield * defeated.level * trainerBonus) / 5)
+    Math.floor((spec.baseXpYield * defeated.level * trainerBonus) / 4.2)
   );
+}
+
+export function computeSharedPartyXp(fullXp: number): number {
+  return Math.max(1, Math.floor(fullXp * 0.35));
 }
 
 export interface XpAwardResult {

@@ -23,7 +23,7 @@ import { attemptCatch } from './Catch.ts';
 import { getCreatureDisplayName } from './Creature.ts';
 import { calculateDamage, createDefaultStages, stageMultiplier } from './Damage.ts';
 import { checkLevelEvolution } from './Evolution.ts';
-import { awardExperience, computeBattleXp } from './Experience.ts';
+import { awardExperience, computeBattleXp, computeSharedPartyXp } from './Experience.ts';
 import { computeHeldStatMultiplier, getHeldItemDef } from './HeldItems.ts';
 import { applyMedicineToCreature, removeItem } from './Inventory.ts';
 import { getFirstHealthyIndex } from './Party.ts';
@@ -279,7 +279,7 @@ export class BattleEngine {
       this.state.runAttempts += 1;
       const pSpe = Math.max(1, this.effectiveSpeed('player'));
       const eSpe = Math.max(1, this.effectiveSpeed('enemy'));
-      const escapeOdds = ((pSpe * 128) / eSpe + 30 * this.state.runAttempts) / 256;
+      const escapeOdds = ((pSpe * 140) / eSpe + 35 * this.state.runAttempts) / 256;
       if (pSpe >= eSpe || this.rng.next() < escapeOdds) {
         this.state.finished = true;
         this.state.outcome = 'ran';
@@ -509,7 +509,7 @@ export class BattleEngine {
 
     target.status = status;
     if (status === 'sleep') {
-      target.sleepTurns = this.rng.int(1, 3);
+      target.sleepTurns = this.rng.int(1, 2);
     }
     const targetName = getCreatureDisplayName(target);
     events.push({ type: 'status_apply', target: targetSide, status });
@@ -670,8 +670,8 @@ export class BattleEngine {
     if (attackerSideState.confusedTurns && attackerSideState.confusedTurns > 0) {
       attackerSideState.confusedTurns -= 1;
       events.push({ type: 'text', message: ES.battle.isConfused(attackerName) });
-      if (this.rng.chance(33)) {
-        const selfDmg = Math.max(2, Math.floor(attacker.stats.hp * 0.12));
+      if (this.rng.chance(30)) {
+        const selfDmg = Math.max(2, Math.floor(attacker.stats.hp * 0.1));
         const partRes = applyDamageToBodyParts(attacker, selfDmg, 'head');
         events.push({
           type: 'damage',
@@ -966,7 +966,7 @@ export class BattleEngine {
     if (eff.kind === 'confuse') {
       const dState = this.getSide(defenderSide);
       if (!dState.confusedTurns) {
-        dState.confusedTurns = this.rng.int(2, 4);
+        dState.confusedTurns = this.rng.int(2, 3);
         events.push({ type: 'text', message: ES.battle.becameConfused(defenderName) });
       }
       return;
@@ -1028,7 +1028,8 @@ export class BattleEngine {
       if (c.currentHp <= 0) continue;
 
       if (c.status === 'burn' || c.status === 'poison') {
-        const dmg = Math.max(1, Math.floor(c.stats.hp / 8));
+        const divisor = c.status === 'burn' ? 12 : 8;
+        const dmg = Math.max(1, Math.floor(c.stats.hp / divisor));
         applyDamageToBodyParts(c, dmg, 'torso');
         const name = getCreatureDisplayName(c);
         events.push({
@@ -1200,30 +1201,38 @@ export class BattleEngine {
 
     if (faintedSide === 'enemy') {
       const pIdx = this.state.player.activeIndex;
-      const winner = this.state.player.party[pIdx];
-      if (winner && winner.currentHp > 0) {
-        const xp = computeBattleXp(fainted, !this.state.isWild);
-        const xpRes = awardExperience(winner, xp);
-        const wName = getCreatureDisplayName(winner);
-        events.push({ type: 'xp_gain', partyIndex: pIdx, amount: xp, xpAfter: winner.xp });
-        events.push({ type: 'text', message: ES.battle.gainedXp(wName, xp) });
+      const baseXp = computeBattleXp(fainted, !this.state.isWild);
+      const grantXpToSlot = (slotIdx: number, amount: number): void => {
+        const ally = this.state.player.party[slotIdx];
+        if (!ally || ally.currentHp <= 0) return;
+        const xpRes = awardExperience(ally, amount);
+        const allyName = getCreatureDisplayName(ally);
+        events.push({ type: 'xp_gain', partyIndex: slotIdx, amount, xpAfter: ally.xp });
+        events.push({ type: 'text', message: ES.battle.gainedXp(allyName, amount) });
         for (const lv of xpRes.leveledUpTo) {
-          events.push({ type: 'level_up', partyIndex: pIdx, newLevel: lv, creature: winner });
-          events.push({ type: 'text', message: ES.battle.leveledUp(wName, lv) });
+          events.push({ type: 'level_up', partyIndex: slotIdx, newLevel: lv, creature: ally });
+          events.push({ type: 'text', message: ES.battle.leveledUp(allyName, lv) });
         }
         for (const mId of xpRes.autoLearnedMoves) {
           events.push({
             type: 'text',
-            message: ES.battle.learnedMove(wName, getMove(mId).name),
+            message: ES.battle.learnedMove(allyName, getMove(mId).name),
           });
         }
         for (const mId of xpRes.pendingLearnMoves) {
-          events.push({ type: 'learn_move_prompt', partyIndex: pIdx, moveId: mId });
+          events.push({ type: 'learn_move_prompt', partyIndex: slotIdx, moveId: mId });
         }
-        const evoTarget = checkLevelEvolution(winner);
+        const evoTarget = checkLevelEvolution(ally);
         if (evoTarget !== null) {
-          events.push({ type: 'evolution_ready', partyIndex: pIdx, targetSpeciesId: evoTarget });
+          events.push({ type: 'evolution_ready', partyIndex: slotIdx, targetSpeciesId: evoTarget });
         }
+      };
+
+      grantXpToSlot(pIdx, baseXp);
+      const benchXp = computeSharedPartyXp(baseXp);
+      for (let i = 0; i < this.state.player.party.length; i++) {
+        if (i === pIdx) continue;
+        grantXpToSlot(i, benchXp);
       }
 
       if (rollCardDrop(fainted.speciesId, this.rng, this.state.trainer?.isBoss)) {

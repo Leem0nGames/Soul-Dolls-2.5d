@@ -86,8 +86,9 @@ export class PixelRenderer {
     this.webgl = new THREE.WebGLRenderer({
       antialias: false,
       powerPreference: 'low-power',
-      alpha: false,
+      alpha: true,
     });
+    this.webgl.setClearColor(0x000000, 0);
     this.webgl.outputColorSpace = THREE.SRGBColorSpace;
     this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -108,7 +109,7 @@ export class PixelRenderer {
     this.webgl.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.canvas = this.webgl.domElement;
-    this.canvas.className = 'pixel-canvas w-full h-full block bg-crypt-ink';
+    this.canvas.className = 'pixel-canvas relative z-[1] w-full h-full block';
     container.appendChild(this.canvas);
 
     this.applyInternalSize();

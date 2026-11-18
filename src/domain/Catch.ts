@@ -43,9 +43,10 @@ export function computeCatchProbability(
           creature.status === 'paralysis'
         ? 1.5
         : 1.0;
+  const earlyLevelBonus = creature.level <= 6 ? 1.15 : creature.level <= 10 ? 1.06 : 1.0;
 
-  const modifiedRate = hpFactor * spec.catchRate * ballMult * statusMult;
-  return Math.max(0.03, Math.min(1, modifiedRate / 255));
+  const modifiedRate = hpFactor * spec.catchRate * ballMult * statusMult * earlyLevelBonus;
+  return Math.max(0.05, Math.min(1, modifiedRate / 235));
 }
 
 export function attemptCatch(

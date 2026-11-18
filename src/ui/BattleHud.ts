@@ -6,10 +6,16 @@ import {
   BattleResultModalView,
   LearnMoveModalView,
 } from '../components/ui/BattleHudViews.tsx';
+import { ArcaneBindingOverlay } from '../components/ui/ArcaneBindingOverlay.tsx';
 import { getSpecies } from '../data/species.ts';
 import { BODY_PART_SHORT } from '../domain/BodyParts.ts';
 import { getCreatureDisplayName, xpForLevel } from '../domain/Creature.ts';
-import type { BattleWeather, BodyPartName, CreatureInstance } from '../domain/types.ts';
+import type {
+  BattleWeather,
+  BodyPartName,
+  CreatureInstance,
+  CreatureType,
+} from '../domain/types.ts';
 import type { AssetProvider } from '../gfx/AssetProvider.ts';
 import { ES } from '../i18n/es.ts';
 import { renderSoulDustCounter } from './renderSoulDustCounter.ts';
@@ -625,6 +631,40 @@ export class BattleHud {
           onContinue();
         },
         onDismantleDuplicate,
+      })
+    );
+  }
+
+  showArcaneBindingOverlay(params: {
+    speciesId: number;
+    creatureName: string;
+    level: number;
+    creatureType: CreatureType;
+    vesselName?: string;
+    spriteUrl?: string;
+    durationMs?: number;
+    onDone?: () => void;
+  }): void {
+    const spriteUrl =
+      params.spriteUrl ??
+      (this.assets ? this.assets.getCreatureDataUrl(params.speciesId, 'front') : undefined);
+    this.replaceModal.className = 'pointer-events-auto fixed inset-0 z-40 block';
+    if (!this.replaceRoot) {
+      this.replaceRoot = createRoot(this.replaceModal);
+    }
+    this.replaceRoot.render(
+      createElement(ArcaneBindingOverlay, {
+        speciesId: params.speciesId,
+        creatureName: params.creatureName,
+        level: params.level,
+        creatureType: params.creatureType,
+        vesselName: params.vesselName,
+        spriteUrl,
+        durationMs: params.durationMs ?? 2200,
+        onComplete: () => {
+          this.closeReplaceOverlay();
+          params.onDone?.();
+        },
       })
     );
   }

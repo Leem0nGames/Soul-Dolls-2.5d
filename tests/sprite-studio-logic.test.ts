@@ -94,7 +94,7 @@ describe('SpriteStudioLogic', () => {
       speciesMap: SPECIES,
       registry: SPECIES_ANIMATION_REGISTRY,
     });
-    expect(wildOnly.map((e) => e.id)).toEqual([1, 10]);
+    expect(wildOnly.map((e) => e.id)).toEqual([1, 10, 12]);
     expect(wildOnly[0]?.hasWildSoul).toBe(true);
     expect(wildOnly[0]?.hasFollowerPet).toBe(true);
 

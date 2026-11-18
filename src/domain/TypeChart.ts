@@ -43,8 +43,8 @@ const CHART: Record<CreatureType, Partial<Record<CreatureType, number>>> = {
   },
   umbra: {
     umbra: 2,
+    flora: 2,
     brisa: 0.5,
-    roca: 0.5,
     comun: 0,
   },
   comun: {

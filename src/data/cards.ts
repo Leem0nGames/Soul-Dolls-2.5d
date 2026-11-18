@@ -13,7 +13,7 @@ export const CARD_RARITY_DROP_MULTIPLIERS: Record<CardRarity, number> = {
   comun: 1.0,
   rara: 0.75,
   epica: 0.5,
-  legendaria: 0.3,
+  legendaria: 0.35,
 };
 
 export const CARD_RARITY_ORDER: readonly CardRarity[] = [

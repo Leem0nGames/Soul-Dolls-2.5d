@@ -3319,6 +3319,99 @@ export class AbilityVfxSystem {
     }
   }
 
+  playArcaneBinding(
+    fromPos: THREE.Vector3,
+    toPos: THREE.Vector3,
+    groundY: number,
+    targetScale = DEFAULT_VFX_SPRITE_SCALE
+  ): void {
+    const m = computeVfxScaleMetrics(targetScale);
+    const colors: TypeColorPair = {
+      core: 0xfffaf0,
+      outer: 0x9b6bff,
+      accent: 0x5fe3d2,
+    };
+
+    this.spawnGroundDecal(
+      toPos.x,
+      groundY,
+      toPos.z,
+      3.0 * m.ground,
+      1.5,
+      colors,
+      'rune',
+      2.4,
+      0
+    );
+    this.spawnGroundDecal(
+      toPos.x,
+      groundY,
+      toPos.z,
+      3.6 * m.ground,
+      1.1,
+      { core: 0x5fe3d2, outer: 0x9b6bff, accent: 0xf4d073 },
+      'shockwave',
+      -1.8,
+      0.06
+    );
+
+    this.spawnLightPool(toPos.x, groundY, toPos.z, 3.2 * m.ground, 1.4, 0x9b6bff, 0.02);
+    this.spawnLightPool(toPos.x, groundY, toPos.z, 2.2 * m.ground, 1.1, 0x5fe3d2, 0.1);
+
+    this.spawnLinearBeam(
+      fromPos,
+      toPos,
+      0.28 * m.silhouette,
+      1.25,
+      colors,
+      10.0,
+      0.04,
+      true
+    );
+
+    _tmpStart.set(toPos.x, groundY + 0.1, toPos.z);
+    _tmpEnd.set(toPos.x, toPos.y + 1.2 * m.body, toPos.z);
+    this.spawnGateRings(
+      _tmpStart,
+      _tmpEnd,
+      4,
+      1.25 * m.silhouette,
+      1.1,
+      { core: 0xfffaf0, outer: 0x5fe3d2, accent: 0x9b6bff },
+      0.08
+    );
+
+    this.spawnVortexCone(
+      toPos.x,
+      groundY,
+      toPos.z,
+      1.1 * m.silhouette,
+      2.4 * m.body,
+      1.1,
+      colors,
+      0.06
+    );
+
+    this.spawnImpactSphere(toPos, 1.35 * m.body, 0.75, colors, false, 0.16);
+    this.spawnRefractionBurst(toPos, 1.8 * m.body, 0.85, 0.45, 0.18);
+
+    this.spawnFlare(toPos, 2.5 * m.body, 0.85, 0x9b6bff, 0.15);
+    this.spawnFlare(toPos, 1.8 * m.body, 0.7, 0x5fe3d2, 0.22);
+    this.spawnLightFlash(toPos, 2.8 * m.body, 0.6, 0xfffaf0, 0.16);
+
+    this.spawnDebrisShards(
+      toPos.x,
+      groundY,
+      toPos.z,
+      8,
+      0.75,
+      { core: 0xfffaf0, outer: 0xf4d073, accent: 0x5fe3d2 },
+      0.14,
+      m.silhouette,
+      m.body
+    );
+  }
+
   playHealOrBuff(
     pos: THREE.Vector3,
     groundY: number,

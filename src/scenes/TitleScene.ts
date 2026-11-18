@@ -1,4 +1,7 @@
+import { createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import * as THREE from 'three';
+import { BackgroundLayer } from '../components/ui/BackgroundLayer.tsx';
 import type { Game } from '../core/Game.ts';
 import type { Scene } from '../core/SceneStack.ts';
 import { createBottomPivotPlaneGeometry } from '../engine/BillboardBatch.ts';
@@ -7,7 +10,6 @@ import {
   type BattleSpriteMaterialHandle,
 } from '../engine/BattleSpriteMat.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
-import { createGradientSkyTexture } from '../engine/SkyBackdrop.ts';
 import { SoulDollIdleRig } from '../engine/SoulDollIdleRig.ts';
 import { hexToNumber, PALETTE } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
@@ -140,23 +142,8 @@ export class TitleScene implements Scene {
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  private parallaxContainer: HTMLDivElement | null = null;
-  private handlePointerMove = (e: PointerEvent): void => {
-    if (this.reducedMotion) return;
-    const nx = (e.clientX / window.innerWidth - 0.5) * 2;
-    const ny = (e.clientY / window.innerHeight - 0.5) * 2;
-    if (this.parallaxContainer) {
-      const layers = this.parallaxContainer.querySelectorAll<HTMLDivElement>('.parallax-horizon-layer');
-      layers.forEach((layer, idx) => {
-        const depth = (idx + 1) * 14;
-        const mx = -nx * depth;
-        const my = -ny * (depth * 0.5);
-        layer.style.marginLeft = `${mx}px`;
-        layer.style.marginTop = `${my}px`;
-      });
-    }
-  };
-
+  private bgHost: HTMLDivElement | null = null;
+  private bgRoot: Root | null = null;
 
   private handleStageTap = (e: PointerEvent): void => {
     const canvas = this.game.renderer.canvas;
@@ -182,25 +169,13 @@ export class TitleScene implements Scene {
   };
 
   constructor(private readonly game: Game) {
-    const skyTex = createGradientSkyTexture(
-      hexToNumber(PALETTE.abyssInk),
-      hexToNumber(PALETTE.deepAbyss)
-    );
-    this.disposables.track(skyTex);
-    this.scene.background = skyTex;
+    // Transparent sky so DOM BackgroundLayer 2.5D parallax horizons show behind the 3D diorama
+    this.scene.background = null;
     this.scene.fog = new THREE.Fog(hexToNumber(PALETTE.deepAbyss), 10, 24);
 
     this.overlay = document.createElement('div');
     this.overlay.className =
       'pointer-events-none fixed inset-0 z-20 flex flex-col justify-between safe-pad px-4 pt-3 pb-0 sm:px-6 sm:pt-5';
-
-    this.parallaxContainer = document.createElement('div');
-    this.parallaxContainer.className = 'parallax-horizon-container';
-    this.parallaxContainer.innerHTML = `
-      <div class="parallax-horizon-layer parallax-layer-distant"></div>
-      <div class="parallax-horizon-layer parallax-layer-mid"></div>
-    `;
-    this.overlay.appendChild(this.parallaxContainer);
 
     this.buildDiorama();
   }
@@ -471,7 +446,13 @@ export class TitleScene implements Scene {
     this.game.cameraRig.snapTo(0, 0, 0);
     this.game.bus.emit('audio:music', { track: 'title' });
     this.game.renderer.canvas.addEventListener('pointerdown', this.handleStageTap);
-    window.addEventListener('pointermove', this.handlePointerMove);
+    if (!this.bgHost) {
+      this.bgHost = document.createElement('div');
+      this.bgHost.className = 'pointer-events-none fixed inset-0 z-0';
+      this.game.container.insertBefore(this.bgHost, this.game.renderer.canvas);
+      this.bgRoot = createRoot(this.bgHost);
+    }
+    this.bgRoot?.render(createElement(BackgroundLayer, { reducedMotion: this.reducedMotion }));
     this.renderUi();
     this.game.uiLayer.appendChild(this.overlay);
   }
@@ -689,9 +670,10 @@ export class TitleScene implements Scene {
     this.unsubCreatureLoad?.();
     this.unsubCreatureLoad = null;
     this.game.renderer.canvas.removeEventListener('pointerdown', this.handleStageTap);
-    window.removeEventListener('pointermove', this.handlePointerMove);
-    this.parallaxContainer?.remove();
-    this.parallaxContainer = null;
+    this.bgRoot?.unmount();
+    this.bgRoot = null;
+    this.bgHost?.remove();
+    this.bgHost = null;
     this.overlay.remove();
     this.disposables.disposeAll();
   }

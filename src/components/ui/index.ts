@@ -94,3 +94,17 @@ export {
   type QuestNavContext,
   type SideQuestFilter,
 } from './QuestJournalView.tsx';
+
+export {
+  BackgroundLayer,
+  DEFAULT_HORIZON_LAYERS,
+  computeParallaxShift,
+  type BackgroundLayerProps,
+  type HorizonLayerSpec,
+} from './BackgroundLayer.tsx';
+
+export {
+  ArcaneBindingOverlay,
+  type ArcaneBindingOverlayProps,
+} from './ArcaneBindingOverlay.tsx';
+
