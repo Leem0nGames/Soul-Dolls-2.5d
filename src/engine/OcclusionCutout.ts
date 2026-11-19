@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Direction } from '../domain/types.ts';
+import { updateCliffZDepthUniforms } from './CliffZDepthCutoff.ts';
 
 export const OCCLUSION_INNER_RADIUS = 0.70;
 export const OCCLUSION_OUTER_RADIUS = 1.65;
@@ -23,6 +24,10 @@ const _paramsUniform = {
 export interface OcclusionCutoutOptions {
   /** Minimum world-Y relative to focusPos.y for fragments to be affected (-999 for all heights). */
   minRelY?: number;
+  /** Skip IGN dithering on 90-degree vertical cliffs (`aCliffMeta.x > 0.5`) handled by hard Z-depth cut-off. */
+  skipVerticalCliffs?: boolean;
+  /** Keep cache key contract while suppressing IGN dither (used on cliff overhangs cut by CliffZDepthCutoff). */
+  suppressDither?: boolean;
 }
 
 export function getDirectionLeadTarget(
@@ -55,6 +60,7 @@ export function updateCameraOcclusionUniforms(
     Math.max(0, Math.min(1, strength)),
     OCCLUSION_DEPTH_FADE
   );
+  updateCliffZDepthUniforms(focusPos, { strength });
 }
 
 /**
@@ -131,12 +137,14 @@ export function attachCameraOcclusionCutout<T extends THREE.Material>(
   mat.userData.__camOcclusionAttached = true;
 
   const minRelY = opts.minRelY ?? -999.0;
+  const skipVerticalCliffs = Boolean(opts.skipVerticalCliffs);
+  const suppressDither = Boolean(opts.suppressDither);
   const prevOnBeforeCompile = mat.onBeforeCompile;
   const prevCacheKey = mat.customProgramCacheKey;
 
   mat.customProgramCacheKey = () => {
     const base = prevCacheKey ? prevCacheKey.call(mat) : '';
-    return `${base}|cam_occ_${minRelY.toFixed(2)}`;
+    return `${base}|cam_occ_${minRelY.toFixed(2)}${skipVerticalCliffs ? '_no90' : ''}${suppressDither ? '_nodith' : ''}`;
   };
 
   mat.onBeforeCompile = (shader, renderer) => {
@@ -149,65 +157,75 @@ export function attachCameraOcclusionCutout<T extends THREE.Material>(
     shader.uniforms.uOcclusionParams = _paramsUniform;
     shader.uniforms.uOcclusionMinRelY = { value: minRelY };
 
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-         varying vec3 vOcclusionWorldPos;`
-      )
-      .replace(
-        '#include <project_vertex>',
-        `#include <project_vertex>
-         vec4 occWorldPos = vec4(transformed, 1.0);
-         #ifdef USE_INSTANCING
-           occWorldPos = instanceMatrix * occWorldPos;
-         #endif
-         occWorldPos = modelMatrix * occWorldPos;
-         vOcclusionWorldPos = occWorldPos.xyz;`
-      );
+    if (!suppressDither) {
+      const cliffAttrDecl =
+        skipVerticalCliffs && !shader.vertexShader.includes('attribute vec3 aCliffMeta')
+          ? 'attribute vec3 aCliffMeta;\n'
+          : '';
+      const cliffVaryingDecl = skipVerticalCliffs ? 'varying float vOcclusionIsCliff;\n' : '';
+      const cliffVaryingAssign = skipVerticalCliffs ? 'vOcclusionIsCliff = aCliffMeta.x;\n' : '';
+      const cliffFragGuard = skipVerticalCliffs ? ' && vOcclusionIsCliff < 0.5' : '';
 
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-         uniform vec3 uOcclusionCameraPos;
-         uniform vec3 uOcclusionFocusPos;
-         uniform vec4 uOcclusionParams;
-         uniform float uOcclusionMinRelY;
-         varying vec3 vOcclusionWorldPos;`
-      )
-      .replace(
-        '#include <alphatest_fragment>',
-        `#include <alphatest_fragment>
-         float occEdgeReveal = 0.0;
-         if (uOcclusionParams.z > 0.001 && vOcclusionWorldPos.y >= uOcclusionFocusPos.y + uOcclusionMinRelY) {
-           vec3 occToFocus = uOcclusionFocusPos - uOcclusionCameraPos;
-           float occDistFocus = length(occToFocus);
-           vec3 occDir = occToFocus / max(occDistFocus, 0.0001);
-           vec3 occToFrag = vOcclusionWorldPos - uOcclusionCameraPos;
-           float occProjT = dot(occToFrag, occDir);
-           if (occProjT > 0.15 && occProjT < occDistFocus - 0.06) {
-             float occDepthMask = smoothstep(occDistFocus - 0.06, occDistFocus - uOcclusionParams.w, occProjT);
-             vec3 occOnPlane = uOcclusionCameraPos + occToFrag * (occDistFocus / occProjT);
-             float occPlaneDist = length(occOnPlane - uOcclusionFocusPos);
-             float occNorm = clamp((uOcclusionParams.y - occPlaneDist) / max(uOcclusionParams.y - uOcclusionParams.x, 0.001), 0.0, 1.0);
-             float occSmooth = occNorm * occNorm * occNorm * (occNorm * (occNorm * 6.0 - 15.0) + 10.0);
-             float occReveal = occSmooth * occDepthMask * uOcclusionParams.z;
-             occEdgeReveal = occReveal;
-             float occIgn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-             if (occReveal >= 0.999 || (occReveal > 0.001 && occReveal > occIgn)) {
-               discard;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           ${cliffAttrDecl}${cliffVaryingDecl}varying vec3 vOcclusionWorldPos;`
+        )
+        .replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+           ${cliffVaryingAssign}vec4 occWorldPos = vec4(transformed, 1.0);
+           #ifdef USE_INSTANCING
+             occWorldPos = instanceMatrix * occWorldPos;
+           #endif
+           occWorldPos = modelMatrix * occWorldPos;
+           vOcclusionWorldPos = occWorldPos.xyz;`
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform vec3 uOcclusionCameraPos;
+           uniform vec3 uOcclusionFocusPos;
+           uniform vec4 uOcclusionParams;
+           uniform float uOcclusionMinRelY;
+           ${cliffVaryingDecl}varying vec3 vOcclusionWorldPos;`
+        )
+        .replace(
+          '#include <alphatest_fragment>',
+          `#include <alphatest_fragment>
+           float occEdgeReveal = 0.0;
+           if (uOcclusionParams.z > 0.001 && vOcclusionWorldPos.y >= uOcclusionFocusPos.y + uOcclusionMinRelY${cliffFragGuard}) {
+             vec3 occToFocus = uOcclusionFocusPos - uOcclusionCameraPos;
+             float occDistFocus = length(occToFocus);
+             vec3 occDir = occToFocus / max(occDistFocus, 0.0001);
+             vec3 occToFrag = vOcclusionWorldPos - uOcclusionCameraPos;
+             float occProjT = dot(occToFrag, occDir);
+             if (occProjT > 0.15 && occProjT < occDistFocus - 0.06) {
+               float occDepthMask = smoothstep(occDistFocus - 0.06, occDistFocus - uOcclusionParams.w, occProjT);
+               vec3 occOnPlane = uOcclusionCameraPos + occToFrag * (occDistFocus / occProjT);
+               float occPlaneDist = length(occOnPlane - uOcclusionFocusPos);
+               float occNorm = clamp((uOcclusionParams.y - occPlaneDist) / max(uOcclusionParams.y - uOcclusionParams.x, 0.001), 0.0, 1.0);
+               float occSmooth = occNorm * normSmoothSafe(occNorm);
+               float occReveal = occSmooth * occDepthMask * uOcclusionParams.z;
+               occEdgeReveal = occReveal;
+               float occIgn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+               if (occReveal >= 0.999 || (occReveal > 0.001 && occReveal > occIgn)) {
+                 discard;
+               }
              }
+           }`
+        )
+        .replace(
+          '#include <dithering_fragment>',
+          `if (occEdgeReveal > 0.001) {
+             gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 0.78 + vec3(0.16, 0.18, 0.22), occEdgeReveal * 0.42);
            }
-         }`
-      )
-      .replace(
-        '#include <dithering_fragment>',
-        `if (occEdgeReveal > 0.001) {
-           gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 0.78 + vec3(0.16, 0.18, 0.22), occEdgeReveal * 0.42);
-         }
-         #include <dithering_fragment>`
-      );
+           #include <dithering_fragment>`
+        );
+    }
   };
 
   mat.needsUpdate = true;
