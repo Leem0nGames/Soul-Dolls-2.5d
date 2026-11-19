@@ -1,10 +1,17 @@
+import * as THREE from 'three';
 import { getTileHeightLevel, HEIGHT_UNIT } from '../domain/TerrainRules.ts';
 import type { MapDef } from '../domain/types.ts';
 import type { TileAtlasKey } from '../gfx/ProceduralTiles.ts';
-import * as THREE from 'three';
 import { getTileUv } from './AtlasBuilder.ts';
+import {
+  DIORAMA_RENDER_ORDER,
+  type CliffBoundary,
+  type CliffDirection,
+} from './DioramaLayers.ts';
 
 export const CHUNK_SIZE = 16;
+const WATER_BED_OFFSET = 0.16;
+const MAX_CLIFF_BAND_HEIGHT = 1.0;
 
 export interface TerrainChunk {
   cx: number;
@@ -14,6 +21,182 @@ export interface TerrainChunk {
   mesh: THREE.Mesh;
   waterUvIndices: number[];
 }
+
+export function resolveTerrainTileKey(map: MapDef, x: number, z: number): TileAtlasKey {
+  const ch = map.grid[z]?.[x] ?? '.';
+  const legend = map.legend[ch] ?? { tile: 'grass' as const, solid: false };
+  const tileLevel = getTileHeightLevel(map, x, z);
+
+  let tileKey: TileAtlasKey = legend.tile;
+  if (tileKey === 'stone') {
+    if (legend.solid) {
+      tileKey = 'cliff_rock';
+    } else if (map.biome === 'forest') {
+      tileKey = 'mossy_stone';
+    } else if (map.biome === 'cave' || map.id === 'cueva_eco') {
+      tileKey = 'cracked_stone';
+    }
+  }
+
+  if (
+    tileKey !== 'water' &&
+    tileKey !== 'bridge' &&
+    tileKey !== 'stairs' &&
+    tileKey !== 'cobble' &&
+    tileKey !== 'arena_floor' &&
+    map.snowLine !== undefined &&
+    tileLevel >= map.snowLine &&
+    (tileKey === 'grass' || tileKey === 'dirt' || tileKey === 'tall_grass')
+  ) {
+    tileKey = 'snow';
+  }
+
+  return tileKey;
+}
+
+export function resolveCliffWallTileKey(
+  map: MapDef,
+  _x: number,
+  _z: number,
+  topTile: TileAtlasKey,
+  dropLevels: number
+): TileAtlasKey {
+  if (map.biome === 'cave' || map.music === 'cave' || map.id === 'cueva_eco') {
+    return 'cracked_stone';
+  }
+  if (map.biome === 'forest' && dropLevels === 1 && (topTile === 'grass' || topTile === 'stone')) {
+    return 'mossy_stone';
+  }
+  if (topTile === 'dirt' || topTile === 'sand') {
+    return 'dirt';
+  }
+  return 'cliff_rock';
+}
+
+const CARDINAL_CLIFF_NEIGHBORS: ReadonlyArray<{
+  dx: number;
+  dz: number;
+  face: CliffDirection;
+}> = [
+  { dx: 0, dz: -1, face: 'north' },
+  { dx: 0, dz: 1, face: 'south' },
+  { dx: -1, dz: 0, face: 'west' },
+  { dx: 1, dz: 0, face: 'east' },
+];
+
+export function detectCliffBoundaries(map: MapDef): CliffBoundary[] {
+  const height = map.grid.length;
+  const width = map.grid[0]?.length ?? 0;
+  const boundaries: CliffBoundary[] = [];
+
+  for (let z = 0; z < height; z++) {
+    for (let x = 0; x < width; x++) {
+      const hC = getTileHeightLevel(map, x, z);
+      const topTile = resolveTerrainTileKey(map, x, z);
+
+      for (const n of CARDINAL_CLIFF_NEIGHBORS) {
+        const nx = x + n.dx;
+        const nz = z + n.dz;
+        if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+
+        const hN = getTileHeightLevel(map, nx, nz);
+        if (hC <= hN) continue;
+
+        const nTile = resolveTerrainTileKey(map, nx, nz);
+        const yTop = hC * HEIGHT_UNIT;
+        const yBottom =
+          nTile === 'water' ? hN * HEIGHT_UNIT - WATER_BED_OFFSET : hN * HEIGHT_UNIT;
+        const cliffTile = resolveCliffWallTileKey(map, x, z, topTile, hC - hN);
+
+        boundaries.push({
+          x,
+          z,
+          nx,
+          nz,
+          face: n.face,
+          topLevel: hC,
+          bottomLevel: hN,
+          yTop,
+          yBottom,
+          topTile,
+          cliffTile,
+        });
+      }
+    }
+  }
+
+  return boundaries;
+}
+
+function getStairTileBaseY(map: MapDef, x: number, z: number, tileLevel: number): number {
+  const height = map.grid.length;
+  const width = map.grid[0]?.length ?? 0;
+  let minLevel = tileLevel;
+  for (const n of CARDINAL_CLIFF_NEIGHBORS) {
+    const nx = x + n.dx;
+    const nz = z + n.dz;
+    if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+    minLevel = Math.min(minLevel, getTileHeightLevel(map, nx, nz));
+  }
+  return minLevel * HEIGHT_UNIT;
+}
+
+function pushQuad(
+  positions: number[],
+  normals: number[],
+  uvs: number[],
+  colors: number[],
+  cliffMeta: number[],
+  targetIndices: number[],
+  verts: readonly [
+    [number, number, number],
+    [number, number, number],
+    [number, number, number],
+    [number, number, number],
+  ],
+  normal: readonly [number, number, number],
+  uvCoords: readonly [number, number, number, number, number, number, number, number],
+  shades: readonly [number, number, number, number],
+  metas: readonly [
+    [number, number, number],
+    [number, number, number],
+    [number, number, number],
+    [number, number, number],
+  ]
+): number {
+  const vertBase = positions.length / 3;
+  for (let i = 0; i < 4; i++) {
+    positions.push(verts[i][0], verts[i][1], verts[i][2]);
+    normals.push(normal[0], normal[1], normal[2]);
+    uvs.push(uvCoords[i * 2], uvCoords[i * 2 + 1]);
+    const s = shades[i];
+    colors.push(s, s, s);
+    cliffMeta.push(metas[i][0], metas[i][1], metas[i][2]);
+  }
+  targetIndices.push(
+    vertBase,
+    vertBase + 1,
+    vertBase + 2,
+    vertBase,
+    vertBase + 2,
+    vertBase + 3
+  );
+  return vertBase;
+}
+
+const FACE_SHADE: Record<CliffDirection, number> = {
+  south: 0.96,
+  east: 0.91,
+  west: 0.83,
+  north: 0.77,
+};
+
+const FACE_NORMAL: Record<CliffDirection, readonly [number, number, number]> = {
+  north: [0, 0, -1],
+  south: [0, 0, 1],
+  west: [-1, 0, 0],
+  east: [1, 0, 0],
+};
 
 function buildVertexHeightGrid(map: MapDef): Float32Array {
   const h = map.grid.length;
@@ -40,16 +223,13 @@ function buildVertexHeightGrid(map: MapDef): Float32Array {
         }
       }
       const avg = count > 0 ? sum / count : 0;
-      grid[vz * cols + vx] = hasWater ? Math.min(avg, getTileHeightLevel(map, Math.min(w - 1, vx), Math.min(h - 1, vz))) : avg;
+      grid[vz * cols + vx] = hasWater
+        ? Math.min(avg, getTileHeightLevel(map, Math.min(w - 1, vx), Math.min(h - 1, vz)))
+        : avg;
     }
   }
   return grid;
 }
-
-const _e1 = new THREE.Vector3();
-const _e2 = new THREE.Vector3();
-const _norm = new THREE.Vector3();
-const _sun = new THREE.Vector3(0.45, 0.82, 0.35).normalize();
 
 export function buildTerrainChunks(
   map: MapDef,
@@ -58,12 +238,23 @@ export function buildTerrainChunks(
 ): TerrainChunk[] {
   const height = map.grid.length;
   const width = map.grid[0]?.length ?? 0;
-  const vCols = width + 1;
-  const vGrid = buildVertexHeightGrid(map);
-
   const chunksX = Math.ceil(width / CHUNK_SIZE);
   const chunksZ = Math.ceil(height / CHUNK_SIZE);
   const chunks: TerrainChunk[] = [];
+
+  const allBoundaries = detectCliffBoundaries(map);
+  const boundariesByChunk = new Map<string, CliffBoundary[]>();
+  for (const b of allBoundaries) {
+    const cx = Math.floor(b.x / CHUNK_SIZE);
+    const cz = Math.floor(b.z / CHUNK_SIZE);
+    const key = `${cx},${cz}`;
+    let list = boundariesByChunk.get(key);
+    if (!list) {
+      list = [];
+      boundariesByChunk.set(key, list);
+    }
+    list.push(b);
+  }
 
   for (let cz = 0; cz < chunksZ; cz++) {
     for (let cx = 0; cx < chunksX; cx++) {
@@ -72,154 +263,214 @@ export function buildTerrainChunks(
       const endX = Math.min(width, startX + CHUNK_SIZE);
       const endZ = Math.min(height, startZ + CHUNK_SIZE);
 
-      const tileCount = (endX - startX) * (endZ - startZ);
-      const positions = new Float32Array(tileCount * 4 * 3);
-      const uvs = new Float32Array(tileCount * 4 * 2);
-      const colors = new Float32Array(tileCount * 4 * 3);
+      const positions: number[] = [];
+      const normals: number[] = [];
+      const uvs: number[] = [];
+      const colors: number[] = [];
+      const cliffMeta: number[] = [];
       const atlasIndices: number[] = [];
       const grassIndices: number[] = [];
       const waterUvIndices: number[] = [];
 
-      let vPtr = 0;
-      let uvPtr = 0;
-      let cPtr = 0;
-      let vertBase = 0;
-
+      // 1. Flat plateau top tiles (zero diagonal texture shearing)
       for (let z = startZ; z < endZ; z++) {
         const row = map.grid[z];
         for (let x = startX; x < endX; x++) {
           const ch = row[x] ?? '.';
           const legend = map.legend[ch] ?? { tile: 'grass' as const, solid: false };
-
-          const h00 = vGrid[z * vCols + x];
-          const h10 = vGrid[z * vCols + (x + 1)];
-          const h11 = vGrid[(z + 1) * vCols + (x + 1)];
-          const h01 = vGrid[(z + 1) * vCols + x];
-
-          const minH = Math.min(h00, h10, h11, h01);
-          const maxH = Math.max(h00, h10, h11, h01);
           const tileLevel = getTileHeightLevel(map, x, z);
-          const slopeDelta = maxH - minH;
-
           const isTallGrass = legend.tile === 'tall_grass';
-          let tileKey: TileAtlasKey = legend.tile;
-          if (tileKey === 'stone') {
-            if (legend.solid) {
-              tileKey = 'cliff_rock';
-            } else if (map.biome === 'forest') {
-              tileKey = 'mossy_stone';
-            } else if (map.id === 'cueva_eco') {
-              tileKey = 'cracked_stone';
-            }
-          }
-          if (
-            tileKey !== 'water' &&
-            tileKey !== 'bridge' &&
-            tileKey !== 'stairs' &&
-            tileKey !== 'cobble' &&
-            tileKey !== 'arena_floor'
-          ) {
-            if (slopeDelta >= 1.35) {
-              tileKey =
-                tileLevel >= 3 || map.id === 'cueva_eco' || slopeDelta >= 1.7
-                  ? 'cliff_rock'
-                  : 'dirt';
-            } else if (
-              map.snowLine !== undefined &&
-              tileLevel >= map.snowLine &&
-              (tileKey === 'grass' || tileKey === 'dirt' || tileKey === 'tall_grass')
-            ) {
-              tileKey = 'snow';
-            }
-          }
+          const tileKey = resolveTerrainTileKey(map, x, z);
 
-          const y00 = h00 * HEIGHT_UNIT;
-          const y10 = h10 * HEIGHT_UNIT;
-          const y11 = h11 * HEIGHT_UNIT;
-          const y01 = h01 * HEIGHT_UNIT;
+          const topY =
+            tileKey === 'water'
+              ? tileLevel * HEIGHT_UNIT - WATER_BED_OFFSET
+              : tileKey === 'stairs'
+                ? getStairTileBaseY(map, x, z, tileLevel)
+                : tileLevel * HEIGHT_UNIT;
 
           const x0 = x - 0.5;
           const x1 = x + 0.5;
           const z0 = z - 0.5;
           const z1 = z + 0.5;
 
-          positions[vPtr++] = x0; positions[vPtr++] = y01; positions[vPtr++] = z1;
-          positions[vPtr++] = x1; positions[vPtr++] = y11; positions[vPtr++] = z1;
-          positions[vPtr++] = x1; positions[vPtr++] = y10; positions[vPtr++] = z0;
-          positions[vPtr++] = x0; positions[vPtr++] = y00; positions[vPtr++] = z0;
-
           const useCustomGrass = Boolean(
             grassMaterial && (tileKey === 'grass' || isTallGrass)
           );
+          let uvCoords: [number, number, number, number, number, number, number, number];
           if (useCustomGrass) {
             const gu0 = (x % 2) * 0.5;
             const gu1 = gu0 + 0.5;
             const gv1 = 1 - (z % 2) * 0.5;
             const gv0 = gv1 - 0.5;
-            uvs[uvPtr++] = gu0; uvs[uvPtr++] = gv0;
-            uvs[uvPtr++] = gu1; uvs[uvPtr++] = gv0;
-            uvs[uvPtr++] = gu1; uvs[uvPtr++] = gv1;
-            uvs[uvPtr++] = gu0; uvs[uvPtr++] = gv1;
+            uvCoords = [gu0, gv0, gu1, gv0, gu1, gv1, gu0, gv1];
           } else {
             if (tileKey === 'water') {
-              waterUvIndices.push(uvPtr);
+              waterUvIndices.push(uvs.length);
             }
             const rect = getTileUv(tileKey);
-            uvs[uvPtr++] = rect.u0; uvs[uvPtr++] = rect.v0;
-            uvs[uvPtr++] = rect.u1; uvs[uvPtr++] = rect.v0;
-            uvs[uvPtr++] = rect.u1; uvs[uvPtr++] = rect.v1;
-            uvs[uvPtr++] = rect.u0; uvs[uvPtr++] = rect.v1;
+            uvCoords = [rect.u0, rect.v0, rect.u1, rect.v0, rect.u1, rect.v1, rect.u0, rect.v1];
           }
 
-          _e1.set(1, y11 - y01, 0);
-          _e2.set(0, y00 - y01, -1);
-          _norm.crossVectors(_e1, _e2).normalize();
-          const sunDot = Math.max(0, _norm.dot(_sun));
-          const checker = (x + z) % 2 === 0 ? 1.0 : 0.96;
+          const checker = (x + z) % 2 === 0 ? 1.0 : 0.965;
           const heightTint = 0.9 + Math.min(0.14, tileLevel * 0.015);
-          const shade = Math.min(1.06, (0.76 + sunDot * 0.28) * checker * heightTint);
+          const baseShade = Math.min(1.06, 0.99 * checker * heightTint);
 
-          for (let k = 0; k < 4; k++) {
-            colors[cPtr++] = shade;
-            colors[cPtr++] = shade;
-            colors[cPtr++] = shade;
-          }
+          const cornerMeta = (sx: number, sz: number): [number, number, number] => {
+            const hx = x + sx >= 0 && x + sx < width ? getTileHeightLevel(map, x + sx, z) : tileLevel;
+            const hz = z + sz >= 0 && z + sz < height ? getTileHeightLevel(map, x, z + sz) : tileLevel;
+            const hd =
+              x + sx >= 0 && x + sx < width && z + sz >= 0 && z + sz < height
+                ? getTileHeightLevel(map, x + sx, z + sz)
+                : tileLevel;
+            const edgeRim = hx < tileLevel || hz < tileLevel ? 0.72 : 0.0;
+            const crevice =
+              hx > tileLevel || hz > tileLevel ? 0.88 : hd > tileLevel ? 0.45 : 0.0;
+            return [0.0, edgeRim, crevice];
+          };
 
           const targetIndices = useCustomGrass ? grassIndices : atlasIndices;
-          targetIndices.push(
-            vertBase,
-            vertBase + 1,
-            vertBase + 2,
-            vertBase,
-            vertBase + 2,
-            vertBase + 3
+          pushQuad(
+            positions,
+            normals,
+            uvs,
+            colors,
+            cliffMeta,
+            targetIndices,
+            [
+              [x0, topY, z1],
+              [x1, topY, z1],
+              [x1, topY, z0],
+              [x0, topY, z0],
+            ],
+            [0, 1, 0],
+            uvCoords,
+            [baseShade, baseShade, baseShade, baseShade],
+            [
+              cornerMeta(-1, 1),
+              cornerMeta(1, 1),
+              cornerMeta(1, -1),
+              cornerMeta(-1, -1),
+            ]
           );
-          vertBase += 4;
+        }
+      }
+
+      // 2. Solid 90-degree vertical cliff planes (quantized bands, zero texture shearing)
+      const chunkBoundaries = boundariesByChunk.get(`${cx},${cz}`) ?? [];
+      for (const b of chunkBoundaries) {
+        const dropHeight = b.yTop - b.yBottom;
+        if (dropHeight <= 0.001) continue;
+
+        const rect = getTileUv(b.cliffTile);
+        const vSpan = rect.v1 - rect.v0;
+        const normal = FACE_NORMAL[b.face];
+        const dirShade = FACE_SHADE[b.face];
+
+        const x0 = b.x - 0.5;
+        const x1 = b.x + 0.5;
+        const z0 = b.z - 0.5;
+        const z1 = b.z + 0.5;
+
+        let curTop = b.yTop;
+        while (curTop - b.yBottom > 0.001) {
+          const curBot = Math.max(b.yBottom, curTop - MAX_CLIFF_BAND_HEIGHT);
+          const bandH = curTop - curBot;
+          const vTop = rect.v1;
+          const vBot = rect.v1 - vSpan * Math.min(1, bandH / MAX_CLIFF_BAND_HEIGHT);
+
+          const topFactorAtTop = Math.max(0, Math.min(1, 1 - (b.yTop - curTop) / 0.55));
+          const topFactorAtBot = Math.max(0, Math.min(1, 1 - (b.yTop - curBot) / 0.55));
+          const aoAtTop = Math.max(0, Math.min(1, 1 - (curTop - b.yBottom) / 0.45));
+          const aoAtBot = Math.max(0, Math.min(1, 1 - (curBot - b.yBottom) / 0.45));
+
+          const topShade = Math.min(1.04, dirShade * (0.94 + Math.min(0.08, curTop * 0.015)));
+          const botShade = dirShade * 0.84;
+
+          let verts: [
+            [number, number, number],
+            [number, number, number],
+            [number, number, number],
+            [number, number, number],
+          ];
+          if (b.face === 'north') {
+            verts = [
+              [x1, curBot, z0],
+              [x0, curBot, z0],
+              [x0, curTop, z0],
+              [x1, curTop, z0],
+            ];
+          } else if (b.face === 'south') {
+            verts = [
+              [x0, curBot, z1],
+              [x1, curBot, z1],
+              [x1, curTop, z1],
+              [x0, curTop, z1],
+            ];
+          } else if (b.face === 'west') {
+            verts = [
+              [x0, curBot, z0],
+              [x0, curBot, z1],
+              [x0, curTop, z1],
+              [x0, curTop, z0],
+            ];
+          } else {
+            verts = [
+              [x1, curBot, z1],
+              [x1, curBot, z0],
+              [x1, curTop, z0],
+              [x1, curTop, z1],
+            ];
+          }
+
+          pushQuad(
+            positions,
+            normals,
+            uvs,
+            colors,
+            cliffMeta,
+            atlasIndices,
+            verts,
+            normal,
+            [rect.u0, vBot, rect.u1, vBot, rect.u1, vTop, rect.u0, vTop],
+            [botShade, botShade, topShade, topShade],
+            [
+              [1.0, topFactorAtBot, aoAtBot],
+              [1.0, topFactorAtBot, aoAtBot],
+              [1.0, topFactorAtTop, aoAtTop],
+              [1.0, topFactorAtTop, aoAtTop],
+            ]
+          );
+
+          curTop = curBot;
         }
       }
 
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.setAttribute('aCliffMeta', new THREE.Float32BufferAttribute(cliffMeta, 3));
 
       const mats: THREE.Material[] = [material];
       const indices: number[] = [...atlasIndices];
+      geo.addGroup(0, atlasIndices.length, 0);
       if (grassMaterial && grassIndices.length > 0) {
         const idx = mats.length;
         mats.push(grassMaterial);
         geo.addGroup(indices.length, grassIndices.length, idx);
         indices.push(...grassIndices);
       }
-      geo.addGroup(0, atlasIndices.length, 0);
       if (indices.length > 0) {
         geo.setIndex(indices);
       }
 
-      geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, mats.length === 1 ? mats[0] : mats);
       geo.computeBoundingSphere();
+      mesh.renderOrder = DIORAMA_RENDER_ORDER.TERRAIN_BASE;
       mesh.receiveShadow = true;
+      mesh.castShadow = false;
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
 
@@ -241,7 +492,7 @@ export function updateVisibleTerrainChunks(
   chunks: readonly TerrainChunk[],
   playerX: number,
   playerZ: number,
-  viewRadius = 24
+  viewRadius = 48
 ): void {
   for (const chunk of chunks) {
     const dx = chunk.centerX - playerX;
@@ -283,6 +534,11 @@ function buildSteppedAxisCoords(count: number): { coords: number[]; innerStart: 
   return { coords, innerStart, innerEnd };
 }
 
+const _e1 = new THREE.Vector3();
+const _e2 = new THREE.Vector3();
+const _norm = new THREE.Vector3();
+const _sun = new THREE.Vector3(0.45, 0.82, 0.35).normalize();
+
 /**
  * Builds a seamless outer terrain apron extending 44 units beyond all 4 map borders.
  * Eliminates the open sky void visible behind/beyond map-to-map warp passages while
@@ -310,6 +566,7 @@ export function buildTerrainBorderApron(
   const positions = new Float32Array(totalCells * 4 * 3);
   const uvs = new Float32Array(totalCells * 4 * 2);
   const colors = new Float32Array(totalCells * 4 * 3);
+  const cliffMeta = new Float32Array(totalCells * 4 * 3);
   const atlasIndices: number[] = [];
   const grassIndices: number[] = [];
 
@@ -350,7 +607,6 @@ export function buildTerrainBorderApron(
       const outX = midX < -0.5 ? -0.5 - midX : midX > width - 0.5 ? midX - (width - 0.5) : 0;
       const outDist = Math.max(outX, outZ);
 
-      // Slightly bend road continuation after 2 tiles behind the gate, then blend into natural terrain
       const bendOffset = outDist > 2 ? Math.round(Math.min(3, (outDist - 2) * 0.65)) : 0;
       const effX = outZ > outX ? midX - bendOffset : midX;
       const effZ = outX > outZ ? midZ - bendOffset : midZ;
@@ -368,7 +624,7 @@ export function buildTerrainBorderApron(
           tileKey = 'cliff_rock';
         } else if (map.biome === 'forest') {
           tileKey = 'mossy_stone';
-        } else if (map.id === 'cueva_eco') {
+        } else if (map.biome === 'cave' || map.id === 'cueva_eco') {
           tileKey = 'cracked_stone';
         }
       }
@@ -380,7 +636,7 @@ export function buildTerrainBorderApron(
             !legend.solid))
       ) {
         tileKey =
-          map.id === 'cueva_eco'
+          map.biome === 'cave' || map.id === 'cueva_eco'
             ? 'cracked_stone'
             : map.biome === 'mountain'
               ? 'dirt'
@@ -462,16 +718,17 @@ export function buildTerrainBorderApron(
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('aCliffMeta', new THREE.BufferAttribute(cliffMeta, 3));
 
   const mats: THREE.Material[] = [material];
   const indices: number[] = [...atlasIndices];
+  geo.addGroup(0, atlasIndices.length, 0);
   if (grassMaterial && grassIndices.length > 0) {
     const idx = mats.length;
     mats.push(grassMaterial);
     geo.addGroup(indices.length, grassIndices.length, idx);
     indices.push(...grassIndices);
   }
-  geo.addGroup(0, atlasIndices.length, 0);
   if (indices.length > 0) {
     geo.setIndex(indices);
   }
@@ -479,6 +736,7 @@ export function buildTerrainBorderApron(
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, mats.length === 1 ? mats[0] : mats);
   geo.computeBoundingSphere();
+  mesh.renderOrder = DIORAMA_RENDER_ORDER.TERRAIN_BASE;
   mesh.receiveShadow = true;
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();

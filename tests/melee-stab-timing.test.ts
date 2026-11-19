@@ -48,11 +48,11 @@ describe('MeleeStabTiming', () => {
     const s01 = getAttackSheetSpecForSpecies(1);
     expect(s01.path).toBe('/assets/attacks/physical_attack_01.webp');
     expect(s01.cols).toBe(4);
-    expect(s01.rows).toBe(7);
-    expect(s01.totalFrames).toBe(27);
-    expect(s01.impactFrame).toBe(12);
+    expect(s01.rows).toBe(9);
+    expect(s01.totalFrames).toBe(36);
+    expect(s01.impactFrame).toBe(16);
     expect(s01.aspectRatio).toBe(640 / 360);
-    expect(s01.facing).toBe('left');
+    expect(s01.facing).toBe('right');
 
     const defaultSpec = getAttackSheetSpecForSpecies(2);
     expect(defaultSpec.path).toBe('/assets/aistudio/004-special_attack-v1_5431e7bd.png');

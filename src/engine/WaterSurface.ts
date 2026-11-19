@@ -203,7 +203,7 @@ export class WaterSurface {
     disposables.track(mat);
 
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.renderOrder = 1;
+    mesh.renderOrder = 3; // DIORAMA_RENDER_ORDER.WATER_SURFACE
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     scene.add(mesh);

@@ -291,6 +291,8 @@ export interface CreatureInstance {
   sleepTurns: number;
   abilityId?: string;
   unlockedAbilities?: string[];
+  unlockedTalents?: string[];
+  ascensionRank?: number;
   heldItemId?: string;
   socketedCardId?: number;
   socketedCardBonuses?: Partial<Stats>;

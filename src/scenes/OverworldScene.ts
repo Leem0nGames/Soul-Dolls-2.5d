@@ -30,6 +30,7 @@ import {
   removeItem,
 } from '../domain/Inventory.ts';
 import { addToParty, healPartyFull } from '../domain/Party.ts';
+import { RANDOM_EVENTS } from '../domain/RandomEvents.ts';
 import {
   createNpcBehaviorState,
   engageNpcLook,
@@ -111,8 +112,15 @@ import {
   type PropInstancePlacement,
 } from '../engine/BillboardBatch.ts';
 import { buildBuildingsMesh, buildInteriorWallsMesh } from '../engine/BuildingMesher.ts';
+import {
+  buildCliffOrnamentsMesh,
+  createCliffOrnamentMaterial,
+  createCliffOrnamentTexture,
+} from '../engine/CliffOrnamentMesher.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { buildMapGatesGroup } from '../engine/GateMesher.ts';
+import { buildStaircaseMeshes } from '../engine/StaircaseMesher.ts';
+import { attachTerrainDioramaShader } from '../engine/TerrainWeatheringShader.ts';
 import { OverworldAtmosphere } from '../engine/OverworldAtmosphere.ts';
 import {
   attachCameraOcclusionCutout,
@@ -1268,6 +1276,8 @@ export class OverworldScene implements Scene {
     attachCameraOcclusionCutout(terrainAtlasMat, { minRelY: OCCLUSION_TERRAIN_MIN_REL_Y });
     attachCameraOcclusionCutout(grassMat, { minRelY: OCCLUSION_TERRAIN_MIN_REL_Y });
     attachCameraOcclusionCutout(structureAtlasMat, { minRelY: -999 });
+    attachTerrainDioramaShader(terrainAtlasMat, map.biome);
+    attachTerrainDioramaShader(grassMat, map.biome);
     this.mapDisposables.track(terrainAtlasMat);
     this.mapDisposables.track(structureAtlasMat);
     this.mapDisposables.track(grassMat);
@@ -1353,6 +1363,32 @@ export class OverworldScene implements Scene {
         }
       });
       this.scene.add(gatesGroup);
+    }
+
+    const staircasesGroup = buildStaircaseMeshes(map, terrainAtlasMat);
+    if (staircasesGroup) {
+      staircasesGroup.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh) {
+          if (mesh.geometry) this.mapDisposables.track(mesh.geometry);
+        }
+      });
+      this.scene.add(staircasesGroup);
+    }
+
+    const cliffOrnamentTex = createCliffOrnamentTexture();
+    const cliffOrnamentMat = createCliffOrnamentMaterial(cliffOrnamentTex);
+    this.mapDisposables.track(cliffOrnamentTex);
+    this.mapDisposables.track(cliffOrnamentMat);
+    const cliffOrnamentsGroup = buildCliffOrnamentsMesh(map, cliffOrnamentMat);
+    if (cliffOrnamentsGroup) {
+      cliffOrnamentsGroup.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) {
+          this.mapDisposables.track(mesh.geometry);
+        }
+      });
+      this.scene.add(cliffOrnamentsGroup);
     }
 
     // 3. Hand-placed + seeded decoration props
@@ -2253,8 +2289,26 @@ export class OverworldScene implements Scene {
     ) {
       if (this.game.rng.next() < this.currentMap.encounters.rate) {
         this.triggerWildEncounter();
+        return;
       }
     }
+
+    // 5. Random overworld event check
+    if (
+      this.currentMap.encounters &&
+      this.game.saveData.repelSteps <= 0 &&
+      this.game.saveData.party.length > 0
+    ) {
+      if (this.game.rng.next() < 0.045) {
+        this.triggerRandomEvent();
+      }
+    }
+  }
+
+  private triggerRandomEvent(): void {
+    const eventDef = this.game.rng.pick(RANDOM_EVENTS);
+    this.game.bus.emit('audio:sfx', { sfx: 'confirm' });
+    this.game.startRandomEvent(eventDef);
   }
 
   private isSightStepClear(observer: RuntimeNpc, fx: number, fy: number, nx: number, ny: number): boolean {
