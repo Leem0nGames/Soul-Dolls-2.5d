@@ -15,17 +15,24 @@ import {
   buildTsSnippet,
   type ChromaMode,
   computeTrimSamplingPlan,
+  DEFAULT_MAX_FIXED_FPS_FRAMES,
   detectDualSoulRegions,
+  getDefaultPresetForMode,
+  getPresetsForCreationMode,
   pad2,
   stepBounded,
+  type StudioAssetPreset,
   type StudioCreationMode,
   type StudioSourceKind,
+  type VideoSamplingMode,
+  type VideoTimeScope,
 } from '../../../domain/SpriteStudioLogic.ts';
 import { getSoulDollSheetUrl } from '../../../gfx/SoulDollSheets.ts';
 import { PxButton } from '../PxButton.tsx';
 import { CHECKER_STYLE_CLEAN, SpriteStagePreview } from './SpriteStagePreview.tsx';
 
 const SAMPLE_VIDEO_PATH = '/assets/aistudio/427091123_1794872957946986_d5bb03ea.mp4';
+const SAMPLE_IDLE_VIDEO_PATH = '/assets/aistudio/628843896_1795038324738856_b04f0d51.mp4';
 const SAMPLE_DUAL_SOUL_PATH = '/assets/aistudio/818944007_1794972743245373_5b1a5cb3.jpg';
 
 type WizardStep = 1 | 2 | 3;
@@ -90,43 +97,51 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
   initialMode = 'physical_attack',
   onOpenCatalog,
 }) => {
+  const initialPreset = getDefaultPresetForMode(initialMode);
+
   const [step, setStep] = useState<WizardStep>(1);
   const [mode, setMode] = useState<StudioCreationMode>(initialMode);
-  const [sourceKind, setSourceKind] = useState<StudioSourceKind>(
-    initialMode === 'soul_dual' ? 'image' : 'video'
-  );
+  const [activePresetId, setActivePresetId] = useState<string>(initialPreset.id);
+  const [sourceKind, setSourceKind] = useState<StudioSourceKind>(initialPreset.sourceKind);
   const [sourceUrl, setSourceUrl] = useState<string>('');
   const [sourceLabel, setSourceLabel] = useState<string>('');
-  const [facing, setFacing] = useState<'left' | 'right'>('left');
+  const [facing, setFacing] = useState<'left' | 'right'>(initialPreset.facing);
 
   // Idle playback
-  const [idleFps, setIdleFps] = useState<number>(DEFAULT_IDLE_FPS);
+  const [idleFps, setIdleFps] = useState<number>(initialPreset.idleFps);
 
-  // Video settings
+  // Video capture & time settings
   const [videoDuration, setVideoDuration] = useState<number>(6);
+  const [videoMeta, setVideoMeta] = useState<{ w: number; h: number } | null>(null);
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
   const [videoPlaying, setVideoPlaying] = useState<boolean>(false);
-  const [trimStart, setTrimStart] = useState<number>(1.8);
-  const [trimEnd, setTrimEnd] = useState<number>(4.5);
-  const [sampleFps, setSampleFps] = useState<number>(8);
+  const [timeScope, setTimeScope] = useState<VideoTimeScope>(initialPreset.timeScope);
+  const [samplingMode, setSamplingMode] = useState<VideoSamplingMode>(initialPreset.samplingMode);
+  const [targetFrames, setTargetFrames] = useState<number>(initialPreset.targetFrames);
+  const [trimStart, setTrimStart] = useState<number>(initialPreset.trimStart);
+  const [trimEnd, setTrimEnd] = useState<number>(initialPreset.trimEnd);
+  const [sampleFps, setSampleFps] = useState<number>(initialPreset.sampleFps);
 
   // Grid settings (shared or image-specific)
-  const [cols, setCols] = useState<number>(4);
-  const [rows, setRows] = useState<number>(5);
-  const [totalFrames, setTotalFrames] = useState<number>(20);
+  const [cols, setCols] = useState<number>(initialPreset.cols);
+  const [rows, setRows] = useState<number>(initialPreset.rows);
+  const [totalFrames, setTotalFrames] = useState<number>(initialPreset.targetFrames);
 
   // Dual Soul + Pet split settings
   const [autoSplitDual, setAutoSplitDual] = useState<boolean>(true);
   const [splitPercent, setSplitPercent] = useState<number>(62);
 
   // Chroma settings
-  const [chromaMode, setChromaMode] = useState<ChromaMode>('green');
-  const [tolerance, setTolerance] = useState<number>(54);
-  const [despill, setDespill] = useState<number>(75);
+  const [chromaMode, setChromaMode] = useState<ChromaMode>(initialPreset.chromaMode);
+  const [tolerance, setTolerance] = useState<number>(initialPreset.tolerance);
+  const [despill, setDespill] = useState<number>(initialPreset.despill);
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(false);
 
   // Generation & Export
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [processProgress, setProcessProgress] = useState<{ current: number; total: number } | null>(
+    null
+  );
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [result, setResult] = useState<GeneratedResult | null>(null);
   const [dualResult, setDualResult] = useState<DualSoulGeneratedResult | null>(null);
@@ -139,13 +154,74 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingFullTrimRef = useRef<boolean>(initialPreset.timeScope === 'full');
 
   const isDualMode = mode === 'soul_dual';
   const isIdleMode = mode !== 'soul_dual' && isIdleRole(mode);
   const sheetRole: AnimationRole = mode === 'soul_dual' ? 'physical_attack' : mode;
+  const rolePresets = useMemo(() => getPresetsForCreationMode(mode), [mode]);
+  const activePreset = useMemo(
+    () => rolePresets.find((p) => p.id === activePresetId) ?? getDefaultPresetForMode(mode),
+    [rolePresets, activePresetId, mode]
+  );
+
+  const applyPreset = useCallback(
+    (preset: StudioAssetPreset, knownDuration?: number) => {
+      const dur = knownDuration ?? videoDuration;
+      setActivePresetId(preset.id);
+      setTimeScope(preset.timeScope);
+      setSamplingMode(preset.samplingMode);
+      setTargetFrames(preset.targetFrames);
+      setCols(preset.cols);
+      setRows(preset.rows);
+      setSampleFps(preset.sampleFps);
+      setIdleFps(preset.idleFps);
+      setChromaMode(preset.chromaMode);
+      setTolerance(preset.tolerance);
+      setDespill(preset.despill);
+      setFacing(preset.facing);
+
+      if (preset.timeScope === 'full') {
+        pendingFullTrimRef.current = true;
+        setTrimStart(0);
+        setTrimEnd(dur);
+        if (videoRef.current) videoRef.current.currentTime = 0;
+      } else {
+        pendingFullTrimRef.current = false;
+        const clampedStart = Math.max(0, Math.min(preset.trimStart, Math.max(0, dur - 0.2)));
+        const clampedEnd = Math.min(dur, Math.max(clampedStart + 0.2, preset.trimEnd));
+        setTrimStart(clampedStart);
+        setTrimEnd(clampedEnd);
+        if (videoRef.current) videoRef.current.currentTime = clampedStart;
+      }
+    },
+    [videoDuration]
+  );
+
+  const handleSelectMode = useCallback(
+    (nextMode: StudioCreationMode) => {
+      const nextDefault = getDefaultPresetForMode(nextMode);
+      setMode(nextMode);
+      setDualResult(null);
+      if (nextMode === 'soul_dual') {
+        setResult(null);
+        setSourceKind('image');
+      } else if (!sourceUrl) {
+        setSourceKind(nextDefault.sourceKind);
+      }
+      applyPreset(nextDefault);
+    },
+    [applyPreset, sourceUrl]
+  );
 
   useEffect(() => {
+    const preset = getDefaultPresetForMode(initialMode);
     setMode(initialMode);
+    setDualResult(null);
+    setResult(null);
+    applyPreset(preset);
+    // Sync only when caller changes speciesId or initialMode
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, speciesId]);
 
   useEffect(() => {
@@ -174,14 +250,16 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
   const trimPlan = useMemo(
     () =>
       computeTrimSamplingPlan({
-        start: trimStart,
-        end: trimEnd,
+        start: timeScope === 'full' ? 0 : trimStart,
+        end: timeScope === 'full' ? videoDuration : trimEnd,
         fps: sampleFps,
         cols,
         duration: videoDuration,
-        maxFrames: isIdleMode ? 8 : 36,
+        maxFrames: DEFAULT_MAX_FIXED_FPS_FRAMES,
+        samplingMode,
+        targetFrames,
       }),
-    [trimStart, trimEnd, sampleFps, cols, videoDuration, isIdleMode]
+    [timeScope, trimStart, trimEnd, sampleFps, cols, videoDuration, samplingMode, targetFrames]
   );
 
   const drawVideoCanvas = useCallback(() => {
@@ -301,6 +379,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     setErrorMsg('');
     setResult(null);
     setDualResult(null);
+    setVideoMeta(null);
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
     }
@@ -308,11 +387,16 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     objectUrlRef.current = nextUrl;
 
     if (!isDualMode && (file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name))) {
+      const def = getDefaultPresetForMode(mode);
+      const fullPreset =
+        def.timeScope === 'full'
+          ? def
+          : { ...def, timeScope: 'full' as const, samplingMode: 'even_frames' as const };
       setSourceKind('video');
       setSourceUrl(nextUrl);
       setSourceLabel(file.name);
-      setChromaMode('green');
-      setCols(4);
+      applyPreset(fullPreset);
+      pendingFullTrimRef.current = true;
       setStep(2);
     } else {
       setSourceKind('image');
@@ -320,8 +404,8 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
       setSourceLabel(file.name);
       setChromaMode(isDualMode ? 'green' : 'grey');
       setCols(4);
-      setRows(isIdleMode ? 2 : 5);
-      setTotalFrames(isIdleMode ? 8 : 20);
+      setRows(isIdleMode ? 6 : 5);
+      setTotalFrames(isIdleMode ? 24 : 20);
       setStep(2);
     }
   };
@@ -330,15 +414,23 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     setErrorMsg('');
     setResult(null);
     setDualResult(null);
+    setVideoMeta(null);
     setSourceKind('video');
-    setSourceUrl(SAMPLE_VIDEO_PATH);
-    setSourceLabel('Video demo (Guerrera Cósmica)');
-    setTrimStart(1.85);
-    setTrimEnd(4.55);
-    setSampleFps(7.5);
-    setCols(4);
-    setChromaMode('green');
-    setFacing('left');
+
+    if (isIdleMode) {
+      const idlePreset = getDefaultPresetForMode(mode);
+      setSourceUrl(SAMPLE_IDLE_VIDEO_PATH);
+      setSourceLabel('Video demo Idle (6s · 16:9)');
+      applyPreset(idlePreset);
+      pendingFullTrimRef.current = true;
+    } else {
+      const trimPreset =
+        rolePresets.find((p) => p.timeScope === 'trim') ?? getDefaultPresetForMode(mode);
+      setSourceUrl(SAMPLE_VIDEO_PATH);
+      setSourceLabel('Video demo Ataque (Guerrera)');
+      applyPreset(trimPreset);
+      pendingFullTrimRef.current = false;
+    }
     setStep(2);
   };
 
@@ -351,7 +443,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     setSourceUrl(SAMPLE_DUAL_SOUL_PATH);
     setSourceLabel('Hoja demo #01 (Alma + Pet)');
     setAutoSplitDual(true);
-    setChromaMode('green');
+    applyPreset(getDefaultPresetForMode('soul_dual'));
     setStep(2);
   };
 
@@ -377,6 +469,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
     if (isProcessing || !sourceUrl) return;
     setErrorMsg('');
     setIsProcessing(true);
+    setProcessProgress(null);
 
     try {
       if (sourceKind === 'video') {
@@ -405,15 +498,27 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
 
         const seekTo = (t: number) =>
           new Promise<void>((resolve) => {
-            const onSeeked = () => {
+            if (Math.abs(video.currentTime - t) < 0.002 && video.readyState >= 2) {
+              requestAnimationFrame(() => resolve());
+              return;
+            }
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              window.clearTimeout(timer);
               video.removeEventListener('seeked', onSeeked);
               resolve();
             };
+            const onSeeked = () => finish();
+            const timer = window.setTimeout(finish, 900);
             video.addEventListener('seeked', onSeeked);
             video.currentTime = t;
           });
 
-        for (let i = 0; i < trimPlan.timestamps.length; i++) {
+        const totalSteps = trimPlan.timestamps.length;
+        for (let i = 0; i < totalSteps; i++) {
+          setProcessProgress({ current: i + 1, total: totalSteps });
           await seekTo(trimPlan.timestamps[i]);
           frameCtx.clearRect(0, 0, cellW, cellH);
           frameCtx.drawImage(video, 0, 0, cellW, cellH);
@@ -565,6 +670,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
         setStep(3);
       }
     } finally {
+      setProcessProgress(null);
       setIsProcessing(false);
     }
   };
@@ -636,10 +742,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             size="sm"
             variant={mode === 'physical_attack' ? 'primary' : 'ghost'}
             showSelector={false}
-            onClick={() => {
-              setMode('physical_attack');
-              setDualResult(null);
-            }}
+            onClick={() => handleSelectMode('physical_attack')}
             className="min-h-[44px] px-2 whitespace-nowrap"
           >
             Físico
@@ -648,10 +751,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             size="sm"
             variant={mode === 'special_attack' ? 'primary' : 'ghost'}
             showSelector={false}
-            onClick={() => {
-              setMode('special_attack');
-              setDualResult(null);
-            }}
+            onClick={() => handleSelectMode('special_attack')}
             className="min-h-[44px] px-2 whitespace-nowrap"
           >
             Especial
@@ -660,10 +760,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             size="sm"
             variant={mode === 'idle_front' ? 'success' : 'ghost'}
             showSelector={false}
-            onClick={() => {
-              setMode('idle_front');
-              setDualResult(null);
-            }}
+            onClick={() => handleSelectMode('idle_front')}
             className="min-h-[44px] px-2 whitespace-nowrap"
           >
             Idle Frente
@@ -672,10 +769,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             size="sm"
             variant={mode === 'idle_back' ? 'success' : 'ghost'}
             showSelector={false}
-            onClick={() => {
-              setMode('idle_back');
-              setDualResult(null);
-            }}
+            onClick={() => handleSelectMode('idle_back')}
             className="min-h-[44px] px-2 whitespace-nowrap"
           >
             Idle Espalda
@@ -684,12 +778,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
             size="sm"
             variant={mode === 'soul_dual' ? 'arcane' : 'ghost'}
             showSelector={false}
-            onClick={() => {
-              setMode('soul_dual');
-              setSourceKind('image');
-              setChromaMode('green');
-              setResult(null);
-            }}
+            onClick={() => handleSelectMode('soul_dual')}
             className="min-h-[44px] px-2 whitespace-nowrap"
           >
             Alma + Pet
@@ -745,11 +834,22 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
               </h3>
               <p className="text-xs text-bone-gray mt-1 leading-relaxed">
                 {isDualMode
-                  ? 'Imagen vertical con el alma sin cuerpo arriba y la mascota pixel art abajo sobre fondo verde/gris.'
+                  ? 'Imagen vertical con el alma sin cuerpo arriba y la mascota pixel art abajo sobre fondo verde o gris.'
                   : isIdleMode
-                    ? 'Video o spritesheet del bucle idle. Se guardará en /assets/idles y se reproducirá en bucle en la vista correspondiente.'
-                    : 'Acepta videos con fondo verde/gris (MP4, WebM) o imágenes en rejilla (PNG, WebP).'}
+                    ? 'Sube tu video completo (ej. MP4 6s 16:9 verde). Se repartirán todos los frames de principio a fin sin cortes.'
+                    : 'Acepta videos completos con fondo verde/gris (MP4, WebM) o spritesheets (PNG, WebP).'}
               </p>
+            </div>
+
+            {/* Active Asset Preset Spec Card */}
+            <div className="bg-crypt-ink border border-ash-purple px-3 py-2 flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-porcelain">Preset activo: {activePreset.label}</span>
+                <span className="font-mono text-ki-cyan tabular-nums shrink-0">
+                  {activePreset.expectedAspectLabel}
+                </span>
+              </div>
+              <p className="text-[11px] text-bone-gray leading-snug">{activePreset.specSummary}</p>
             </div>
 
             <label className="px-btn px-btn-primary min-h-[52px] w-full flex items-center justify-center text-sm font-bold cursor-pointer text-center px-3">
@@ -781,7 +881,9 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                   showSelector={false}
                   onClick={loadSampleVideo}
                 >
-                  Usar video demo (Guerrera)
+                  {isIdleMode
+                    ? 'Usar video demo Idle (6s · 16:9)'
+                    : 'Usar video demo Ataque (Guerrera)'}
                 </PxButton>
               )}
 
@@ -816,11 +918,27 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 6;
+                  const w = v.videoWidth || 640;
+                  const h = v.videoHeight || 360;
                   setVideoDuration(dur);
-                  setTrimStart((prev) => Math.min(prev, Math.max(0, dur - 0.5)));
-                  setTrimEnd((prev) => Math.min(dur, Math.max(0.5, prev)));
-                  v.currentTime = Math.min(trimStart, dur - 0.1);
+                  setVideoMeta({ w, h });
+                  if (pendingFullTrimRef.current || timeScope === 'full') {
+                    pendingFullTrimRef.current = false;
+                    setTrimStart(0);
+                    setTrimEnd(dur);
+                    setVideoCurrentTime(0);
+                    v.currentTime = 0;
+                  } else {
+                    const nextStart = Math.max(0, Math.min(trimStart, Math.max(0, dur - 0.2)));
+                    const nextEnd = Math.min(dur, Math.max(nextStart + 0.2, trimEnd));
+                    setTrimStart(nextStart);
+                    setTrimEnd(nextEnd);
+                    setVideoCurrentTime(nextStart);
+                    v.currentTime = Math.min(nextStart, Math.max(0, dur - 0.05));
+                  }
                 }}
+                onLoadedData={() => drawVideoCanvas()}
+                onSeeked={() => drawVideoCanvas()}
                 onTimeUpdate={(e) => setVideoCurrentTime(e.currentTarget.currentTime)}
                 onPlay={() => setVideoPlaying(true)}
                 onPause={() => setVideoPlaying(false)}
@@ -844,7 +962,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                   {isDualMode
                     ? 'Cian: Alma · Oro: Pet'
                     : sourceKind === 'video'
-                      ? `${trimPlan.totalFrames}f · ${cols}×${trimPlan.rows}`
+                      ? `${trimPlan.totalFrames}f · ${cols}×${trimPlan.rows}${videoMeta ? ` · ${videoMeta.w}×${videoMeta.h}` : ''}`
                       : `${cols}×${rows} (${totalFrames}f)`}
                 </span>
               </div>
@@ -891,7 +1009,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                     className="flex-1 min-w-0 accent-ki-cyan cursor-pointer"
                   />
                   <span className="text-xs font-mono text-bone-gray tabular-nums shrink-0">
-                    {videoCurrentTime.toFixed(1)}s
+                    {videoCurrentTime.toFixed(1)}s / {videoDuration.toFixed(1)}s
                   </span>
                 </div>
               )}
@@ -899,6 +1017,33 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
 
             {/* Logical Controls Column */}
             <div className="bg-abyss-ink border-2 border-ash-purple p-2.5 flex flex-col gap-3">
+              {/* Quick Pre-Configured Asset Preset Chips */}
+              <div className="flex flex-col gap-1.5 pb-2 border-b border-ash-purple">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-pale-gold">Presets rápidos</span>
+                  <span className="font-mono text-[11px] text-bone-gray tabular-nums">
+                    {activePreset.expectedAspectLabel}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Presets rápidos de asset">
+                  {rolePresets.map((preset) => (
+                    <PxButton
+                      key={preset.id}
+                      size="sm"
+                      variant={activePreset.id === preset.id ? 'primary' : 'ghost'}
+                      showSelector={false}
+                      onClick={() => applyPreset(preset)}
+                      className="min-h-[44px] px-2.5 whitespace-nowrap"
+                    >
+                      {preset.label}
+                    </PxButton>
+                  ))}
+                </div>
+                <p className="text-[11px] text-bone-gray bg-crypt-ink border border-ash-purple px-2.5 py-1.5 leading-snug">
+                  {activePreset.specSummary}
+                </p>
+              </div>
+
               {isDualMode ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-2 text-xs">
@@ -932,81 +1077,202 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                 </div>
               ) : sourceKind === 'video' ? (
                 <>
+                  {/* 1. Video Capture Range & Distribution */}
                   <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-pale-gold">1. Tramo del ataque</span>
-                      <span className="font-mono text-ki-cyan tabular-nums">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-bold text-pale-gold">1. Tiempo a extraer del video</span>
+                      <span className="font-mono text-ki-cyan tabular-nums shrink-0">
                         {trimPlan.start.toFixed(1)}s – {trimPlan.end.toFixed(1)}s
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div className="bg-crypt-ink border border-ash-purple px-2.5 py-2">
-                        <div className="flex justify-between text-[11px] text-bone-gray mb-1">
-                          <span>Inicio</span>
-                          <span className="font-mono text-warm-white">{trimStart.toFixed(1)}s</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={0}
-                          max={Math.max(0.2, videoDuration - 0.2)}
-                          step={0.05}
-                          value={trimStart}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            setTrimStart(v);
-                            if (videoRef.current) videoRef.current.currentTime = v;
-                          }}
-                          className="w-full accent-resonant-gold"
-                        />
-                      </div>
-                      <div className="bg-crypt-ink border border-ash-purple px-2.5 py-2">
-                        <div className="flex justify-between text-[11px] text-bone-gray mb-1">
-                          <span>Fin</span>
-                          <span className="font-mono text-warm-white">{trimEnd.toFixed(1)}s</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={0.2}
-                          max={videoDuration}
-                          step={0.05}
-                          value={trimEnd}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            setTrimEnd(v);
-                            if (videoRef.current) videoRef.current.currentTime = v;
-                          }}
-                          className="w-full accent-resonant-gold"
-                        />
-                      </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <PxButton
+                        size="sm"
+                        variant={timeScope === 'full' ? 'primary' : 'ghost'}
+                        showSelector={false}
+                        onClick={() => {
+                          setTimeScope('full');
+                          setTrimStart(0);
+                          setTrimEnd(videoDuration);
+                          if (videoRef.current) videoRef.current.currentTime = 0;
+                        }}
+                        className="min-h-[44px] px-2 whitespace-nowrap"
+                      >
+                        Todo ({videoDuration.toFixed(1)}s)
+                      </PxButton>
+                      <PxButton
+                        size="sm"
+                        variant={timeScope === 'trim' ? 'primary' : 'ghost'}
+                        showSelector={false}
+                        onClick={() => {
+                          setTimeScope('trim');
+                          if (trimEnd <= trimStart + 0.2) {
+                            setTrimStart(0);
+                            setTrimEnd(videoDuration);
+                          }
+                        }}
+                        className="min-h-[44px] px-2 whitespace-nowrap"
+                      >
+                        Recortar tramo
+                      </PxButton>
                     </div>
+
+                    {timeScope === 'trim' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="bg-crypt-ink border border-ash-purple px-2.5 py-2">
+                          <div className="flex justify-between text-[11px] text-bone-gray mb-1">
+                            <span>Inicio</span>
+                            <span className="font-mono text-warm-white tabular-nums">
+                              {trimStart.toFixed(1)}s
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            aria-label="Inicio del tramo"
+                            min={0}
+                            max={Math.max(0.2, videoDuration - 0.2)}
+                            step={0.05}
+                            value={trimStart}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              setTrimStart(v);
+                              if (videoRef.current) videoRef.current.currentTime = v;
+                            }}
+                            className="w-full accent-resonant-gold"
+                          />
+                        </div>
+                        <div className="bg-crypt-ink border border-ash-purple px-2.5 py-2">
+                          <div className="flex justify-between text-[11px] text-bone-gray mb-1">
+                            <span>Fin</span>
+                            <span className="font-mono text-warm-white tabular-nums">
+                              {trimEnd.toFixed(1)}s
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            aria-label="Fin del tramo"
+                            min={0.2}
+                            max={videoDuration}
+                            step={0.05}
+                            value={trimEnd}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              setTrimEnd(v);
+                              if (videoRef.current) videoRef.current.currentTime = v;
+                            }}
+                            className="w-full accent-resonant-gold"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Frame Sampling Density */}
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-bold text-pale-gold">2. Fluidez (FPS)</span>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[
-                        { label: 'Compacto (6)', fps: 6 },
-                        { label: 'Normal (8)', fps: 8 },
-                        { label: 'Suave (12)', fps: 12 },
-                      ].map((opt) => (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-pale-gold">2. Frames a extraer</span>
+                      <div className="flex items-center gap-1">
                         <PxButton
-                          key={opt.fps}
                           size="sm"
-                          variant={Math.round(sampleFps) === opt.fps ? 'primary' : 'ghost'}
+                          variant={samplingMode === 'even_frames' ? 'primary' : 'ghost'}
                           showSelector={false}
-                          onClick={() => setSampleFps(opt.fps)}
-                          className="min-h-[44px] px-1 text-xs"
+                          onClick={() => setSamplingMode('even_frames')}
+                          className="min-h-[44px] px-2 text-xs whitespace-nowrap"
                         >
-                          {opt.label}
+                          Repartir N
                         </PxButton>
-                      ))}
+                        <PxButton
+                          size="sm"
+                          variant={samplingMode === 'fixed_fps' ? 'primary' : 'ghost'}
+                          showSelector={false}
+                          onClick={() => setSamplingMode('fixed_fps')}
+                          className="min-h-[44px] px-2 text-xs whitespace-nowrap"
+                        >
+                          FPS fijo
+                        </PxButton>
+                      </div>
                     </div>
+
+                    {samplingMode === 'even_frames' ? (
+                      <>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[
+                            { label: '16f (4×4)', frames: 16 },
+                            { label: '24f (4×6)', frames: 24 },
+                            { label: '28f (4×7)', frames: 28 },
+                            { label: '32f (4×8)', frames: 32 },
+                          ].map((opt) => (
+                            <PxButton
+                              key={opt.frames}
+                              size="sm"
+                              variant={targetFrames === opt.frames ? 'primary' : 'ghost'}
+                              showSelector={false}
+                              onClick={() => setTargetFrames(opt.frames)}
+                              className="min-h-[44px] px-1 text-xs whitespace-nowrap"
+                            >
+                              {opt.label}
+                            </PxButton>
+                          ))}
+                        </div>
+                        <StepperRow
+                          label="Total de frames"
+                          value={targetFrames}
+                          onStep={(d) => setTargetFrames((f) => stepBounded(f, d, 4, 48))}
+                        />
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { label: 'Suave (6 fps)', fps: 6 },
+                          { label: 'Normal (8 fps)', fps: 8 },
+                          { label: 'Alto (12 fps)', fps: 12 },
+                        ].map((opt) => (
+                          <PxButton
+                            key={opt.fps}
+                            size="sm"
+                            variant={Math.round(sampleFps) === opt.fps ? 'primary' : 'ghost'}
+                            showSelector={false}
+                            onClick={() => setSampleFps(opt.fps)}
+                            className="min-h-[44px] px-1 text-xs whitespace-nowrap"
+                          >
+                            {opt.label}
+                          </PxButton>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="bg-crypt-ink border border-ash-purple px-2.5 py-2 text-[11px] font-mono text-bone-gray tabular-nums">
+                      <span className="text-ki-cyan font-bold">{trimPlan.totalFrames} frames</span>
+                      {' en '}
+                      {trimPlan.spanSeconds.toFixed(1)}s {'·'} 1 cada{' '}
+                      {trimPlan.intervalSeconds.toFixed(2)}s {'·'} hoja {cols}×{trimPlan.rows}
+                    </div>
+
+                    {trimPlan.truncated && (
+                      <div className="text-xs text-coral-red bg-dried-blood border border-rift-crimson px-2.5 py-2">
+                        Con FPS fijo el máximo es {DEFAULT_MAX_FIXED_FPS_FRAMES} frames y el final del video se recortaría. Usa &quot;Repartir N&quot; para extraer el clip completo.
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (
                 <div className="flex flex-col gap-2">
                   <span className="text-xs font-bold text-pale-gold">1. Cuadrícula de la imagen</span>
                   <div className="grid grid-cols-3 gap-1.5">
+                    <PxButton
+                      size="sm"
+                      variant={cols === 4 && rows === 6 ? 'primary' : 'ghost'}
+                      showSelector={false}
+                      onClick={() => {
+                        setCols(4);
+                        setRows(6);
+                        setTotalFrames(24);
+                      }}
+                      className="min-h-[44px]"
+                    >
+                      4×6 (24f)
+                    </PxButton>
                     <PxButton
                       size="sm"
                       variant={cols === 4 && rows === 5 ? 'primary' : 'ghost'}
@@ -1032,19 +1298,6 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                       className="min-h-[44px]"
                     >
                       5×5 (25f)
-                    </PxButton>
-                    <PxButton
-                      size="sm"
-                      variant={cols === 4 && rows === 2 ? 'primary' : 'ghost'}
-                      showSelector={false}
-                      onClick={() => {
-                        setCols(4);
-                        setRows(2);
-                        setTotalFrames(8);
-                      }}
-                      className="min-h-[44px]"
-                    >
-                      4×2 Idle (8f)
                     </PxButton>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1096,10 +1349,22 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                 </div>
               </div>
 
-              {/* Idle Playback Speed */}
+              {/* Idle Playback Speed (decoupled clearly from extraction sampling) */}
               {isIdleMode && (
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold text-pale-gold">Velocidad del bucle</span>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-pale-gold">
+                      {sourceKind === 'video' ? '4. Velocidad en combate' : '3. Velocidad en combate'}
+                    </span>
+                    <span className="font-mono text-[11px] text-neon-mint tabular-nums">
+                      Ciclo:{' '}
+                      {(
+                        (sourceKind === 'video' ? trimPlan.totalFrames : totalFrames) /
+                        Math.max(1, idleFps)
+                      ).toFixed(1)}
+                      s
+                    </span>
+                  </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[6, 8, 12].map((fps) => (
                       <PxButton
@@ -1120,7 +1385,9 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
               {/* Facing Direction (attack modes only) */}
               {!isDualMode && !isIdleMode && (
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold text-pale-gold">Hacia dónde ataca</span>
+                  <span className="text-xs font-bold text-pale-gold">
+                    {sourceKind === 'video' ? '4. Hacia dónde ataca' : '3. Hacia dónde ataca'}
+                  </span>
                   <div className="grid grid-cols-2 gap-1.5">
                     <PxButton
                       size="sm"
@@ -1225,7 +1492,11 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                   disabled={isProcessing}
                   onClick={handleProcess}
                 >
-                  {isProcessing ? 'Procesando...' : 'Generar y Probar →'}
+                  {isProcessing
+                    ? processProgress
+                      ? `Extrayendo ${processProgress.current}/${processProgress.total}...`
+                      : 'Procesando...'
+                    : 'Generar y Probar →'}
                 </PxButton>
               </div>
             </div>
@@ -1365,6 +1636,7 @@ export const CreateAnimationWizard: React.FC<CreateAnimationWizardProps> = ({
                 totalFrames={result.totalFrames}
                 impactFrame={result.impactFrame}
                 fallbackAspect={result.cellW / result.cellH}
+                initialFps={isIdleMode ? idleFps : 10}
                 onImpactFrameChange={
                   isIdleMode
                     ? undefined

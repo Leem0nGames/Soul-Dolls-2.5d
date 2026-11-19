@@ -150,7 +150,7 @@ describe('MeleeStabTiming', () => {
   it('tracks registered animation roles per species in SPECIES_ANIMATION_REGISTRY', () => {
     expect(SPECIES_ANIMATION_REGISTRY.length).toBeGreaterThanOrEqual(2);
     expect(hasSpeciesAnimationRole(1, 'physical_attack')).toBe(true);
-    expect(hasSpeciesAnimationRole(1, 'special_attack')).toBe(false);
+    expect(hasSpeciesAnimationRole(1, 'special_attack')).toBe(true);
     expect(hasSpeciesAnimationRole(15, 'physical_attack')).toBe(true);
     expect(hasSpeciesAnimationRole(15, 'special_attack')).toBe(false);
     expect(hasSpeciesAnimationRole(undefined, 'physical_attack')).toBe(false);

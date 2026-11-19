@@ -73,6 +73,38 @@ export const SOULDOLL_01_ATTACK_SPEC: AttackSheetSpec = {
   facing: 'left',
 };
 
+export const SOULDOLL_01_SPECIAL_ATTACK_SPEC: AttackSheetSpec = {
+  path: '/assets/attacks/special_attack_01.webp',
+  cols: 4,
+  rows: 9,
+  totalFrames: 36,
+  impactFrame: 16,
+  aspectRatio: 640 / 360,
+  facing: 'right',
+};
+
+export const SOULDOLL_01_IDLE_FRONT_SPEC: AnimationSheetSpec = {
+  path: '/assets/idles/idle_front_01.webp',
+  cols: 4,
+  rows: 10,
+  totalFrames: 37,
+  impactFrame: 0,
+  aspectRatio: 640 / 360,
+  loop: true,
+  fps: 8,
+};
+
+export const SOULDOLL_04_IDLE_BACK_SPEC: AnimationSheetSpec = {
+  path: '/assets/idles/idle_back_04.webp',
+  cols: 4,
+  rows: 6,
+  totalFrames: 24,
+  impactFrame: 0,
+  aspectRatio: 640 / 360,
+  loop: true,
+  fps: 8,
+};
+
 export const SOULDOLL_15_ATTACK_SPEC: AttackSheetSpec = {
   path: SOULDOLL_15_ATTACK_SHEET_PATH,
   cols: 4,
@@ -104,6 +136,24 @@ export const SPECIES_ANIMATION_REGISTRY: SpeciesAnimationEntry[] = [
     role: 'physical_attack',
     label: 'SoulDoll #01 — Brasito (4×7)',
     spec: SOULDOLL_01_ATTACK_SPEC,
+  },
+  {
+    speciesId: 1,
+    role: 'special_attack',
+    label: 'SoulDoll #01 — Brasito (Ataque Especial 4×9)',
+    spec: SOULDOLL_01_SPECIAL_ATTACK_SPEC,
+  },
+  {
+    speciesId: 1,
+    role: 'idle_front',
+    label: 'SoulDoll #01 — Brasito (Idle Frente 4×10)',
+    spec: SOULDOLL_01_IDLE_FRONT_SPEC,
+  },
+  {
+    speciesId: 4,
+    role: 'idle_back',
+    label: 'SoulDoll #04 — Gotín (Idle Espalda 4×6)',
+    spec: SOULDOLL_04_IDLE_BACK_SPEC,
   },
   {
     speciesId: 15,

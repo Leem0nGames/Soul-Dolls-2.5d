@@ -21,6 +21,326 @@ export type BgMode = 'checker' | 'dark' | 'sand' | 'grey';
 export type ChromaMode = 'green' | 'grey' | 'white' | 'black' | 'none';
 export type StudioSourceKind = 'video' | 'image';
 export type StudioCreationMode = AnimationRole | 'soul_dual';
+export type VideoSamplingMode = 'even_frames' | 'fixed_fps';
+export type VideoTimeScope = 'full' | 'trim';
+
+export interface StudioAssetPreset {
+  id: string;
+  mode: StudioCreationMode;
+  label: string;
+  specSummary: string;
+  sourceKind: StudioSourceKind;
+  timeScope: VideoTimeScope;
+  samplingMode: VideoSamplingMode;
+  targetFrames: number;
+  cols: number;
+  rows: number;
+  sampleFps: number;
+  idleFps: number;
+  trimStart: number;
+  trimEnd: number;
+  chromaMode: ChromaMode;
+  tolerance: number;
+  despill: number;
+  facing: 'left' | 'right';
+  expectedAspectLabel: string;
+  recommended?: boolean;
+}
+
+export const DEFAULT_MAX_FIXED_FPS_FRAMES = 48;
+
+export const STUDIO_ASSET_PRESETS: readonly StudioAssetPreset[] = [
+  // Idle Frente / Espalda presets (default: full 6s 16:9 green-screen video -> 24f 4x6)
+  {
+    id: 'idle_front_full_24',
+    mode: 'idle_front',
+    label: 'Idle 6s · 24f (4×6)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Todo el clip en 24 frames (4×6)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 24,
+    cols: 4,
+    rows: 6,
+    sampleFps: 4,
+    idleFps: 8,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+    recommended: true,
+  },
+  {
+    id: 'idle_front_compact_16',
+    mode: 'idle_front',
+    label: 'Compacto · 16f (4×4)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Todo el clip en 16 frames (4×4)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 16,
+    cols: 4,
+    rows: 4,
+    sampleFps: 4,
+    idleFps: 8,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  {
+    id: 'idle_front_smooth_32',
+    mode: 'idle_front',
+    label: 'Suave · 32f (4×8)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Todo el clip en 32 frames (4×8)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 32,
+    cols: 4,
+    rows: 8,
+    sampleFps: 6,
+    idleFps: 8,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  {
+    id: 'idle_back_full_24',
+    mode: 'idle_back',
+    label: 'Idle 6s · 24f (4×6)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Todo el clip en 24 frames (4×6)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 24,
+    cols: 4,
+    rows: 6,
+    sampleFps: 4,
+    idleFps: 8,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+    recommended: true,
+  },
+  {
+    id: 'idle_back_compact_16',
+    mode: 'idle_back',
+    label: 'Compacto · 16f (4×4)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Todo el clip en 16 frames (4×4)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 16,
+    cols: 4,
+    rows: 4,
+    sampleFps: 4,
+    idleFps: 8,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  {
+    id: 'idle_back_smooth_32',
+    mode: 'idle_back',
+    label: 'Suave · 32f (4×8)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Todo el clip en 32 frames (4×8)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 32,
+    cols: 4,
+    rows: 8,
+    sampleFps: 6,
+    idleFps: 8,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  // Physical & Special attack presets
+  {
+    id: 'physical_full_24',
+    mode: 'physical_attack',
+    label: 'Completo · 24f (4×6)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Video completo en 24 frames (4×6)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 24,
+    cols: 4,
+    rows: 6,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+    recommended: true,
+  },
+  {
+    id: 'physical_long_27',
+    mode: 'physical_attack',
+    label: 'Extenso · 27f (4×7)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · 27 frames (4×7) estilo ataque físico',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 27,
+    cols: 4,
+    rows: 7,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  {
+    id: 'physical_trim_20',
+    mode: 'physical_attack',
+    label: 'Recorte · 20f (4×5)',
+    specSummary: 'Video 16:9 (640×360) · Tramo recortado en 20 frames (4×5)',
+    sourceKind: 'video',
+    timeScope: 'trim',
+    samplingMode: 'even_frames',
+    targetFrames: 20,
+    cols: 4,
+    rows: 5,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 1.85,
+    trimEnd: 4.55,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  {
+    id: 'special_full_24',
+    mode: 'special_attack',
+    label: 'Completo · 24f (4×6)',
+    specSummary: 'Video 16:9 (640×360) · Fondo verde · Video completo en 24 frames (4×6)',
+    sourceKind: 'video',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 24,
+    cols: 4,
+    rows: 6,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 0,
+    trimEnd: 6,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+    recommended: true,
+  },
+  {
+    id: 'special_trim_20',
+    mode: 'special_attack',
+    label: 'Recorte · 20f (4×5)',
+    specSummary: 'Video 16:9 (640×360) · Tramo recortado en 20 frames (4×5)',
+    sourceKind: 'video',
+    timeScope: 'trim',
+    samplingMode: 'even_frames',
+    targetFrames: 20,
+    cols: 4,
+    rows: 5,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 1.85,
+    trimEnd: 4.55,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: '16:9 (640×360)',
+  },
+  // Dual Soul + Pet presets
+  {
+    id: 'soul_dual_green',
+    mode: 'soul_dual',
+    label: 'Dual · Fondo Verde',
+    specSummary: 'Imagen vertical · Alma salvaje (512×512) arriba + Pet pixel abajo',
+    sourceKind: 'image',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 1,
+    cols: 1,
+    rows: 1,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 0,
+    trimEnd: 0,
+    chromaMode: 'green',
+    tolerance: 54,
+    despill: 75,
+    facing: 'left',
+    expectedAspectLabel: 'Vertical Dual (Alma 512×512 + Pet)',
+    recommended: true,
+  },
+  {
+    id: 'soul_dual_grey',
+    mode: 'soul_dual',
+    label: 'Dual · Fondo Gris',
+    specSummary: 'Imagen vertical sobre fondo neutro gris · Recorte automático',
+    sourceKind: 'image',
+    timeScope: 'full',
+    samplingMode: 'even_frames',
+    targetFrames: 1,
+    cols: 1,
+    rows: 1,
+    sampleFps: 8,
+    idleFps: DEFAULT_IDLE_FPS,
+    trimStart: 0,
+    trimEnd: 0,
+    chromaMode: 'grey',
+    tolerance: 45,
+    despill: 35,
+    facing: 'left',
+    expectedAspectLabel: 'Vertical Dual (Alma 512×512 + Pet)',
+  },
+];
+
+export function getPresetsForCreationMode(mode: StudioCreationMode): StudioAssetPreset[] {
+  return STUDIO_ASSET_PRESETS.filter((preset) => preset.mode === mode);
+}
+
+export function getDefaultPresetForMode(mode: StudioCreationMode): StudioAssetPreset {
+  const list = getPresetsForCreationMode(mode);
+  return list.find((preset) => preset.recommended) ?? list[0] ?? STUDIO_ASSET_PRESETS[0];
+}
 
 export interface PixelBox {
   x0: number;
@@ -52,9 +372,13 @@ export interface GrimoireEntryItem {
 export interface TrimSamplingPlan {
   start: number;
   end: number;
+  spanSeconds: number;
   timestamps: number[];
   totalFrames: number;
   rows: number;
+  effectiveFps: number;
+  intervalSeconds: number;
+  truncated: boolean;
 }
 
 export interface ExportMetaInput {
@@ -91,30 +415,66 @@ export function computeTrimSamplingPlan(params: {
   cols: number;
   duration: number;
   maxFrames?: number;
+  samplingMode?: VideoSamplingMode;
+  targetFrames?: number;
 }): TrimSamplingPlan {
   const safeDuration = Math.max(0.2, params.duration);
   const clampedStart = Math.max(0, Math.min(params.start, safeDuration - 0.1));
   const clampedEnd = Math.max(clampedStart + 0.1, Math.min(params.end, safeDuration));
-  const safeFps = Math.max(1, Math.min(30, params.fps));
-  const maxFrames = Math.max(1, params.maxFrames ?? 40);
-  const step = 1 / safeFps;
+  const spanSeconds = Math.max(0.1, clampedEnd - clampedStart);
+  const safeMaxTimestamp = Math.max(0.01, safeDuration - 0.02);
+  const samplingMode: VideoSamplingMode = params.samplingMode ?? 'fixed_fps';
+  const safeCols = Math.max(1, Math.floor(params.cols));
 
   const timestamps: number[] = [];
-  for (let t = clampedStart; t <= clampedEnd + 0.0001; t += step) {
-    timestamps.push(Number(Math.min(safeDuration - 0.01, t).toFixed(4)));
-    if (timestamps.length >= maxFrames) break;
+  let truncated = false;
+
+  if (samplingMode === 'even_frames') {
+    const requested = Math.max(
+      1,
+      Math.min(64, Math.round(params.targetFrames ?? 24))
+    );
+    const safeEnd = Math.min(safeMaxTimestamp, clampedEnd);
+    const safeStart = Math.min(safeEnd, clampedStart);
+    if (requested === 1) {
+      timestamps.push(Number(safeStart.toFixed(4)));
+    } else {
+      const effectiveSpan = Math.max(0.01, safeEnd - safeStart);
+      for (let i = 0; i < requested; i++) {
+        const t = safeStart + (effectiveSpan * i) / (requested - 1);
+        timestamps.push(Number(Math.min(safeMaxTimestamp, t).toFixed(4)));
+      }
+    }
+  } else {
+    const safeFps = Math.max(1, Math.min(30, params.fps));
+    const maxFrames = Math.max(1, params.maxFrames ?? DEFAULT_MAX_FIXED_FPS_FRAMES);
+    const step = 1 / safeFps;
+    let uncappedCount = 0;
+
+    for (let t = clampedStart; t <= clampedEnd + 0.0001; t += step) {
+      uncappedCount++;
+      if (timestamps.length < maxFrames) {
+        timestamps.push(Number(Math.min(safeMaxTimestamp, t).toFixed(4)));
+      }
+    }
+    truncated = uncappedCount > maxFrames;
   }
 
-  const safeCols = Math.max(1, Math.floor(params.cols));
   const totalFrames = Math.max(1, timestamps.length);
   const rows = Math.max(1, Math.ceil(totalFrames / safeCols));
+  const effectiveFps = totalFrames / spanSeconds;
+  const intervalSeconds = totalFrames > 1 ? spanSeconds / (totalFrames - 1) : spanSeconds;
 
   return {
     start: clampedStart,
     end: clampedEnd,
+    spanSeconds,
     timestamps,
     totalFrames,
     rows,
+    effectiveFps,
+    intervalSeconds,
+    truncated,
   };
 }
 

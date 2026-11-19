@@ -21,6 +21,8 @@ import {
   computeTrimSamplingPlan,
   detectDualSoulRegions,
   filterGrimoireSpecies,
+  getDefaultPresetForMode,
+  getPresetsForCreationMode,
   pad2,
   stepBounded,
 } from '../src/domain/SpriteStudioLogic.ts';
@@ -77,6 +79,62 @@ describe('SpriteStudioLogic', () => {
     expect(invertedPlan.totalFrames).toBeGreaterThanOrEqual(1);
   });
 
+  it('extracts 100% of a 6-second video evenly across 24 frames (4x6) without cutting off', () => {
+    const fullIdlePlan = computeTrimSamplingPlan({
+      start: 0,
+      end: 6.0,
+      fps: 4,
+      cols: 4,
+      duration: 6.0,
+      samplingMode: 'even_frames',
+      targetFrames: 24,
+    });
+
+    expect(fullIdlePlan.totalFrames).toBe(24);
+    expect(fullIdlePlan.rows).toBe(6);
+    expect(fullIdlePlan.truncated).toBe(false);
+    expect(fullIdlePlan.spanSeconds).toBeCloseTo(6.0);
+    expect(fullIdlePlan.timestamps[0]).toBeCloseTo(0);
+    // Final frame sits right near the end of the 6.0s video rather than cutting off early
+    expect(fullIdlePlan.timestamps[23]).toBeCloseTo(5.98, 2);
+
+    // Fixed FPS flags truncation explicitly when a cap is exceeded
+    const cappedFixed = computeTrimSamplingPlan({
+      start: 0,
+      end: 6.0,
+      fps: 12,
+      cols: 4,
+      duration: 6.0,
+      samplingMode: 'fixed_fps',
+      maxFrames: 48,
+    });
+    expect(cappedFixed.totalFrames).toBe(48);
+    expect(cappedFixed.truncated).toBe(true);
+  });
+
+  it('provides preconfigured 16:9 green-screen presets for every asset creation role', () => {
+    const idleBackDefault = getDefaultPresetForMode('idle_back');
+    expect(idleBackDefault.timeScope).toBe('full');
+    expect(idleBackDefault.samplingMode).toBe('even_frames');
+    expect(idleBackDefault.targetFrames).toBe(24);
+    expect(idleBackDefault.cols).toBe(4);
+    expect(idleBackDefault.rows).toBe(6);
+    expect(idleBackDefault.chromaMode).toBe('green');
+    expect(idleBackDefault.expectedAspectLabel).toContain('16:9');
+
+    const idleFrontPresets = getPresetsForCreationMode('idle_front');
+    expect(idleFrontPresets.some((p) => p.targetFrames === 24)).toBe(true);
+    expect(idleFrontPresets.some((p) => p.targetFrames === 16)).toBe(true);
+
+    const physicalPresets = getPresetsForCreationMode('physical_attack');
+    expect(physicalPresets.some((p) => p.targetFrames === 24)).toBe(true);
+    expect(physicalPresets.some((p) => p.targetFrames === 27)).toBe(true);
+
+    const dualDefault = getDefaultPresetForMode('soul_dual');
+    expect(dualDefault.sourceKind).toBe('image');
+    expect(dualDefault.chromaMode).toBe('green');
+  });
+
   it('filters Grimoire entries by ID, name, animation status, and wild soul status', () => {
     const animatedOnly = filterGrimoireSpecies({
       maxId: 52,
@@ -85,7 +143,7 @@ describe('SpriteStudioLogic', () => {
       speciesMap: SPECIES,
       registry: SPECIES_ANIMATION_REGISTRY,
     });
-    expect(animatedOnly.map((e) => e.id)).toEqual([1, 15]);
+    expect(animatedOnly.map((e) => e.id)).toEqual([1, 4, 15]);
 
     const wildOnly = filterGrimoireSpecies({
       maxId: 52,

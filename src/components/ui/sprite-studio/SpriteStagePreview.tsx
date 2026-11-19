@@ -16,6 +16,7 @@ export interface SpriteStagePreviewProps {
   totalFrames: number;
   impactFrame: number;
   fallbackAspect: number;
+  initialFps?: number;
   onImpactFrameChange?: (nextImpactFrame: number) => void;
   showTechnicalDetails?: boolean;
 }
@@ -34,12 +35,13 @@ export const SpriteStagePreview: React.FC<SpriteStagePreviewProps> = ({
   totalFrames,
   impactFrame,
   fallbackAspect,
+  initialFps = 10,
   onImpactFrameChange,
   showTechnicalDetails = false,
 }) => {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [fps, setFps] = useState(10);
+  const [fps, setFps] = useState(initialFps);
   const [flipX, setFlipX] = useState(false);
   const [bgMode, setBgMode] = useState<BgMode>('checker');
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
@@ -48,7 +50,8 @@ export const SpriteStagePreview: React.FC<SpriteStagePreviewProps> = ({
   useEffect(() => {
     setCurrentFrame(0);
     setNaturalSize(null);
-  }, [assetPath]);
+    setFps(initialFps);
+  }, [assetPath, initialFps]);
 
   useEffect(() => {
     if (!isPlaying || totalFrames <= 1) return;
