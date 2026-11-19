@@ -3,6 +3,7 @@ import { getPropAtlasDef } from '../data/propAssets.ts';
 import type { FxQualityTier } from '../domain/FxPool.ts';
 import type { BattleBiome, MapDef, PropKind } from '../domain/types.ts';
 import type { PropInstancePlacement } from './BillboardBatch.ts';
+import { DIORAMA_RENDER_ORDER } from './DioramaLayers.ts';
 import type { DisposableRegistry } from './Disposables.ts';
 
 const _dummy = new THREE.Object3D();
@@ -316,7 +317,7 @@ export class OverworldAtmosphere {
   createActorShadow(radius = 0.72): THREE.Mesh {
     const mesh = new THREE.Mesh(this.shadowPlaneGeo, this.shadowMat);
     mesh.scale.set(radius, 1, radius * 0.85);
-    mesh.renderOrder = 1;
+    mesh.renderOrder = DIORAMA_RENDER_ORDER.SHADOW_DECAL;
     return mesh;
   }
 
@@ -347,7 +348,7 @@ export class OverworldAtmosphere {
       this.shadowMat,
       shadowItems.length
     );
-    inst.renderOrder = 1;
+    inst.renderOrder = DIORAMA_RENDER_ORDER.SHADOW_DECAL;
     for (let i = 0; i < shadowItems.length; i++) {
       const s = shadowItems[i];
       _dummy.position.set(s.x, s.y, s.z);
@@ -410,7 +411,7 @@ export class OverworldAtmosphere {
     disposables.track(glowMat);
 
     const inst = new THREE.InstancedMesh(glowGeo, glowMat, entries.length);
-    inst.renderOrder = 3;
+    inst.renderOrder = DIORAMA_RENDER_ORDER.ATMOSPHERE_GLOW;
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       _dummy.position.set(e.x, e.y, e.z);
@@ -501,7 +502,7 @@ export class OverworldAtmosphere {
       beam.position.set(ox, oy, oz);
       beam.rotation.z = isCave ? -0.18 : -0.34;
       beam.scale.set(scale, 1, 1);
-      beam.renderOrder = 4;
+      beam.renderOrder = DIORAMA_RENDER_ORDER.ATMOSPHERE_GLOW;
       group.add(beam);
     }
 
@@ -604,7 +605,7 @@ export class OverworldAtmosphere {
 
     const pts = new THREE.Points(geo, mat);
     pts.frustumCulled = false;
-    pts.renderOrder = 4;
+    pts.renderOrder = DIORAMA_RENDER_ORDER.ATMOSPHERE_PARTICLE;
     scene.add(pts);
     this.particles = pts;
     this.particleMat = mat;
@@ -685,7 +686,7 @@ export class OverworldAtmosphere {
 
     const pts = new THREE.Points(geo, mat);
     pts.frustumCulled = false;
-    pts.renderOrder = 4;
+    pts.renderOrder = DIORAMA_RENDER_ORDER.ATMOSPHERE_PARTICLE;
     scene.add(pts);
     this.puffGeo = geo;
     this.puffPoints = pts;

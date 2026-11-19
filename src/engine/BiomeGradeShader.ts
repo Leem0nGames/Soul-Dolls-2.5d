@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BattleBiome } from '../domain/types.ts';
+export { getBiomeCliffWeathering, type CliffWeatheringProfile } from './DioramaLayers.ts';
 
 export interface BiomeVisualProfile {
   tint: THREE.Vector3;
@@ -139,6 +140,7 @@ export const DioramaGradeShader = {
     uSaturation: { value: 1.08 },
     uVignette: { value: 0.09 },
     uGradeMix: { value: 1.0 },
+    uSsaoStrength: { value: 0.0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -159,7 +161,33 @@ export const DioramaGradeShader = {
     uniform float uSaturation;
     uniform float uVignette;
     uniform float uGradeMix;
+    uniform float uSsaoStrength;
     varying vec2 vUv;
+
+    float getLuma(vec3 c) {
+      return dot(c, vec3(0.299, 0.587, 0.114));
+    }
+
+    float sampleSsao(vec2 uv) {
+      vec3 center = texture2D(tDiffuse, uv).rgb;
+      float cLuma = getLuma(center);
+      float occlusion = 0.0;
+      vec2 offsets[8] = vec2[](
+        vec2( 1.5,  0.0), vec2(-1.5,  0.0),
+        vec2( 0.0,  1.5), vec2( 0.0, -1.5),
+        vec2( 1.5,  1.5), vec2(-1.5,  1.5),
+        vec2( 1.5, -1.5), vec2(-1.5, -1.5)
+      );
+
+      for (int i = 0; i < 8; i++) {
+        vec3 neighbor = texture2D(tDiffuse, uv + offsets[i] * uTexelSize).rgb;
+        float nLuma = getLuma(neighbor);
+        float diff = max(0.0, nLuma - cLuma);
+        occlusion += smoothstep(0.015, 0.22, diff);
+      }
+
+      return clamp(occlusion * 0.12 * uSsaoStrength, 0.0, 0.65);
+    }
 
     vec3 sampleTiltShift(vec2 uv, float blurAmt) {
       if (blurAmt <= 0.00015) {
@@ -199,6 +227,12 @@ export const DioramaGradeShader = {
         float luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
         graded = mix(vec3(luma), graded, uSaturation);
         graded = mix(rawCol, graded, uGradeMix);
+      }
+
+      // Pixel-art SSAO depth shadows at cliff bases and block crevices
+      if (uSsaoStrength > 0.001) {
+        float ao = sampleSsao(uv);
+        graded *= (1.0 - ao);
       }
 
       // Soft radial vignette

@@ -21,24 +21,27 @@ export function xpForLevel(level: number, growthRate: GrowthRate): number {
   }
 }
 
+import { getTalentStatBonuses } from './Talents.ts';
+
 export function calculateStats(
   base: Stats,
   ivs: Stats,
   level: number,
   evBonuses?: Partial<Stats>,
-  cardBonuses?: Partial<Stats>
+  cardBonuses?: Partial<Stats>,
+  talentBonuses?: Stats
 ): Stats {
-  const hpBonus = (evBonuses?.hp ?? 0) + (cardBonuses?.hp ?? 0);
+  const hpBonus = (evBonuses?.hp ?? 0) + (cardBonuses?.hp ?? 0) + (talentBonuses?.hp ?? 0);
   const hp = Math.floor(((2 * base.hp + ivs.hp) * level) / 100) + level + 10 + hpBonus;
   const calc = (b: number, iv: number, bonus = 0) =>
     Math.floor(((2 * b + iv) * level) / 100) + 5 + bonus;
   return {
     hp,
-    atk: calc(base.atk, ivs.atk, (evBonuses?.atk ?? 0) + (cardBonuses?.atk ?? 0)),
-    def: calc(base.def, ivs.def, (evBonuses?.def ?? 0) + (cardBonuses?.def ?? 0)),
-    spa: calc(base.spa, ivs.spa, (evBonuses?.spa ?? 0) + (cardBonuses?.spa ?? 0)),
-    spd: calc(base.spd, ivs.spd, (evBonuses?.spd ?? 0) + (cardBonuses?.spd ?? 0)),
-    spe: calc(base.spe, ivs.spe, (evBonuses?.spe ?? 0) + (cardBonuses?.spe ?? 0)),
+    atk: calc(base.atk, ivs.atk, (evBonuses?.atk ?? 0) + (cardBonuses?.atk ?? 0) + (talentBonuses?.atk ?? 0)),
+    def: calc(base.def, ivs.def, (evBonuses?.def ?? 0) + (cardBonuses?.def ?? 0) + (talentBonuses?.def ?? 0)),
+    spa: calc(base.spa, ivs.spa, (evBonuses?.spa ?? 0) + (cardBonuses?.spa ?? 0) + (talentBonuses?.spa ?? 0)),
+    spd: calc(base.spd, ivs.spd, (evBonuses?.spd ?? 0) + (cardBonuses?.spd ?? 0) + (talentBonuses?.spd ?? 0)),
+    spe: calc(base.spe, ivs.spe, (evBonuses?.spe ?? 0) + (cardBonuses?.spe ?? 0) + (talentBonuses?.spe ?? 0)),
   };
 }
 
@@ -115,12 +118,14 @@ export function recalculateCreatureStats(creature: CreatureInstance): void {
     creature.socketedCardId !== undefined
       ? (creature.socketedCardBonuses ?? getCardBonuses(creature.socketedCardId))
       : undefined;
+  const talentBonuses = getTalentStatBonuses(creature);
   const baseStats = calculateStats(
     spec.baseStats,
     creature.ivs,
     creature.level,
     creature.evBonuses,
-    cardBonuses
+    cardBonuses,
+    talentBonuses
   );
   const temperLevel = Math.max(0, Math.min(3, Math.floor(creature.vesselCalibration?.temperLevel ?? 0)));
   const temperHpBonus =

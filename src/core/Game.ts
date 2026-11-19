@@ -35,9 +35,11 @@ import { BattleScene } from '../scenes/BattleScene.ts';
 import { EvolutionScene } from '../scenes/EvolutionScene.ts';
 import { GalleryScene } from '../scenes/GalleryScene.ts';
 import { OverworldScene } from '../scenes/OverworldScene.ts';
+import { RandomEventScene } from '../scenes/RandomEventScene.ts';
 import { ShopScene } from '../scenes/ShopScene.ts';
 import { TitleScene } from '../scenes/TitleScene.ts';
 import { TutorialScene } from '../scenes/TutorialScene.ts';
+import type { RandomEventDef } from '../domain/RandomEvents.ts';
 import { EventBus } from './EventBus.ts';
 import { Input } from './Input.ts';
 import { Loop } from './Loop.ts';
@@ -393,6 +395,10 @@ export class Game {
 
   openShop(stock: string[], onDone: () => void): void {
     this.scenes.push(new ShopScene(this, stock, onDone));
+  }
+
+  startRandomEvent(eventDef: RandomEventDef): void {
+    this.scenes.push(new RandomEventScene(this, eventDef));
   }
 
   private handleBeforeInstallPrompt = (e: Event): void => {

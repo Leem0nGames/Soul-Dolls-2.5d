@@ -66,11 +66,11 @@ export const SOULDOLL_15_ATTACK_SHEET_PATH =
 export const SOULDOLL_01_ATTACK_SPEC: AttackSheetSpec = {
   path: SOULDOLL_01_ATTACK_SHEET_PATH,
   cols: 4,
-  rows: 7,
-  totalFrames: 27,
-  impactFrame: 12,
+  rows: 9,
+  totalFrames: 36,
+  impactFrame: 16,
   aspectRatio: 640 / 360,
-  facing: 'left',
+  facing: 'right',
 };
 
 export const SOULDOLL_01_SPECIAL_ATTACK_SPEC: AttackSheetSpec = {
@@ -134,7 +134,7 @@ export const SPECIES_ANIMATION_REGISTRY: SpeciesAnimationEntry[] = [
   {
     speciesId: 1,
     role: 'physical_attack',
-    label: 'SoulDoll #01 — Brasito (4×7)',
+    label: 'SoulDoll #01 — Brasito (4×9)',
     spec: SOULDOLL_01_ATTACK_SPEC,
   },
   {
