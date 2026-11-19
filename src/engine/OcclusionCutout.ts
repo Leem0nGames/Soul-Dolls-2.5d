@@ -7,7 +7,7 @@ export const OCCLUSION_DEPTH_FADE = 0.48;
 export const OCCLUSION_FOCUS_HEIGHT = 0.78;
 export const OCCLUSION_LEAD_IDLE = 0.25;
 export const OCCLUSION_LEAD_MOVING = 0.50;
-export const OCCLUSION_TERRAIN_MIN_REL_Y = -0.35;
+export const OCCLUSION_TERRAIN_MIN_REL_Y = 0.35;
 
 const _cameraPosUniform = { value: new THREE.Vector3() };
 const _focusPosUniform = { value: new THREE.Vector3() };

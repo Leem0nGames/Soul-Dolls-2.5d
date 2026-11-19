@@ -384,8 +384,8 @@ export function buildTerrainChunks(
           const aoAtTop = Math.max(0, Math.min(1, 1 - (curTop - b.yBottom) / 0.45));
           const aoAtBot = Math.max(0, Math.min(1, 1 - (curBot - b.yBottom) / 0.45));
 
-          const topShade = Math.min(1.04, dirShade * (0.94 + Math.min(0.08, curTop * 0.015)));
-          const botShade = dirShade * 0.84;
+          const topShade = Math.min(1.04, dirShade * (0.96 + Math.min(0.08, curTop * 0.015)));
+          const botShade = dirShade * 0.90;
 
           let verts: [
             [number, number, number],
