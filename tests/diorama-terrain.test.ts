@@ -5,8 +5,14 @@ import { HEIGHT_UNIT } from '../src/domain/TerrainRules.ts';
 import type { BattleBiome, MapDef } from '../src/domain/types.ts';
 import { getTileUv } from '../src/engine/AtlasBuilder.ts';
 import {
+  attachCliffEdgeDirectionalLighting,
+  updateCliffEdgeDirectionalLighting,
+  type CliffEdgeLightingUniforms,
+} from '../src/engine/CliffEdgeLighting.ts';
+import {
   buildCliffOrnamentsMesh,
   createCliffOrnamentMaterial,
+  createCliffOrnamentTexturePair,
   planCliffOrnaments,
 } from '../src/engine/CliffOrnamentMesher.ts';
 import {
@@ -27,6 +33,20 @@ import {
   attachTerrainDioramaShader,
   updateTerrainDioramaBiome,
 } from '../src/engine/TerrainWeatheringShader.ts';
+import {
+  OVERHANG_ASSET_SHEET_URL,
+  OVERHANG_SHEET_SLOTS,
+  buildOverhangNormalBuffer,
+  buildProceduralOverhangsGroup,
+  createOverhangAssetSheet,
+  createOverhangTexturePair,
+  generateCliffOverhangPlan,
+  isChromaGreenPixel,
+  isChromaMagentaPixel,
+  processChromaKeyOverhangBuffer,
+  processMagentaGridOverhangBuffer,
+  type OverhangGenerationStats,
+} from '../src/engine/ProceduralOverhangGenerator.ts';
 
 function makeCliffTestMap(biome: BattleBiome = 'forest'): MapDef {
   return {
@@ -256,5 +276,232 @@ describe('Diorama 90-degree cliff terrain & shaders', () => {
     );
     expect(PixelSsaoShader.fragmentShader).toContain('perspectiveDepthToViewZ');
     expect(PixelSsaoShader.fragmentShader).toContain('uPixelGrid');
+  });
+
+  it('generates procedural overhang assets (worn stone, mossy patches, hanging roots) with corner caps and diorama sorting', () => {
+    expect(OVERHANG_ASSET_SHEET_URL).toContain('520710015_1795112955056095_ccb22d3d.jpg');
+    const sheet = createOverhangAssetSheet();
+    const img = sheet.image as HTMLCanvasElement;
+    expect(img.width).toBe(64 * OVERHANG_SHEET_SLOTS.length);
+    expect(img.height).toBe(64);
+    expect(sheet.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(sheet.magFilter).toBe(THREE.NearestFilter);
+    sheet.dispose();
+
+    // Verify magenta chroma-key strips #FF00FF while keeping emerald/forest greens and brown roots 100% intact
+    expect(isChromaMagentaPixel(255, 0, 255)).toBe(true);
+    expect(isChromaMagentaPixel(42, 160, 68)).toBe(false);
+    expect(isChromaGreenPixel(0, 255, 0)).toBe(true);
+    expect(isChromaGreenPixel(42, 140, 85)).toBe(false);
+
+    // Build a 12x8 synthetic 3x2 grid with #FF00FF magenta background and emerald green sprite in cell (0,0)
+    const gw = 12;
+    const gh = 8;
+    const magGrid = new Uint8ClampedArray(gw * gh * 4);
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const idx = (y * gw + x) * 4;
+        const inCell00 = x >= 1 && x <= 2 && y >= 1 && y <= 2;
+        if (inCell00) {
+          magGrid[idx] = 52;
+          magGrid[idx + 1] = 175;
+          magGrid[idx + 2] = 74;
+          magGrid[idx + 3] = 255;
+        } else {
+          magGrid[idx] = 255;
+          magGrid[idx + 1] = 0;
+          magGrid[idx + 2] = 255;
+          magGrid[idx + 3] = 255;
+        }
+      }
+    }
+    const magAtlas = processMagentaGridOverhangBuffer(magGrid, gw, gh, 3, 2, 16);
+    expect(magAtlas.width).toBe(16 * OVERHANG_SHEET_SLOTS.length);
+    expect(magAtlas.height).toBe(16);
+    // Slot 3 (mossy_patch) receives cell (0,0) with lush green foliage preserved (opaque + G > R & B)
+    const mossCenterIdx = (4 * magAtlas.width + (3 * 16 + 8)) * 4;
+    expect(magAtlas.data[mossCenterIdx + 3]).toBe(255);
+    expect(magAtlas.data[mossCenterIdx + 1]).toBeGreaterThan(magAtlas.data[mossCenterIdx]);
+
+    const mockW = 16;
+    const mockH = 8;
+    const mockRgba = new Uint8ClampedArray(mockW * mockH * 4);
+    for (let y = 0; y < mockH; y++) {
+      for (let x = 0; x < mockW; x++) {
+        const idx = (y * mockW + x) * 4;
+        if (y >= 2 && y <= 5) {
+          // Foreground row across all 8 columns
+          mockRgba[idx] = 107;
+          mockRgba[idx + 1] = 119;
+          mockRgba[idx + 2] = 140;
+          mockRgba[idx + 3] = 255;
+        } else {
+          // Neon green background
+          mockRgba[idx] = 0;
+          mockRgba[idx + 1] = 255;
+          mockRgba[idx + 2] = 0;
+          mockRgba[idx + 3] = 255;
+        }
+      }
+    }
+    const processed = processChromaKeyOverhangBuffer(mockRgba, mockW, mockH, 16);
+    expect(processed.width).toBe(16 * OVERHANG_SHEET_SLOTS.length);
+    expect(processed.height).toBe(16);
+    // Top row of slot 0 should be foreground (top-aligned to y=0), alpha = 255
+    expect(processed.data[3]).toBe(255);
+
+    const forestMap = makeCliffTestMap('forest');
+    const boundaries = detectCliffBoundaries(forestMap);
+    const plan = generateCliffOverhangPlan(forestMap, boundaries);
+    expect(plan.length).toBeGreaterThan(0);
+
+    // Outer corners of the 3x3 ring must be flagged as corners and include top-cap overhangs
+    const corners = plan.filter((p) => p.isCorner);
+    expect(corners.length).toBeGreaterThan(0);
+    expect(corners.some((p) => p.hasTopCap && p.overhangProjection > 0)).toBe(true);
+
+    // Villa Origen should spawn diverse edge-worn stone and vegetation overhangs
+    const villaPlan = generateCliffOverhangPlan(MAPS.villa_origen);
+    const kinds = new Set(villaPlan.map((p) => p.kind));
+    expect(
+      kinds.has('mossy_patch') || kinds.has('hanging_roots') || kinds.has('worn_capstone')
+    ).toBe(true);
+
+    const group = buildProceduralOverhangsGroup(forestMap);
+    expect(group).not.toBeNull();
+    const mesh = group!.children[0] as THREE.Mesh;
+    expect(mesh.renderOrder).toBe(DIORAMA_RENDER_ORDER.CLIFF_ORNAMENT);
+    expect(mesh.castShadow).toBe(true);
+
+    const stats = mesh.userData.overhangStats as OverhangGenerationStats;
+    expect(stats.total).toBe(plan.length);
+    expect(stats.withTopCap).toBe(stats.total);
+    expect(stats.volumetricSlabs).toBe(stats.total * 2);
+    expect(stats.corners).toBe(corners.length);
+
+    // Every emitted quad must have +Y top cap, -Y dark undercut soffit, or horizontal cardinal normal
+    const norm = mesh.geometry.getAttribute('normal') as THREE.BufferAttribute;
+    let topCapVerts = 0;
+    let soffitVerts = 0;
+    let cardinalVerts = 0;
+    for (let i = 0; i < norm.count; i++) {
+      const nx = norm.getX(i);
+      const ny = norm.getY(i);
+      const nz = norm.getZ(i);
+      if (Math.abs(ny - 1) < 1e-4) {
+        topCapVerts++;
+      } else if (Math.abs(ny + 1) < 1e-4) {
+        soffitVerts++;
+      } else {
+        expect(Math.abs(ny)).toBeLessThan(1e-4);
+        expect(Math.abs(Math.abs(nx) + Math.abs(nz) - 1)).toBeLessThan(1e-4);
+        cardinalVerts++;
+      }
+    }
+    expect(topCapVerts).toBe(stats.volumetricSlabs * 4);
+    expect(soffitVerts).toBe(stats.volumetricSlabs * 4);
+    // Front + left end-cap + right end-cap per slab (3 * 4 verts) plus 1 quad (4 verts) per drape skirt
+    expect(cardinalVerts).toBe(stats.volumetricSlabs * 3 * 4 + stats.drapeSkirts * 4);
+
+    mesh.geometry.dispose();
+    (group!.userData.createdMaterial as THREE.Material)?.dispose();
+    (group!.userData.createdTexture as THREE.Texture)?.dispose();
+    (group!.userData.createdNormalTexture as THREE.Texture)?.dispose();
+  });
+
+  it('computes per-slot tangent-space overhang normal maps, vertex tangents, and tracks directional sun lighting', () => {
+    // 2 slots of 8x8: slot 0 opaque bright block, slot 1 transparent (testing zero cross-slot bleed)
+    const cell = 8;
+    const w = cell * 2;
+    const h = cell;
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    for (let y = 1; y <= 6; y++) {
+      for (let x = 1; x < cell; x++) {
+        const idx = (y * w + x) * 4;
+        rgba[idx] = 210;
+        rgba[idx + 1] = 195;
+        rgba[idx + 2] = 160;
+        rgba[idx + 3] = 255;
+      }
+    }
+
+    const nBuf = buildOverhangNormalBuffer(rgba, w, h, cell);
+    expect(nBuf.length).toBe(rgba.length);
+
+    // Transparent slot 1 must remain untouched neutral outward normal (128, 128, 255, 255)
+    for (let y = 0; y < h; y++) {
+      const slot1Idx = (y * w + cell) * 4;
+      expect(nBuf[slot1Idx]).toBe(128);
+      expect(nBuf[slot1Idx + 1]).toBe(128);
+      expect(nBuf[slot1Idx + 2]).toBe(255);
+      expect(nBuf[slot1Idx + 3]).toBe(255);
+    }
+
+    // Upper bevel edge (y=1) should tilt upward (+ny -> green > 128), bottom edge (y=6) should tilt downward (green < 128)
+    const topEdgeIdx = (1 * w + 4) * 4;
+    const botEdgeIdx = (6 * w + 4) * 4;
+    expect(nBuf[topEdgeIdx + 1]).toBeGreaterThan(128);
+    expect(nBuf[botEdgeIdx + 1]).toBeLessThan(128);
+    expect(nBuf[topEdgeIdx + 2]).toBeGreaterThan(128);
+
+    // Paired texture loader exposes linear NoColorSpace NearestFilter normalMap
+    const pair = createCliffOrnamentTexturePair();
+    expect(pair.map.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(pair.normalMap.colorSpace).toBe(THREE.NoColorSpace);
+    expect(pair.normalMap.magFilter).toBe(THREE.NearestFilter);
+
+    const mat = createCliffOrnamentMaterial(pair.map, pair.normalMap, 'forest', false);
+    expect(mat.normalMap).toBe(pair.normalMap);
+    expect(mat.normalMapType).toBe(THREE.TangentSpaceNormalMap);
+    expect(mat.normalScale.x).toBeGreaterThan(1.0);
+    expect(mat.customProgramCacheKey()).toContain('cam_occ_');
+    expect(mat.customProgramCacheKey()).toContain('cliff_edge_lit_v1');
+
+    // Geometry tangents must exist with itemSize 4 for accurate tangent-space normal mapping on all 5 slab faces
+    const forestMap = makeCliffTestMap('forest');
+    const group = buildCliffOrnamentsMesh(forestMap, mat)!;
+    const mesh = group.children[0] as THREE.Mesh;
+    const tangent = mesh.geometry.getAttribute('tangent') as THREE.BufferAttribute;
+    expect(tangent).toBeDefined();
+    expect(tangent.itemSize).toBe(4);
+    expect(tangent.count).toBe(mesh.geometry.getAttribute('position').count);
+    expect(Number.isFinite(tangent.getX(0))).toBe(true);
+
+    // Directional light sync updates light direction, fill rim, and sunset/night/cave tint presets
+    const sun = new THREE.DirectionalLight(0xffdd99, 1.5);
+    sun.position.set(10, 12, 4);
+    sun.target.position.set(0, 0, 0);
+    updateCliffEdgeDirectionalLighting(mat, {
+      biome: 'forest',
+      sunLight: sun,
+      timePhase: 'dusk',
+      isCave: false,
+    });
+    const uniforms = mat.userData.__cliffEdgeLitUniforms as CliffEdgeLightingUniforms;
+    const sunsetLightX = uniforms.uCliffLightDir.value.x;
+    const sunsetKeyHex = uniforms.uCliffKeyColor.value.getHexString();
+
+    sun.position.set(-10, 12, -4);
+    updateCliffEdgeDirectionalLighting(mat, {
+      biome: 'cave',
+      sunLight: sun,
+      timePhase: 'night',
+      isCave: true,
+    });
+    expect(uniforms.uCliffLightDir.value.x).toBeLessThan(0);
+    expect(uniforms.uCliffLightDir.value.x).not.toBeCloseTo(sunsetLightX);
+    expect(uniforms.uCliffKeyColor.value.getHexString()).not.toBe(sunsetKeyHex);
+
+    // Attach helper handles repeated calls cleanly without duplicating shader hooks
+    attachCliffEdgeDirectionalLighting(mat, 'snow', false);
+    expect(mat.customProgramCacheKey().match(/cliff_edge_lit_v1/g)?.length).toBe(1);
+
+    const standalonePair = createOverhangTexturePair();
+    standalonePair.map.dispose();
+    standalonePair.normalMap.dispose();
+    mesh.geometry.dispose();
+    mat.dispose();
+    pair.map.dispose();
+    pair.normalMap.dispose();
   });
 });
