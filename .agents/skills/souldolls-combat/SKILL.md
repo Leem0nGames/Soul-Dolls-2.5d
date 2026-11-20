@@ -17,7 +17,9 @@ Después inspeccionar el código real relacionado con la tarea. Esta skill descr
 ## Modelo aprobado
 - Combate por turnos estilo Pokémon, con decisiones tácticas ligeras.
 - Encuentros normales: una SoulDoll activa por bando.
-- Jefes: objetivo de hasta tres SoulDolls enemigas activas simultáneamente, con sinergias y acciones coordinadas.
+- Jefes y encuentros especiales: el jugador despliega hasta tres SoulDolls aliadas activas; cada una elige una acción por ronda, como en los combates grupales de Pokémon.
+- El enemigo puede ser un único jefe poderoso o un grupo de hasta tres SoulDolls. Usar las reglas grupales comunes, sin fases, medidores ni un subsistema especial obligatorio.
+- Las sinergias se activan por combinaciones de afinidades, piezas, núcleos, habilidades o linajes.
 - Estados alterados, afinidades, habilidades, combos y sinergias entre piezas/núcleos deben ser legibles y contrarrestables.
 - No convertir el sistema en combate de acción en tiempo real ni en una táctica de cuadrícula.
 - La capacidad del grupo/reserva no define cuántas unidades están activas a la vez.
@@ -63,15 +65,16 @@ No asumir que el estado interno del motor y el HP que ve el jugador son idéntic
 - Los movimientos de estado, fallos, cambios, captura, daño residual, clima y fin de turno tienen secuencias distintas: no forzar todos a usar la animación de ataque físico.
 - Al tocar esta secuencia, inspeccionar también `src/domain/MeleeStabTiming.ts`, `src/data/animations.ts` y los consumidores de eventos correspondientes.
 
-## Diseño futuro de jefes multi-enemigo
-El despliegue de hasta tres enemigos simultáneos es una meta aprobada, no una función que se pueda dar por existente. Cuando el usuario solicite implementarlo:
-1. Diseñar primero un cambio localizado al modelo de estado del bando enemigo; no reutilizar un único `activeIndex` como si representara tres unidades.
-2. Mantener intacto el flujo normal de una unidad activa por lado.
-3. Definir objetivos de cada acción, selección de objetivo, orden de turnos y resolución de acciones simultáneas/encadenadas.
-4. Definir cómo se muestran HP, estados, piezas dañadas, selección de objetivo y animaciones de cada enemigo sin solapar estaciones ni ocultar información.
-5. Diseñar sinergias explícitas, telegráficas y contrarrestables; no conceder acciones extra implícitas ni ataques combinados sin reglas visibles.
-6. Tratar cambios de tipos/interfaces/eventos como una evolución compatible y revisar serialización/guardado solo si el estado de combate se persiste.
-7. No convertir encuentros normales ni equipos de entrenadores comunes en multienemigo por accidente.
+## Diseño futuro de combate grupal
+El despliegue de tres aliadas y hasta tres enemigos simultáneos es una meta aprobada, no una función que se pueda dar por existente. Al implementarlo:
+1. Extender el modelo de estado para varias unidades activas por bando sin romper el flujo individual actual.
+2. Mantener los encuentros normales 1 contra 1.
+3. Permitir que cada SoulDoll aliada elija una acción por ronda y un objetivo válido; resolver acciones con las reglas existentes de prioridad, velocidad y RNG.
+4. Admitir jefes individuales poderosos contra el equipo de tres y encuentros especiales con hasta tres enemigos.
+5. Añadir selección de objetivos y presentación legible de HP, estados, piezas dañadas y animaciones para cada unidad.
+6. Activar sinergias por combinaciones de afinidades, piezas, núcleos, habilidades o linajes, con reglas claras y sin subsistemas innecesarios.
+7. Preservar la sincronización visual del daño con el impacto (`BattleImpactSync`/`BattleScene`) para cada objetivo.
+8. Revisar serialización/guardado solo si el estado de combate se persiste.
 
 No implementar esta expansión durante una tarea documental o de animación. Primero presentar el alcance y los archivos afectados.
 
