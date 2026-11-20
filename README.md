@@ -36,6 +36,22 @@ El mundo combina escenarios 3D de baja complejidad con personajes y criaturas pi
 
 **Bucle principal:** explorar → encontrar SoulDolls → combatir → sellar almas → construir y mejorar cuerpos → entrenar/evolucionar → avanzar en misiones.
 
+## Dirección de diseño aprobada (20/11/2026)
+
+La dirección vigente del juego está documentada en **[docs/SOULDOLLS_DESIGN.md](docs/SOULDOLLS_DESIGN.md)**. Las decisiones principales son:
+
+- RPG anime ecchi de intensidad muy alta; los personajes que participen en contenido ecchi son adultos.
+- Protagonista masculino fijo; el romance no es el eje del juego.
+- Aventura por capítulos y regiones diseñadas, no mundo abierto procedural infinito.
+- SoulDolls: muñecas artificiales habitadas por almas, personalizables mediante piezas intercambiables.
+- Combate por turnos estilo Pokémon: encuentros normales individuales y jefes con objetivo de hasta tres enemigos simultáneos y sinergias.
+- Captura mediante debilitamiento, dispositivo y probabilidad condicionada.
+- Progresión clásica por niveles, experiencia, habilidades y evolución.
+- Objetivo de 10–15 horas para la historia principal y 50–70 SoulDolls.
+
+**Importante:** estas son decisiones de diseño aprobadas, no una declaración de que todas las funciones estén implementadas. El documento de diseño separa explícitamente objetivos futuros del estado real del código.
+
+---
 ## Estado del proyecto
 
 <kbd>En desarrollo activo</kbd>
@@ -120,6 +136,8 @@ En pantallas táctiles se muestran controles en pantalla: cruceta de movimiento,
 
 ## Arquitectura del código
 
+Las reglas de trabajo para agentes están centralizadas en [AGENTS.md](AGENTS.md), y la dirección de diseño aprobada en [docs/SOULDOLLS_DESIGN.md](docs/SOULDOLLS_DESIGN.md). Las skills específicas se encuentran en `.agent/skills/`.
+
 El juego está organizado por responsabilidades. Antes de modificar una mecánica, localiza su lógica y conserva el flujo existente.
 
 ```text
@@ -148,7 +166,7 @@ Villa Origen, Laboratorio de Origen, Taller de Marionetas, Ruta 1, Pueblo Bruma,
 
 > **Objetivo:** entender el juego y su arquitectura antes de editar. Este bloque es el punto de entrada recomendado para cualquier agente de programación.
 
-1. Lee este README y después inspecciona los archivos relacionados con la tarea.
+1. Lee este README, `AGENTS.md` y `docs/SOULDOLLS_DESIGN.md`; después inspecciona los archivos relacionados con la tarea.
 2. **`src/core/Game.ts`** es el orquestador principal: inicializa sistemas, escenas, opciones y guardado.
 3. **`src/domain/`** contiene las reglas de juego. Reutiliza sus funciones antes de duplicar lógica en escenas o UI.
 4. **`src/data/`** es la fuente de verdad del contenido. Especies, movimientos, objetos y mapas deben seguir siendo data-driven.
@@ -159,6 +177,8 @@ Villa Origen, Laboratorio de Origen, Taller de Marionetas, Ruta 1, Pueblo Bruma,
 ### Reglas de trabajo para agentes
 
 - No reemplazar el proyecto ni migrar de stack: trabajar sobre la arquitectura existente.
+- Respetar `docs/SOULDOLLS_DESIGN.md` como fuente de verdad de diseño y `AGENTS.md` como reglas del harness de agentes.
+- Separar siempre diseño objetivo de funcionalidad implementada; no presentar jefes de tres enemigos simultáneos como función existente hasta verificarlo en código.
 - No duplicar sistemas que ya existan en `domain/`, `core/` o `engine/`.
 - Mantener separadas las reglas de dominio, la presentación React y el render Three.js.
 - Priorizar cambios pequeños, localizados y compatibles con los datos/partidas actuales.
