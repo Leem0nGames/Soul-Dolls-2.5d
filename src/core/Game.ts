@@ -224,6 +224,12 @@ export class Game {
     this.loop.setBatterySaver(opt.batterySaver);
     this.dialog.setFastMode(opt.textSpeed === 'fast');
     this.cameraRig.setCameraMode(opt.cameraMode);
+    this.cameraRig.setCameraLabConfig({
+      enabled: opt.cameraLabEnabled,
+      fov: opt.cameraLabConfig.fov,
+      distance: opt.cameraLabConfig.distance,
+      height: opt.cameraLabConfig.height,
+    });
     this.touchControls.setCameraMode(opt.cameraMode);
     this.renderer.setPixelEffect(opt.pixelEffect);
     this.renderer.setQualityMode(opt.graphicsQuality);
