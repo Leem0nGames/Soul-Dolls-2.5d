@@ -160,6 +160,12 @@ export class BattleScene implements Scene {
 
   private eventQueue: BattleEvent[] = [];
   private processingEvent = false;
+  // The engine resolves a whole turn up front; keep HUD HP staged until each event is presented.
+  private displayedHpByUid = new Map<string, number>();
+  private displayedActiveUid: Record<'player' | 'enemy', string | null> = {
+    player: null,
+    enemy: null,
+  };
   private pendingEvolutions: Array<{ partyIndex: number; targetSpeciesId: number }> = [];
   private totalXpEarned = 0;
   private droppedCards: BattleResultDropSummary[] = [];
@@ -697,14 +703,56 @@ export class BattleScene implements Scene {
     );
   }
 
+  private captureDisplayedBattleState(): void {
+    for (const side of ['player', 'enemy'] as const) {
+      const sideState = this.engine.state[side];
+      for (const creature of sideState.party) {
+        this.displayedHpByUid.set(creature.uid, creature.currentHp);
+      }
+      this.displayedActiveUid[side] = this.engine.getActive(side).uid;
+    }
+  }
+
+  private getDisplayedCreature(side: 'player' | 'enemy'): CreatureInstance {
+    const party = this.engine.state[side].party;
+    const activeUid = this.displayedActiveUid[side];
+    const creature = (activeUid ? party.find((entry) => entry.uid === activeUid) : undefined)
+      ?? this.engine.getActive(side);
+    const displayedHp = this.displayedHpByUid.get(creature.uid);
+    return displayedHp === undefined ? creature : { ...creature, currentHp: displayedHp };
+  }
+
+  private applyDisplayedBattleEvent(ev: BattleEvent): void {
+    if (ev.type === 'switch_in') {
+      this.displayedActiveUid[ev.side] = ev.creature.uid;
+      if (!this.displayedHpByUid.has(ev.creature.uid)) {
+        this.displayedHpByUid.set(ev.creature.uid, ev.creature.currentHp);
+      }
+      return;
+    }
+
+    if (ev.type === 'damage' || ev.type === 'heal' || ev.type === 'status_tick' || ev.type === 'weather_tick') {
+      const uid = this.displayedActiveUid[ev.target];
+      if (uid) this.displayedHpByUid.set(uid, ev.hpAfter);
+    }
+  }
+
   private refreshHud(): void {
     this.game.battleHud.updateSoulDust(getSoulDust(this.game.saveData));
+    const playerParty = this.engine.state.player.party.map((creature) => {
+      const hp = this.displayedHpByUid.get(creature.uid);
+      return hp === undefined ? creature : { ...creature, currentHp: hp };
+    });
+    const enemyParty = this.engine.state.enemy.party.map((creature) => {
+      const hp = this.displayedHpByUid.get(creature.uid);
+      return hp === undefined ? creature : { ...creature, currentHp: hp };
+    });
     this.game.battleHud.updateBars(
-      this.engine.getActive('player'),
-      this.engine.getActive('enemy'),
+      this.getDisplayedCreature('player'),
+      this.getDisplayedCreature('enemy'),
       this.engine.state.isWild,
-      this.engine.state.player.party,
-      this.engine.state.enemy.party
+      playerParty,
+      enemyParty
     );
   }
 
@@ -786,6 +834,7 @@ export class BattleScene implements Scene {
 
   private submitAction(action: BattleAction): void {
     this.game.battleHud.hideMenu();
+    this.captureDisplayedBattleState();
     const events = this.engine.stepTurn(action);
     this.eventQueue.push(...events);
     this.pumpEvents();
@@ -819,6 +868,7 @@ export class BattleScene implements Scene {
       return;
     }
 
+    this.applyDisplayedBattleEvent(ev);
     this.refreshHud();
     if (ev.damagedPart) {
       this.game.battleHud.flashBodyPart(ev.target, ev.damagedPart, {
@@ -834,7 +884,7 @@ export class BattleScene implements Scene {
     const matHandle = isPlayer ? this.playerMatHandle : this.enemyMatHandle;
     const targetRig = isPlayer ? this.playerRig : this.enemyRig;
     const home = isPlayer ? PLAYER_STATION_POS : ENEMY_STATION_POS;
-    const targetCreature = this.engine.getActive(ev.target);
+    const targetCreature = this.getDisplayedCreature(ev.target);
     const sfx = ev.crit
       ? 'crit'
       : ev.effectiveness >= 2
@@ -946,6 +996,7 @@ export class BattleScene implements Scene {
     }
 
     this.processingEvent = true;
+    this.applyDisplayedBattleEvent(ev);
     const done = () => {
       if (this.exited) return;
       this.processingEvent = false;
