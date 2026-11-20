@@ -85,9 +85,19 @@ El repositorio contiene un juego ejecutable y sistemas jugables en evolución. N
 | Código fuente | [GitHub](https://github.com/Leemonztuff/Soul-Dolls-2.5d) |
 | Desarrollador | [@Leemonztuff](https://github.com/Leemonztuff) |
 
-### Arte del juego
+### Capturas y arte del juego
 
-Las capturas de gameplay todavía no están versionadas en el repositorio. Para no presentar imágenes ficticias como si fueran capturas reales, esta sección muestra hojas de sprites que sí forman parte de los assets del juego. La galería interactiva de arriba permite ver las criaturas dentro de la aplicación.
+Capturas reales tomadas directamente desde la aplicación en ejecución:
+
+<p align="center">
+  <img src="docs/screenshots/title.png" alt="Pantalla de título de SoulDolls" width="420" />
+  <img src="docs/screenshots/overworld.png" alt="Exploración 2.5D en Villa Origen" width="420" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/tutorial.png" alt="Instrucción inicial y lecciones tácticas" width="420" />
+  <img src="docs/screenshots/gallery.png" alt="Galería interactiva de 50 especies de SoulDolls" width="420" />
+</p>
+<p align="center"><sub>Capturas reales del juego: pantalla de título, exploración en Villa Origen, tutorial táctico y galería de 50 especies</sub></p>
 
 <p align="center">
   <img src="public/assets/souldolls/01.webp" alt="Hoja de sprites de SoulDoll 01" width="160" />

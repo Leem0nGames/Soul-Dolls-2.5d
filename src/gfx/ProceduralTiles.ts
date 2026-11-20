@@ -450,7 +450,7 @@ export function buildTileAtlasCanvas(): HTMLCanvasElement {
   put('roof_orange', PALETTE.oldBronze, [PALETTE.rust, PALETTE.resonantGold], 127, 'roof');
 
   // New semantic fallback tiles
-  put('cliff_rock', PALETTE.burntUmber, [PALETTE.leatherBrown, PALETTE.stoneMid, PALETTE.darkOak], 128, 'cobble');
+  put('cliff_rock', PALETTE.darkOak, [PALETTE.burntUmber, PALETTE.stoneShadow, PALETTE.leatherBrown], 128, 'cobble');
   put('cracked_stone', PALETTE.stoneMid, [PALETTE.cryptInk, PALETTE.stoneHighlight], 129, 'cobble');
   put('mossy_stone', PALETTE.stoneMid, [PALETTE.forestGreen, PALETTE.oliveDrab, PALETTE.stoneShadow], 130, 'cobble');
   put('palace_tile', PALETTE.porcelain, [PALETTE.boneGray, PALETTE.sandDesert], 131, 'arena');

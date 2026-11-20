@@ -112,11 +112,10 @@ import {
   type PropInstancePlacement,
 } from '../engine/BillboardBatch.ts';
 import { buildBuildingsMesh, buildInteriorWallsMesh } from '../engine/BuildingMesher.ts';
-import { updateCliffEdgeDirectionalLighting } from '../engine/CliffEdgeLighting.ts';
 import {
   buildCliffOrnamentsMesh,
   createCliffOrnamentMaterial,
-  createCliffOrnamentTexturePair,
+  createCliffOrnamentTexture,
 } from '../engine/CliffOrnamentMesher.ts';
 import { DisposableRegistry } from '../engine/Disposables.ts';
 import { buildMapGatesGroup } from '../engine/GateMesher.ts';
@@ -282,7 +281,6 @@ export class OverworldScene implements Scene {
   private postFx: OverworldPostFx;
   private atmosphere: OverworldAtmosphere | null = null;
   private waterSurface: WaterSurface | null = null;
-  private cliffOrnamentMat: THREE.MeshStandardMaterial | null = null;
   private sunLight: THREE.DirectionalLight | null = null;
   private hemiLight: THREE.HemisphereLight | null = null;
   private baseHorizonColorHex = 0x000000;
@@ -855,14 +853,6 @@ export class OverworldScene implements Scene {
       this.scene.fog.color.copy(this._fogBaseColor);
     }
     this.atmosphere?.setGlowIntensityMult(profile.glowIntensityMult);
-    if (this.cliffOrnamentMat) {
-      updateCliffEdgeDirectionalLighting(this.cliffOrnamentMat, {
-        biome: this.currentMap.biome,
-        sunLight: this.sunLight,
-        timePhase: phase,
-        isCave,
-      });
-    }
   }
 
   private updateStaminaHud(): void {
@@ -1183,7 +1173,6 @@ export class OverworldScene implements Scene {
     this.sunLight?.shadow.map?.dispose();
     this.sunLight = null;
     this.hemiLight = null;
-    this.cliffOrnamentMat = null;
 
     const toRemove: THREE.Object3D[] = [];
     for (const child of this.scene.children) {
@@ -1387,22 +1376,9 @@ export class OverworldScene implements Scene {
       this.scene.add(staircasesGroup);
     }
 
-    const cliffOrnamentPair = createCliffOrnamentTexturePair();
-    const cliffOrnamentMat = createCliffOrnamentMaterial(
-      cliffOrnamentPair.map,
-      cliffOrnamentPair.normalMap,
-      map.biome,
-      isCave
-    );
-    updateCliffEdgeDirectionalLighting(cliffOrnamentMat, {
-      biome: map.biome,
-      sunLight: this.sunLight,
-      timePhase: getTimePhase(this.game.saveData.worldClockMinutes),
-      isCave,
-    });
-    this.cliffOrnamentMat = cliffOrnamentMat;
-    this.mapDisposables.track(cliffOrnamentPair.map);
-    this.mapDisposables.track(cliffOrnamentPair.normalMap);
+    const cliffOrnamentTex = createCliffOrnamentTexture();
+    const cliffOrnamentMat = createCliffOrnamentMaterial(cliffOrnamentTex);
+    this.mapDisposables.track(cliffOrnamentTex);
     this.mapDisposables.track(cliffOrnamentMat);
     const cliffOrnamentsGroup = buildCliffOrnamentsMesh(map, cliffOrnamentMat);
     if (cliffOrnamentsGroup) {
@@ -1943,14 +1919,6 @@ export class OverworldScene implements Scene {
     this.sunLight.target.position.set(sx, py, sz);
     this.sunLight.position.set(sx + 7.5, py + 13.5, sz + 5.8);
     this.sunLight.target.updateMatrixWorld();
-    if (this.cliffOrnamentMat && this.currentMap) {
-      updateCliffEdgeDirectionalLighting(this.cliffOrnamentMat, {
-        biome: this.currentMap.biome,
-        sunLight: this.sunLight,
-        timePhase: getTimePhase(this.game.saveData.worldClockMinutes),
-        isCave: this.currentMap.music === 'cave',
-      });
-    }
   }
 
   private isTileBlocked(nx: number, ny: number): boolean {
@@ -3335,7 +3303,6 @@ export class OverworldScene implements Scene {
     this.hud.unmount(this.game.uiLayers);
     this.sunLight?.shadow.map?.dispose();
     this.sunLight = null;
-    this.cliffOrnamentMat = null;
     this.postFx.dispose();
     this.mapDisposables.disposeAll();
     this.persistentDisposables.disposeAll();
