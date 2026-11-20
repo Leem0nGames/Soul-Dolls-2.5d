@@ -17,7 +17,7 @@ Después inspeccionar el código real relacionado con la tarea. Esta skill descr
 ## Modelo aprobado
 - Combate por turnos estilo Pokémon, con decisiones tácticas ligeras.
 - Encuentros normales: una SoulDoll activa por bando.
-- Jefes y encuentros especiales: el jugador despliega hasta tres SoulDolls aliadas activas; cada una elige una acción por ronda, como en los combates grupales de Pokémon.
+- Jefes y encuentros especiales: el jugador despliega tres SoulDolls aliadas activas; cada una elige una acción por ronda, como en los combates grupales de Pokémon.
 - El enemigo puede ser un único jefe poderoso o un grupo de hasta tres SoulDolls. Usar las reglas grupales comunes, sin fases, medidores ni un subsistema especial obligatorio.
 - Las sinergias se activan por combinaciones de afinidades, piezas, núcleos, habilidades o linajes.
 - Estados alterados, afinidades, habilidades, combos y sinergias entre piezas/núcleos deben ser legibles y contrarrestables.
