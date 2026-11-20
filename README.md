@@ -44,7 +44,7 @@ La dirección vigente del juego está documentada en **[docs/SOULDOLLS_DESIGN.md
 - Protagonista masculino fijo; el romance no es el eje del juego.
 - Aventura por capítulos y regiones diseñadas, no mundo abierto procedural infinito.
 - SoulDolls: muñecas artificiales habitadas por almas, personalizables mediante piezas intercambiables.
-- Combate por turnos estilo Pokémon: encuentros normales individuales y jefes con objetivo de hasta tres enemigos simultáneos y sinergias.
+- Combate por turnos estilo Pokémon: encuentros normales 1 contra 1; jefes y encuentros especiales con tres SoulDolls aliadas activas, sinergias y un jefe individual o hasta tres enemigos.
 - Captura mediante debilitamiento, dispositivo y probabilidad condicionada.
 - Progresión clásica por niveles, experiencia, habilidades y evolución.
 - Objetivo de 10–15 horas para la historia principal y 50–70 SoulDolls.
