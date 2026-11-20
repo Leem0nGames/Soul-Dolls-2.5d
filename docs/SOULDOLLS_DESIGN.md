@@ -49,7 +49,7 @@ La dirección visual conserva fantasía oscura kawaii, magia y bronce, escenario
 ### 3.3 Combate
 - El modelo es por turnos, inspirado en los combates grupales de Pokémon.
 - Los encuentros normales conservan el formato individual actual: una SoulDoll activa por bando.
-- En jefes y encuentros especiales, el jugador despliega hasta tres SoulDolls activas. Cada una elige una acción por ronda y selecciona su objetivo; las acciones se resuelven según prioridad y velocidad, usando las reglas comunes del motor.
+- En jefes y encuentros especiales, el jugador despliega tres SoulDolls activas. Cada una elige una acción por ronda y selecciona su objetivo; las acciones se resuelven según prioridad y velocidad, usando las reglas comunes del motor.
 - Un jefe puede ser una única SoulDoll poderosa enfrentada al equipo de tres, o un grupo de hasta tres enemigos. No requiere fases obligatorias ni un subsistema de jefe separado.
 - Las sinergias se activan por combinaciones compatibles de afinidades, piezas, núcleos, habilidades o linajes. Deben ser claras y comprensibles; evitar medidores y mecánicas adicionales innecesarias.
 - Incorporar ventajas elementales, estados alterados, combos y sinergias.
