@@ -3,23 +3,21 @@ import {
   type AttackRole,
   type AttackSheetSpec,
   getSpeciesAttackSpec,
-  PLACEHOLDER_ATTACK_SHEET_PATH,
-  PLACEHOLDER_ATTACK_SPEC,
+  GENERIC_ATTACK_FALLBACK_SHEET_PATH,
+  GENERIC_ATTACK_FALLBACK_SPEC,
   SOULDOLL_15_ATTACK_SHEET_PATH,
   SOULDOLL_15_ATTACK_SPEC,
 } from '../data/animations.ts';
 
 export type { AnimationRole, AttackRole, AttackSheetSpec };
 export {
-  PLACEHOLDER_ATTACK_SHEET_PATH,
-  PLACEHOLDER_ATTACK_SPEC,
+  GENERIC_ATTACK_FALLBACK_SHEET_PATH,
+  GENERIC_ATTACK_FALLBACK_SPEC,
   SOULDOLL_15_ATTACK_SHEET_PATH,
   SOULDOLL_15_ATTACK_SPEC,
 };
 
 export const MELEE_STAB_SHEET_PATH = '/assets/attacks/special_attack_15.webp';
-export const SOULDOLL_PORTRAIT_PLACEHOLDER_PATH =
-  '/assets/aistudio/004-portrait-frame_5c78ef77.png';
 
 export function getAttackSheetSpecForSpecies(
   speciesId?: number,

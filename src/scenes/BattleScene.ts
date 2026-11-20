@@ -81,7 +81,7 @@ import {
   mapStabProgressToFrame,
   MELEE_STAB_DURATION,
   MELEE_STAB_TOTAL_DURATION,
-  PLACEHOLDER_ATTACK_SHEET_PATH,
+  GENERIC_ATTACK_FALLBACK_SHEET_PATH,
 } from '../domain/MeleeStabTiming.ts';
 import { hexToNumber, PALETTE, TYPE_PALETTES } from '../gfx/Palette.ts';
 import { ES } from '../i18n/es.ts';
@@ -376,11 +376,11 @@ export class BattleScene implements Scene {
     });
     this.attackTextureCache.set(initialSpec.path, meleeStabTex);
 
-    // Preload all registered attack textures plus placeholder so combat animations switch instantly
+    // Preload all registered attack textures plus the generic fallback so combat animations switch instantly
     const preloadPaths = Array.from(
       new Set([
         ...SPECIES_ANIMATION_REGISTRY.map((entry) => entry.spec.path),
-        PLACEHOLDER_ATTACK_SHEET_PATH,
+        GENERIC_ATTACK_FALLBACK_SHEET_PATH,
       ])
     );
     for (const sheetPath of preloadPaths) {
