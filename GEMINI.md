@@ -15,4 +15,4 @@ Este repositorio utiliza una única dirección de producto compartida. No invent
 - No afirmes que ejecutaste comandos, pruebas, builds, despliegues o playtests si no los ejecutaste realmente.
 
 ## Skills del repositorio
-Las skills interoperables están en `.agents/skills/`. Activa la skill de diseño para decisiones de mecánicas, contenido, balance o dirección; activa la skill de animaciones para spritesheets, clips y registros de animación.
+Las skills interoperables están en `.agents/skills/`. Activa la skill de diseño para decisiones de mecánicas, contenido, balance o dirección; activa la skill de combate para reglas, turnos, daño, impactos y jefes; activa la skill de animaciones para spritesheets, clips y registros de animación.
