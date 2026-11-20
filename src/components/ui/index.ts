@@ -108,3 +108,5 @@ export {
   type ArcaneBindingOverlayProps,
 } from './ArcaneBindingOverlay.tsx';
 
+export { BagView, type BagViewProps } from './BagView.tsx';
+

@@ -870,7 +870,13 @@ export class BattleScene implements Scene {
             () => {
               this.showPlayerCommandMenu();
             },
-            getSoulDust(this.game.saveData)
+            getSoulDust(this.game.saveData),
+            {
+              party: this.engine.state.player.party,
+              activePartyIndex: this.engine.state.player.activeIndex,
+              isWild: this.engine.state.isWild,
+              money: this.game.saveData.money,
+            }
           );
         },
         onParty: () => {

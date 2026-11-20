@@ -3145,7 +3145,9 @@ export class OverworldScene implements Scene {
               this.updateBadge();
               this.game.saveGame();
             },
-            () => {}
+            () => {
+              this.openOverworldBag();
+            }
           );
           return;
         }
@@ -3271,14 +3273,21 @@ export class OverworldScene implements Scene {
                   `${ES.bag.usedItem(item.name)} (${getCreatureDisplayName(creature)})`
                 );
               },
-              onCancel: () => {},
+              onCancel: () => {
+                this.openOverworldBag();
+              },
             },
             () => {}
           );
         }
       },
       () => {},
-      this.game.saveData.soulDust ?? 0
+      this.game.saveData.soulDust ?? 0,
+      {
+        party: this.game.saveData.party,
+        money: this.game.saveData.money,
+        repelSteps: this.game.saveData.repelSteps,
+      }
     );
   }
 
