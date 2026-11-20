@@ -24,7 +24,7 @@ La dirección visual conserva fantasía oscura kawaii, magia y bronce, escenario
 | Personalización | Avanzada por piezas: cabeza, torso, brazos, piernas, núcleo, engarce de alma y accesorios |
 | Combate | Por turnos estilo Pokémon, con decisiones tácticas, estados, combos y sinergias entre piezas |
 | Encuentros normales | Un enfrentamiento individual: una SoulDoll activa por bando |
-| Jefes | Hasta tres SoulDolls enemigas simultáneas, con sinergias y acciones coordinadas |
+| Combate grupal | En jefes y encuentros especiales, el jugador despliega tres SoulDolls activas; cada una elige una acción por ronda, como en los combates grupales de Pokémon |
 | Captura | Debilitar al objetivo, usar un dispositivo y resolver una probabilidad condicionada |
 | Historia | Trama principal por capítulos más misiones secundarias |
 | Progresión | Clásica: niveles, experiencia, estadísticas, habilidades y evoluciones |
@@ -47,10 +47,12 @@ La dirección visual conserva fantasía oscura kawaii, magia y bronce, escenario
 - La fabricación complementa la progresión clásica; no debe reemplazar niveles y experiencia como vía principal.
 
 ### 3.3 Combate
-- El modelo base es por turnos, con lectura clara de turnos, acciones, estados y resultados.
-- Los encuentros normales son individuales: una unidad activa por lado.
-- Los jefes pueden desplegar hasta tres unidades enemigas a la vez. Sus sinergias deben ser legibles, telegráficas y contrarrestables.
-- Incorporar ventajas elementales, estados alterados, combos y sinergias de piezas/núcleos.
+- El modelo es por turnos, inspirado en los combates grupales de Pokémon.
+- Los encuentros normales conservan el formato individual actual: una SoulDoll activa por bando.
+- En jefes y encuentros especiales, el jugador despliega hasta tres SoulDolls activas. Cada una elige una acción por ronda y selecciona su objetivo; las acciones se resuelven según prioridad y velocidad, usando las reglas comunes del motor.
+- Un jefe puede ser una única SoulDoll poderosa enfrentada al equipo de tres, o un grupo de hasta tres enemigos. No requiere fases obligatorias ni un subsistema de jefe separado.
+- Las sinergias se activan por combinaciones compatibles de afinidades, piezas, núcleos, habilidades o linajes. Deben ser claras y comprensibles; evitar medidores y mecánicas adicionales innecesarias.
+- Incorporar ventajas elementales, estados alterados, combos y sinergias.
 - No transformar el combate en un sistema de cuadrícula táctica ni en acción en tiempo real.
 - La capacidad del equipo de reserva no equivale al número de unidades activas simultáneamente.
 
@@ -91,7 +93,8 @@ Cuando un agente cambie el código, debe inspeccionar la implementación actual 
 - No migrar de stack ni reemplazar la arquitectura existente.
 - No empezar de cero ni duplicar sistemas existentes.
 - No asumir mundo abierto procedural global.
-- No añadir combate multiactivo a encuentros normales.
+- No añadir combate multiactivo a encuentros normales; el despliegue de tres aliadas se reserva para jefes y encuentros especiales.
+- No crear un sistema de jefe con fases, medidores o economía de acciones independiente si las reglas grupales comunes resuelven el encuentro.
 - No confundir party size con número de unidades activas.
 - No convertir romance/harem en mecánica central.
 - No convertir la progresión principal en crafting-only o memoria-only.
