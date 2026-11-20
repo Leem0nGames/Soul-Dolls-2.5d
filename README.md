@@ -196,7 +196,7 @@ La paleta central combina tinta oscura, madera ahumada y bronce con porcelana, c
 
 ## Desarrollador
 
-**SoulDolls** es desarrollado por [Leemonztuff](https://github.com/Leemonztuff).
+<p align="center"><img src="https://avatars.githubusercontent.com/u/123082731?v=4" width="88" alt="Avatar de Leemonztuff" /></p>\n\n**SoulDolls** es desarrollado por [Leemonztuff](https://github.com/Leemonztuff).
 
 - Repositorio: [Leemonztuff/Soul-Dolls-2.5d](https://github.com/Leemonztuff/Soul-Dolls-2.5d)
 - Demo: [souldolls.vercel.app](https://souldolls.vercel.app/)
