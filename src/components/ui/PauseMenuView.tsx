@@ -5,6 +5,7 @@ import { getTotalVesselCount } from '../../domain/BodyParts.ts';
 import { getAlbumCounts, getSoulDust } from '../../domain/Cards.ts';
 import type {
   CameraMode,
+  CameraLabProfileId,
   GameOptions,
   GraphicsQualitySetting,
   SaveData,
@@ -433,6 +434,110 @@ export const PauseMenuView: React.FC<PauseMenuViewProps> = ({
                 <div className="mt-1.5 text-[11px] leading-snug text-bone-gray">
                   {ES.options.cameraModeHint}
                 </div>
+              </PxPanel>
+
+              <PxPanel variant="card" padding="none" className="px-3 py-2 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-extrabold tracking-wider text-resonant-gold">CAMERA LAB</div>
+                    <div className="text-[10px] text-bone-gray">MODO DESARROLLADOR · SOLO EXTERIOR</div>
+                  </div>
+                  <PxButton
+                    variant={opt.cameraLabEnabled ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() =>
+                      mutateOption(() => {
+                        opt.cameraLabEnabled = !opt.cameraLabEnabled;
+                      })
+                    }
+                  >
+                    {opt.cameraLabEnabled ? 'ACTIVO' : 'INACTIVO'}
+                  </PxButton>
+                </div>
+                {opt.cameraLabEnabled && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-porcelain">PERFIL ACTIVO</span>
+                      <span className="text-xs font-extrabold text-resonant-gold">PROFILE {opt.cameraLabActiveProfile}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(['A', 'B', 'C'] as CameraLabProfileId[]).map((profileId) => (
+                        <PxButton
+                          key={profileId}
+                          variant={opt.cameraLabActiveProfile === profileId ? 'primary' : 'ghost'}
+                          size="sm"
+                          className="w-full"
+                          onClick={() =>
+                            mutateOption(() => {
+                              opt.cameraLabActiveProfile = profileId;
+                              opt.cameraLabConfig = { ...opt.cameraLabProfiles[profileId] };
+                            })
+                          }
+                        >
+                          PROFILE {profileId}
+                        </PxButton>
+                      ))}
+                    </div>
+                    {([
+                      { key: 'fov', label: 'FIELD OF VIEW', min: 35, max: 75, step: 1, suffix: '°' },
+                      { key: 'distance', label: 'CAMERA DISTANCE', min: 4, max: 14, step: 0.1, suffix: '' },
+                      { key: 'height', label: 'CAMERA HEIGHT', min: 1.5, max: 8, step: 0.1, suffix: '' },
+                    ] as const).map(({ key, label, min, max, step, suffix }) => (
+                      <div key={key} className="rounded-sm border border-ash-purple bg-smoked-wood/70 px-2.5 py-2">
+                        <div className="mb-1 flex items-center justify-between gap-2 text-[11px] font-bold">
+                          <label htmlFor={`camera-lab-${key}`} className="text-porcelain">{label}</label>
+                          <span className="tabular-nums text-resonant-gold">
+                            {key === 'fov' ? opt.cameraLabConfig.fov.toFixed(0) : opt.cameraLabConfig[key].toFixed(1)}{suffix}
+                          </span>
+                        </div>
+                        <input
+                          id={`camera-lab-${key}`}
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={opt.cameraLabConfig[key]}
+                          onChange={(event) =>
+                            mutateOption(() => {
+                              opt.cameraLabConfig = {
+                                ...opt.cameraLabConfig,
+                                [key]: Number(event.currentTarget.value),
+                              };
+                            })
+                          }
+                          className="w-full h-8 accent-resonant-gold touch-pan-x cursor-pointer"
+                        />
+                      </div>
+                    ))}
+                    <PxButton
+                      variant="secondary"
+                      fullWidth
+                      size="sm"
+                      onClick={() =>
+                        mutateOption(() => {
+                          opt.cameraLabProfiles[opt.cameraLabActiveProfile] = { ...opt.cameraLabConfig };
+                        }, 'CONFIGURACIÓN GUARDADA EN PROFILE ' + opt.cameraLabActiveProfile)
+                      }
+                    >
+                      GUARDAR EN PROFILE {opt.cameraLabActiveProfile}
+                    </PxButton>
+                    <PxButton
+                      variant="ghost"
+                      fullWidth
+                      size="sm"
+                      onClick={() =>
+                        mutateOption(() => {
+                          opt.cameraLabEnabled = true;
+                          opt.cameraLabConfig = { fov: 58, distance: 6.4, height: 2.65 };
+                          opt.cameraLabProfiles.A = { fov: 58, distance: 6.4, height: 2.65 };
+                          opt.cameraLabActiveProfile = 'A';
+                        }, 'VALORES ORIGINALES RESTAURADOS')
+                      }
+                    >
+                      RESTAURAR VALORES ORIGINALES
+                    </PxButton>
+                  </div>
+                )}
               </PxPanel>
             </>
           )}
