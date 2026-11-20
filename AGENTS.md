@@ -38,6 +38,8 @@ Antes de editar:
 - Si una comprobación falla, corrige el problema antes de declarar la tarea terminada.
 - Resume archivos modificados, decisiones aplicadas, discrepancias detectadas y verificaciones ejecutadas.
 
-## Skills
-- Para diseño, sistemas o contenido SoulDolls: consulta `.agent/skills/souldolls-design/SKILL.md`.
-- Para ingerir o registrar spritesheets y animaciones: consulta `.agent/skills/souldoll-animations/SKILL.md`.
+## Skills interoperables
+- Las skills canónicas y descubribles por Gemini CLI y OpenCode están en `.agents/skills/`.
+- Para diseño, sistemas o contenido SoulDolls: consulta `.agents/skills/souldolls-design/SKILL.md`.
+- Para ingerir o registrar spritesheets y animaciones: consulta `.agents/skills/souldoll-animations/SKILL.md`.
+- La carpeta histórica `.agent/skills/` se conserva por compatibilidad con herramientas anteriores; si se modifica una skill, mantener ambas copias sincronizadas o migrar explícitamente la herramienta que la consume.
