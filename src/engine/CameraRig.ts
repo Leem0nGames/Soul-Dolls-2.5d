@@ -21,6 +21,12 @@ export class CameraRig {
   private cameraMode: CameraMode = 'fixed';
 
   private baseFov = 58;
+  private cameraLabEnabled = false;
+  private targetDistance = 6.4;
+  private currentDistance = 6.4;
+  private targetHeight = 2.65;
+  private currentHeight = 2.65;
+  private cameraLabFov = 58;
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(58, aspect, 0.3, 56);
@@ -58,8 +64,23 @@ export class CameraRig {
 
   setPreset(mode: 'overworld' | 'battle'): void {
     this.mode = mode;
-    this.baseFov = mode === 'battle' ? 44 : 58;
+    this.baseFov = mode === 'battle' ? 44 : this.cameraLabEnabled ? this.cameraLabFov : 58;
+    if (mode === 'overworld') {
+      this.currentDistance = this.targetDistance;
+      this.currentHeight = this.targetHeight;
+    }
     this.applyAdaptiveFov();
+  }
+
+  setCameraLabConfig(config: { enabled: boolean; fov: number; distance: number; height: number }): void {
+    this.cameraLabEnabled = config.enabled;
+    this.cameraLabFov = THREE.MathUtils.clamp(config.fov, 35, 75);
+    this.targetDistance = config.enabled ? THREE.MathUtils.clamp(config.distance, 4, 14) : 6.4;
+    this.targetHeight = config.enabled ? THREE.MathUtils.clamp(config.height, 1.5, 8) : 2.65;
+    if (this.mode === 'overworld') {
+      this.baseFov = config.enabled ? this.cameraLabFov : 58;
+      this.applyAdaptiveFov();
+    }
   }
 
   setCameraMode(mode: CameraMode): void {
@@ -133,6 +154,10 @@ export class CameraRig {
     this.focusZ = THREE.MathUtils.damp(this.focusZ, z, 10, dt);
     const yawDamp = this.cameraMode === 'free_orbit' ? 16 : 12;
     this.currentYaw = THREE.MathUtils.damp(this.currentYaw, this.targetYaw, yawDamp, dt);
+    if (this.mode === 'overworld') {
+      this.currentDistance = THREE.MathUtils.damp(this.currentDistance, this.targetDistance, 12, dt);
+      this.currentHeight = THREE.MathUtils.damp(this.currentHeight, this.targetHeight, 12, dt);
+    }
     this.applyCameraTransform(this.focusX, this.focusY, this.focusZ, sampleTerrainY);
   }
 
@@ -150,8 +175,8 @@ export class CameraRig {
     }
 
     // Low third-person camera: ~6.4 units behind, ~2.6 units above (~15-18 deg pitch)
-    const dist = 6.4;
-    const heightOffset = 2.65;
+    const dist = this.currentDistance;
+    const heightOffset = this.currentHeight;
     const sinY = Math.sin(this.currentYaw);
     const cosY = Math.cos(this.currentYaw);
 
