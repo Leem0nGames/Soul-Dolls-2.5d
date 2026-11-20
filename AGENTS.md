@@ -1,0 +1,43 @@
+# AGENTS.md — Reglas para agentes de SoulDolls
+
+Antes de editar:
+1. Lee `README.md` y `docs/SOULDOLLS_DESIGN.md`.
+2. Inspecciona los archivos reales relacionados con la tarea; no deduzcas la implementación a partir de documentación solamente.
+3. Identifica la capa correcta: `src/domain/` reglas, `src/data/` catálogos, `src/scenes/` flujo jugable, `src/engine/` Three.js, `src/components/ui/` y `src/ui/` interfaz, `src/save/` persistencia.
+4. Reutiliza sistemas existentes. No migres de stack, no reinicies el proyecto y no dupliques sistemas.
+
+## Fuente de verdad
+- Las decisiones de producto aprobadas están en `docs/SOULDOLLS_DESIGN.md`.
+- El código fuente es la fuente de verdad para afirmar qué está implementado.
+- Si diseño y código difieren, documenta la diferencia. No alteres arquitectura o comportamiento por inferencia.
+- Si README, skills o este archivo discrepan con el documento de diseño, actualízalos para alinearlos.
+
+## Reglas de diseño que no deben romperse
+- RPG anime ecchi de intensidad muy alta, con personajes adultos en todo contenido ecchi.
+- Protagonista masculino fijo; romance no central.
+- Mundo por capítulos y regiones diseñadas; no mundo abierto procedural infinito.
+- SoulDolls: muñecas artificiales habitadas por almas, personalización avanzada por piezas.
+- Combate por turnos estilo Pokémon con táctica ligera, estados, combos y sinergias.
+- Encuentros normales: una SoulDoll activa por bando.
+- Jefes: objetivo de hasta tres SoulDolls enemigas simultáneas con sinergias. No asumir que ya está implementado.
+- Captura: debilitar + dispositivo + probabilidad condicionada.
+- Progresión principal: niveles, experiencia, habilidades y evolución; crafting complementario.
+- Alcance objetivo: historia principal de 10–15 horas y 50–70 SoulDolls.
+
+## Precisión sobre el combate y el grupo
+- `MAX_PARTY_SIZE = 6` en `src/domain/Party.ts` es capacidad de grupo, no número de unidades activas en combate.
+- El `BattleEngine` actual mantiene una unidad activa por lado y procesa el grupo enemigo secuencialmente.
+- No cambies esta mecánica en una tarea documental. Para implementar jefes multi-enemigo, diseña el cambio como una tarea explícita, localizada y compatible con el motor existente.
+
+## Proceso de cambios
+- Mantén los cambios pequeños, localizados y compatibles con partidas guardadas.
+- Antes de editar, informa qué archivos vas a tocar y por qué.
+- No hagas refactors, migraciones ni cambios colaterales no solicitados.
+- No afirmes que una prueba, build, despliegue o playtest pasó si no lo ejecutaste y observaste.
+- Ejecuta solo las verificaciones adecuadas al alcance. Para documentación pura, revisa enlaces, rutas y consistencia; no hace falta ejecutar toda la suite.
+- Si una comprobación falla, corrige el problema antes de declarar la tarea terminada.
+- Resume archivos modificados, decisiones aplicadas, discrepancias detectadas y verificaciones ejecutadas.
+
+## Skills
+- Para diseño, sistemas o contenido SoulDolls: consulta `.agent/skills/souldolls-design/SKILL.md`.
+- Para ingerir o registrar spritesheets y animaciones: consulta `.agent/skills/souldoll-animations/SKILL.md`.
