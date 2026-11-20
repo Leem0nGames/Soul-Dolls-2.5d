@@ -52,6 +52,16 @@ La dirección vigente del juego está documentada en **[docs/SOULDOLLS_DESIGN.md
 **Importante:** estas son decisiones de diseño aprobadas, no una declaración de que todas las funciones estén implementadas. El documento de diseño separa explícitamente objetivos futuros del estado real del código.
 
 ---
+## Instrucciones para agentes IA
+
+- **OpenCode:** carga `AGENTS.md` automáticamente.
+- **Gemini CLI:** carga `GEMINI.md`, que importa las reglas comunes y el documento de diseño.
+- **Skills compartidas:** `.agents/skills/` es la ubicación interoperable para Gemini CLI y OpenCode.
+- **Fuente de verdad:** `docs/SOULDOLLS_DESIGN.md`; el código fuente determina qué está realmente implementado.
+
+Al iniciar una sesión nueva, Gemini puede comprobar el contexto con `/memory show` y las skills con `/skills list`. En OpenCode, inicia una sesión nueva después de cambiar instrucciones y activa las skills según la tarea.
+
+---
 ## Estado del proyecto
 
 <kbd>En desarrollo activo</kbd>
