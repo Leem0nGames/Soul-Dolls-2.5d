@@ -19,7 +19,7 @@ Antes de editar:
 - SoulDolls: muñecas artificiales habitadas por almas, personalización avanzada por piezas.
 - Combate por turnos estilo Pokémon con táctica ligera, estados, combos y sinergias.
 - Encuentros normales: una SoulDoll activa por bando.
-- Jefes: objetivo de hasta tres SoulDolls enemigas simultáneas con sinergias. No asumir que ya está implementado.
+- Jefes y encuentros especiales: tres SoulDolls aliadas activas, cada una con una acción por ronda; el enemigo puede ser un jefe individual o hasta tres enemigos. Sinergias por afinidades, piezas, núcleos, habilidades o linajes. No asumir que ya está implementado.
 - Captura: debilitar + dispositivo + probabilidad condicionada.
 - Progresión principal: niveles, experiencia, habilidades y evolución; crafting complementario.
 - Alcance objetivo: historia principal de 10–15 horas y 50–70 SoulDolls.
@@ -27,7 +27,7 @@ Antes de editar:
 ## Precisión sobre el combate y el grupo
 - `MAX_PARTY_SIZE = 6` en `src/domain/Party.ts` es capacidad de grupo, no número de unidades activas en combate.
 - El `BattleEngine` actual mantiene una unidad activa por lado y procesa el grupo enemigo secuencialmente.
-- No cambies esta mecánica en una tarea documental. Para implementar jefes multi-enemigo, diseña el cambio como una tarea explícita, localizada y compatible con el motor existente.
+- No cambies esta mecánica en una tarea documental. Para implementar combate grupal, diseña una expansión localizada y compatible: tres aliadas en jefes/encuentros especiales, con uno o hasta tres enemigos; conserva el 1 contra 1 normal.
 
 ## Proceso de cambios
 - Mantén los cambios pequeños, localizados y compatibles con partidas guardadas.
