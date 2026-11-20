@@ -529,7 +529,11 @@ export const PauseMenuView: React.FC<PauseMenuViewProps> = ({
                         mutateOption(() => {
                           opt.cameraLabEnabled = true;
                           opt.cameraLabConfig = { fov: 58, distance: 6.4, height: 2.65 };
-                          opt.cameraLabProfiles.A = { fov: 58, distance: 6.4, height: 2.65 };
+                          opt.cameraLabProfiles = {
+                            A: { fov: 58, distance: 6.4, height: 2.65 },
+                            B: { fov: 50, distance: 9, height: 5 },
+                            C: { fov: 45, distance: 11, height: 7 },
+                          };
                           opt.cameraLabActiveProfile = 'A';
                         }, 'VALORES ORIGINALES RESTAURADOS')
                       }
