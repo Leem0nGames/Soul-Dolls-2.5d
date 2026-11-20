@@ -10,9 +10,8 @@ import {
   MELEE_STAB_IMPACT_FRAME,
   MELEE_STAB_SHEET_PATH,
   MELEE_STAB_TOTAL_DURATION,
-  PLACEHOLDER_ATTACK_SHEET_PATH,
+  GENERIC_ATTACK_FALLBACK_SHEET_PATH,
   SOULDOLL_15_ATTACK_SHEET_PATH,
-  SOULDOLL_PORTRAIT_PLACEHOLDER_PATH,
 } from '../src/domain/MeleeStabTiming.ts';
 import {
   getSpeciesAttackSpec,
@@ -28,11 +27,8 @@ describe('MeleeStabTiming', () => {
   it('exposes the uploaded attack asset paths', () => {
     expect(MELEE_STAB_SHEET_PATH).toBe('/assets/attacks/special_attack_15.webp');
     expect(SOULDOLL_15_ATTACK_SHEET_PATH).toBe('/assets/attacks/special_attack_15.webp');
-    expect(PLACEHOLDER_ATTACK_SHEET_PATH).toBe(
-      '/assets/aistudio/004-special_attack-v1_5431e7bd.png'
-    );
-    expect(SOULDOLL_PORTRAIT_PLACEHOLDER_PATH).toBe(
-      '/assets/aistudio/004-portrait-frame_5c78ef77.png'
+    expect(GENERIC_ATTACK_FALLBACK_SHEET_PATH).toBe(
+      '/assets/attacks/generic_attack_fallback.png'
     );
   });
 
@@ -55,7 +51,7 @@ describe('MeleeStabTiming', () => {
     expect(s01.facing).toBe('right');
 
     const defaultSpec = getAttackSheetSpecForSpecies(2);
-    expect(defaultSpec.path).toBe('/assets/aistudio/004-special_attack-v1_5431e7bd.png');
+    expect(defaultSpec.path).toBe('/assets/attacks/generic_attack_fallback.png');
     expect(defaultSpec.cols).toBe(5);
     expect(defaultSpec.rows).toBe(5);
     expect(defaultSpec.totalFrames).toBe(25);
@@ -151,8 +147,8 @@ describe('MeleeStabTiming', () => {
     expect(SPECIES_ANIMATION_REGISTRY.length).toBeGreaterThanOrEqual(2);
     expect(hasSpeciesAnimationRole(1, 'physical_attack')).toBe(true);
     expect(hasSpeciesAnimationRole(1, 'special_attack')).toBe(true);
-    expect(hasSpeciesAnimationRole(15, 'physical_attack')).toBe(true);
-    expect(hasSpeciesAnimationRole(15, 'special_attack')).toBe(false);
+    expect(hasSpeciesAnimationRole(15, 'physical_attack')).toBe(false);
+    expect(hasSpeciesAnimationRole(15, 'special_attack')).toBe(true);
     expect(hasSpeciesAnimationRole(undefined, 'physical_attack')).toBe(false);
     expect(getSpeciesAttackSpec(1, 'physical_attack').path).toBe(
       '/assets/attacks/physical_attack_01.webp'

@@ -27,6 +27,9 @@ import { awardExperience, computeBattleXp, computeSharedPartyXp } from './Experi
 import { computeHeldStatMultiplier, getHeldItemDef } from './HeldItems.ts';
 import { applyMedicineToCreature, removeItem } from './Inventory.ts';
 import { getFirstHealthyIndex } from './Party.ts';
+import { selectActivePartyIndices } from './BattleFormation.ts';
+import { createBattleCombatantStates, getBattleCombatantState } from './BattleCombatantState.ts';
+import { planBossRound, type BattleRoundCommand } from './BattleRoundPlanner.ts';
 import { getDefaultBiomeWeather } from './TimeOfDay.ts';
 import { getTypeMultiplier } from './TypeChart.ts';
 import type {
@@ -60,7 +63,7 @@ export class BattleEngine {
     rng: Rng,
     trainer?: TrainerDef,
     biome?: BattleBiome,
-    extra?: { timePhase?: TimePhase; weather?: BattleWeather }
+    extra?: { timePhase?: TimePhase; weather?: BattleWeather; activePlayerCount?: number }
   ) {
     this.bag = bag;
     this.rng = rng;
@@ -82,12 +85,15 @@ export class BattleEngine {
       player: {
         party: playerParty,
         activeIndex: pIdx,
+        activeIndices: selectActivePartyIndices(playerParty, extra?.activePlayerCount ?? 1),
+        combatants: createBattleCombatantStates(playerParty),
         stages: createDefaultStages(),
         flinched: false,
       },
       enemy: {
         party: enemyParty,
         activeIndex: eIdx,
+        combatants: createBattleCombatantStates(enemyParty),
         stages: createDefaultStages(),
         flinched: false,
       },
@@ -102,8 +108,26 @@ export class BattleEngine {
     return s.party[s.activeIndex];
   }
 
+  /** Returns the party slots deployed at battle start; legacy callers still use getActive(). */
+  getActivePartyIndices(side: 'player' | 'enemy'): readonly number[] {
+    const sideState = this.getSide(side);
+    return sideState.activeIndices ?? [sideState.activeIndex];
+  }
+
+  getActiveParty(side: 'player' | 'enemy'): CreatureInstance[] {
+    const sideState = this.getSide(side);
+    return this.getActivePartyIndices(side).map((index) => sideState.party[index]).filter(Boolean);
+  }
+
   private getSide(side: 'player' | 'enemy'): BattleSideState {
     return side === 'player' ? this.state.player : this.state.enemy;
+  }
+
+  /** Volatile effects and stat stages follow the individual creature, never the whole party. */
+  private getCombatantState(side: 'player' | 'enemy', creature = this.getActive(side)) {
+    const sideState = this.getSide(side);
+    if (!sideState.combatants) throw new Error(`Missing combatant states for ${side}.`);
+    return getBattleCombatantState(sideState.combatants, creature.uid);
   }
 
   consumeInitialEntryEvents(): BattleEvent[] {
@@ -126,13 +150,16 @@ export class BattleEngine {
     return events;
   }
 
-  private resetSideVolatiles(sideState: BattleSideState): void {
-    sideState.stages = createDefaultStages();
-    sideState.flinched = false;
-    sideState.confusedTurns = 0;
-    sideState.trappedTurns = 0;
-    sideState.leechSeeded = false;
-    sideState.protected = false;
+  private resetCombatantVolatiles(side: 'player' | 'enemy', creature = this.getActive(side)): void {
+    const state = this.getCombatantState(side, creature);
+    state.stages = createDefaultStages();
+    state.flinched = false;
+    state.confusedTurns = 0;
+    state.trappedTurns = 0;
+    state.leechSeeded = false;
+    state.protected = false;
+    state.statDropGuarded = false;
+    state.lowHpBerryUsed = false;
   }
 
   private triggerOnEntry(side: 'player' | 'enemy', events: BattleEvent[]): void {
@@ -152,8 +179,7 @@ export class BattleEngine {
     });
 
     if (entry.enemyStat) {
-      const targetSide = this.getSide(oppSide);
-      if (!targetSide.statDropGuarded) {
+      if (!this.getCombatantState(oppSide).statDropGuarded) {
         this.applyStageDelta(oppSide, entry.enemyStat.stat, entry.enemyStat.delta, events);
       }
     }
@@ -168,13 +194,13 @@ export class BattleEngine {
     delta: number,
     events: BattleEvent[]
   ): void {
-    const sideState = this.getSide(targetSide);
-    if (delta < 0 && sideState.statDropGuarded) return;
     const targetCreature = this.getActive(targetSide);
+    const combatantState = this.getCombatantState(targetSide, targetCreature);
+    if (delta < 0 && combatantState.statDropGuarded) return;
     const targetName = getCreatureDisplayName(targetCreature);
-    const next = Math.max(-6, Math.min(6, sideState.stages[stat] + delta));
-    if (next !== sideState.stages[stat]) {
-      sideState.stages[stat] = next;
+    const next = Math.max(-6, Math.min(6, combatantState.stages[stat] + delta));
+    if (next !== combatantState.stages[stat]) {
+      combatantState.stages[stat] = next;
       events.push({ type: 'stat_change', target: targetSide, stat, delta });
       const statLabel = ES.stats[stat];
       events.push({
@@ -189,7 +215,7 @@ export class BattleEngine {
 
   private effectiveSpeed(side: 'player' | 'enemy'): number {
     const c = this.getActive(side);
-    const s = this.getSide(side);
+    const s = this.getCombatantState(side, c);
     let spe = c.stats.spe * stageMultiplier(s.stages.spe);
     spe *= computeAbilityStatMultiplier(c, 'spe');
     spe *= computeHeldStatMultiplier(c, 'spe');
@@ -260,10 +286,13 @@ export class BattleEngine {
     }
 
     this.state.turnCount += 1;
-    this.state.player.flinched = false;
-    this.state.enemy.flinched = false;
-    this.state.player.protected = false;
-    this.state.enemy.protected = false;
+    for (const side of ['player', 'enemy'] as const) {
+      for (const creature of this.getActiveParty(side)) {
+        const combatant = this.getCombatantState(side, creature);
+        combatant.flinched = false;
+        combatant.protected = false;
+      }
+    }
 
     const enemyAction = this.chooseEnemyAction();
 
@@ -272,7 +301,7 @@ export class BattleEngine {
         events.push({ type: 'text', message: ES.battle.cantRunTrainer });
         return events;
       }
-      if (this.state.player.trappedTurns && this.state.player.trappedTurns > 0) {
+      if (Math.max(this.getCombatantState('player').trappedTurns, this.state.player.trappedTurns ?? 0) > 0) {
         events.push({ type: 'text', message: ES.battle.cantEscapeTrapped });
         return events;
       }
@@ -298,7 +327,7 @@ export class BattleEngine {
     }
 
     if (playerAction.type === 'switch') {
-      if (this.state.player.trappedTurns && this.state.player.trappedTurns > 0) {
+      if (Math.max(this.getCombatantState('player').trappedTurns, this.state.player.trappedTurns ?? 0) > 0) {
         events.push({ type: 'text', message: ES.battle.cantEscapeTrapped });
         return events;
       }
@@ -356,13 +385,100 @@ export class BattleEngine {
     return events;
   }
 
+  /**
+   * Resolves one boss round: each deployed ally submits one move and the boss
+   * receives exactly one action. The scene collects ally choices before calling
+   * this method; commands then resolve by priority, speed and stable tie-break.
+   */
+  stepBossRound(
+    alliedActions: readonly { partyIndex: number; action: BattleAction }[]
+  ): BattleEvent[] {
+    if (this.state.finished) return [];
+    const deployed = this.getActivePartyIndices('player');
+    if (deployed.length < 1 || deployed.length > 3) {
+      throw new Error('Boss rounds require a deployed formation of one to three allies.');
+    }
+    if (alliedActions.length !== deployed.length) {
+      throw new Error('Submit exactly one action for each deployed ally.');
+    }
+    const submitted = new Set(alliedActions.map((entry) => entry.partyIndex));
+    if (deployed.some((index) => !submitted.has(index)) || submitted.size !== alliedActions.length) {
+      throw new Error('Actions must match the deployed ally slots exactly.');
+    }
+    if (alliedActions.some((entry) => entry.action.type !== 'move')) {
+      throw new Error('Boss rounds currently accept move actions only.');
+    }
+
+    const events: BattleEvent[] = [];
+    if (!this.entryTriggeredOnce) events.push(...this.consumeInitialEntryEvents());
+    this.state.turnCount += 1;
+    for (const side of ['player', 'enemy'] as const) {
+      for (const creature of this.getActiveParty(side)) {
+        const state = this.getCombatantState(side, creature);
+        state.flinched = false;
+        state.protected = false;
+      }
+    }
+
+    // The enemy chooses once, against the first currently deployed ally.
+    this.state.player.activeIndex = deployed.find((i) => this.state.player.party[i].currentHp > 0) ?? deployed[0];
+    const enemyAction = this.chooseEnemyAction();
+    const enemy = this.getActive('enemy');
+    const enemyMove = this.getMoveForAction('enemy', enemyAction);
+    const enemyCommand: BattleRoundCommand = {
+      side: 'enemy',
+      partyIndex: this.state.enemy.activeIndex,
+      action: enemyAction,
+      priority: enemyMove.priority + computeAbilityPriorityDelta(enemy, enemyMove),
+      speed: this.effectiveSpeed('enemy'),
+      tieBreak: this.rng.next(),
+    };
+    const alliedCommands: BattleRoundCommand[] = alliedActions.map(({ partyIndex, action }) => {
+      const ally = this.state.player.party[partyIndex];
+      const move = this.getMoveForActionForCreature(ally, action);
+      return {
+        side: 'player' as const,
+        partyIndex,
+        action,
+        priority: move.priority + computeAbilityPriorityDelta(ally, move),
+        speed: ally.stats.spe * stageMultiplier(this.getCombatantState('player', ally).stages.spe) * computeAbilityStatMultiplier(ally, 'spe') * computeHeldStatMultiplier(ally, 'spe'),
+        tieBreak: this.rng.next(),
+      };
+    });
+
+    const plan = planBossRound(alliedCommands, enemyCommand);
+    for (const command of plan.commands) {
+      if (this.state.finished) break;
+      if (command.side === 'player') {
+        const ally = this.state.player.party[command.partyIndex];
+        if (!ally || ally.currentHp <= 0) continue;
+        this.state.player.activeIndex = command.partyIndex;
+        this.executeAction('player', command.action, events);
+      } else {
+        const target = deployed.find((index) => this.state.player.party[index].currentHp > 0);
+        if (target === undefined) continue;
+        this.state.player.activeIndex = target;
+        this.executeAction('enemy', command.action, events);
+      }
+    }
+
+    if (!this.state.finished) this.resolveEndOfTurn(events);
+    return events;
+  }
+
+  private getMoveForActionForCreature(creature: CreatureInstance, action: BattleAction): MoveDef {
+    const index = action.type === 'move' ? action.moveIndex : 0;
+    const slot = creature.moves[index] ?? creature.moves[0];
+    return getMove(slot ? slot.moveId : 'placaje');
+  }
+
   forcePlayerSwitch(partyIndex: number): BattleEvent[] {
     const events: BattleEvent[] = [];
     const target = this.state.player.party[partyIndex];
     if (!target || target.currentHp <= 0) return events;
     ensureBodyParts(target);
     this.state.player.activeIndex = partyIndex;
-    this.resetSideVolatiles(this.state.player);
+    this.resetCombatantVolatiles('player', target);
     events.push({
       type: 'switch_in',
       side: 'player',
@@ -370,6 +486,35 @@ export class BattleEngine {
       creature: target,
     });
     events.push({ type: 'text', message: ES.battle.goCreature(getCreatureDisplayName(target)) });
+    this.triggerOnEntry('player', events);
+    return events;
+  }
+
+  /** Replace one deployed boss formation slot with a healthy reserve creature. */
+  replaceDeployedPlayerAlly(slotIndex: number, partyIndex: number): BattleEvent[] {
+    const deployed = [...this.getActivePartyIndices('player')];
+    if (slotIndex < 0 || slotIndex >= deployed.length) return [];
+    const outgoingIndex = deployed[slotIndex];
+    const outgoing = this.state.player.party[outgoingIndex];
+    const incoming = this.state.player.party[partyIndex];
+    if (!outgoing || outgoing.currentHp > 0 || !incoming || incoming.currentHp <= 0) return [];
+    if (deployed.includes(partyIndex)) return [];
+
+    deployed[slotIndex] = partyIndex;
+    this.state.player.activeIndices = deployed;
+    this.state.player.activeIndex = partyIndex;
+    ensureBodyParts(incoming);
+    this.resetCombatantVolatiles('player', incoming);
+
+    const events: BattleEvent[] = [{
+      type: 'switch_in',
+      side: 'player',
+      partyIndex,
+      creature: incoming,
+    }, {
+      type: 'text',
+      message: ES.battle.goCreature(getCreatureDisplayName(incoming)),
+    }];
     this.triggerOnEntry('player', events);
     return events;
   }
@@ -396,8 +541,8 @@ export class BattleEngine {
       });
     }
     sideState.activeIndex = partyIndex;
-    this.resetSideVolatiles(sideState);
     const next = this.getActive(side);
+    this.resetCombatantVolatiles(side, next);
     ensureBodyParts(next);
     events.push({ type: 'switch_in', side, partyIndex, creature: next });
     events.push({ type: 'text', message: ES.battle.goCreature(getCreatureDisplayName(next)) });
@@ -452,7 +597,7 @@ export class BattleEngine {
       if (!removeItem(this.bag, itemId, 1)) return false;
       events.push({ type: 'text', message: ES.bag.usedItem(item.name) });
       if (item.guardStatDrop) {
-        this.state.player.statDropGuarded = true;
+        this.getCombatantState('player').statDropGuarded = true;
         events.push({ type: 'text', message: ES.battle.guardApplied });
       }
       if (item.boostStat) {
@@ -594,6 +739,8 @@ export class BattleEngine {
     events.push({
       type: 'damage',
       target: targetSide,
+      targetUid: defender.uid,
+      targetPartyIndex: this.state[targetSide].activeIndex,
       amount: actualDamage,
       hpAfter: defender.currentHp,
       maxHp: defender.stats.hp,
@@ -638,8 +785,8 @@ export class BattleEngine {
     const targetSide: 'player' | 'enemy' = side === 'player' ? 'enemy' : 'player';
     const attacker = this.getActive(side);
     const defender = this.getActive(targetSide);
-    const attackerSideState = this.getSide(side);
-    const defenderSideState = this.getSide(targetSide);
+    const attackerSideState = this.getCombatantState(side, attacker);
+    const defenderSideState = this.getCombatantState(targetSide, defender);
 
     if (attacker.currentHp <= 0 || defender.currentHp <= 0) return;
 
@@ -701,7 +848,14 @@ export class BattleEngine {
     slot.pp = Math.max(0, slot.pp - 1);
     const move = getMove(slot.moveId);
 
-    events.push({ type: 'move_use', side, moveId: move.id, moveName: move.name });
+    events.push({
+      type: 'move_use',
+      side,
+      moveId: move.id,
+      moveName: move.name,
+      actorUid: attacker.uid,
+      actorPartyIndex: this.state[side].activeIndex,
+    });
     events.push({ type: 'text', message: ES.battle.usedMove(attackerName, move.name) });
 
     if (move.effect.kind === 'protect') {
@@ -959,12 +1113,12 @@ export class BattleEngine {
     const targetSide = eff.target === 'self' ? attackerSide : defenderSide;
 
     if (eff.kind === 'flinch') {
-      this.getSide(defenderSide).flinched = true;
+      this.getCombatantState(defenderSide).flinched = true;
       return;
     }
 
     if (eff.kind === 'confuse') {
-      const dState = this.getSide(defenderSide);
+      const dState = this.getCombatantState(defenderSide);
       if (!dState.confusedTurns) {
         dState.confusedTurns = this.rng.int(2, 3);
         events.push({ type: 'text', message: ES.battle.becameConfused(defenderName) });
@@ -992,7 +1146,7 @@ export class BattleEngine {
 
     if (eff.kind === 'burn_flinch') {
       if (this.rng.chance(50)) {
-        this.getSide(defenderSide).flinched = true;
+        this.getCombatantState(defenderSide).flinched = true;
       } else {
         this.tryInflictStatus(defenderSide, 'burn', events);
       }
@@ -1013,176 +1167,148 @@ export class BattleEngine {
   }
 
   private resolveEndOfTurn(events: BattleEvent[]): void {
-    const pSpe = this.effectiveSpeed('player');
-    const eSpe = this.effectiveSpeed('enemy');
-    const playerFirst =
-      pSpe > eSpe ? true : eSpe > pSpe ? false : this.rng.next() < 0.5;
-    const speedOrder: ReadonlyArray<'player' | 'enemy'> = playerFirst
-      ? ['player', 'enemy']
-      : ['enemy', 'player'];
+    // Process each deployed combatant once. Environment/round counters remain
+    // outside this loop so weather duration is decremented only once per round.
+    const participants = (['player', 'enemy'] as const).flatMap((side) =>
+      this.getActivePartyIndices(side)
+        .map((partyIndex) => ({ side, partyIndex, creature: this.getSide(side).party[partyIndex] }))
+        .filter((entry) => entry.creature && entry.creature.currentHp > 0)
+    );
+    participants.sort((a, b) => {
+      const speedA = a.creature.stats.spe * stageMultiplier(this.getCombatantState(a.side, a.creature).stages.spe);
+      const speedB = b.creature.stats.spe * stageMultiplier(this.getCombatantState(b.side, b.creature).stages.spe);
+      return speedB - speedA;
+    });
 
-    for (const side of speedOrder) {
-      if (this.state.finished) return;
-      const c = this.getActive(side);
-      const sState = this.getSide(side);
-      if (c.currentHp <= 0) continue;
+    const originalIndices = {
+      player: this.state.player.activeIndex,
+      enemy: this.state.enemy.activeIndex,
+    };
 
-      if (c.status === 'burn' || c.status === 'poison') {
-        const divisor = c.status === 'burn' ? 12 : 8;
-        const dmg = Math.max(1, Math.floor(c.stats.hp / divisor));
-        applyDamageToBodyParts(c, dmg, 'torso');
-        const name = getCreatureDisplayName(c);
-        events.push({
-          type: 'status_tick',
-          target: side,
-          status: c.status,
-          damage: dmg,
-          hpAfter: c.currentHp,
-          maxHp: c.stats.hp,
-        });
-        events.push({
-          type: 'text',
-          message:
-            c.status === 'burn' ? ES.battle.burnDamage(name) : ES.battle.poisonDamage(name),
-        });
-        if (c.currentHp <= 0) {
-          this.handleFaint(side, events);
-          continue;
-        }
-      }
+    try {
+      for (const participant of participants) {
+        if (this.state.finished) return;
+        const { side, partyIndex } = participant;
+        const c = participant.creature;
+        const sideState = this.getSide(side);
+        sideState.activeIndex = partyIndex;
+        const sState = this.getCombatantState(side, c);
+        if (c.currentHp <= 0) continue;
 
-      if (sState.trappedTurns && sState.trappedTurns > 0 && c.currentHp > 0) {
-        sState.trappedTurns -= 1;
-        const dmg = Math.max(1, Math.floor(c.stats.hp / 10));
-        const partRes = applyDamageToBodyParts(c, dmg, 'legs');
-        events.push({
-          type: 'damage',
-          target: side,
-          amount: dmg,
-          hpAfter: c.currentHp,
-          maxHp: c.stats.hp,
-          effectiveness: 1,
-          crit: false,
-          damagedPart: partRes.damagedPart,
-          partBroken: partRes.partBroken,
-        });
-        events.push({ type: 'text', message: ES.battle.trapDamage(getCreatureDisplayName(c)) });
-        if (c.currentHp <= 0) {
-          this.handleFaint(side, events);
-          continue;
-        }
-      }
-
-      if (sState.leechSeeded && c.currentHp > 0) {
-        const oppSide: 'player' | 'enemy' = side === 'player' ? 'enemy' : 'player';
-        const opp = this.getActive(oppSide);
-        const drain = Math.max(1, Math.floor(c.stats.hp / 8));
-        const partRes = applyDamageToBodyParts(c, drain, 'torso');
-        events.push({
-          type: 'damage',
-          target: side,
-          amount: drain,
-          hpAfter: c.currentHp,
-          maxHp: c.stats.hp,
-          effectiveness: 1,
-          crit: false,
-          damagedPart: partRes.damagedPart,
-          partBroken: partRes.partBroken,
-        });
-        if (opp.currentHp > 0) {
-          healBodyParts(opp, drain);
-          events.push({
-            type: 'heal',
-            target: oppSide,
-            amount: drain,
-            hpAfter: opp.currentHp,
-            maxHp: opp.stats.hp,
-          });
-        }
-        events.push({ type: 'text', message: ES.battle.leechDamage(getCreatureDisplayName(c)) });
-        if (c.currentHp <= 0) {
-          this.handleFaint(side, events);
-          continue;
-        }
-      }
-
-      // Ability end-of-turn regen
-      const ab = getCreatureAbilityDef(c);
-      if (ab?.hooks.onTurnEnd?.healRatio && c.currentHp > 0 && c.currentHp < c.stats.hp) {
-        const healAmt = Math.max(1, Math.floor(c.stats.hp * ab.hooks.onTurnEnd.healRatio));
-        healBodyParts(c, healAmt);
-        events.push({
-          type: 'ability_triggered',
-          side,
-          abilityId: ab.id,
-          abilityName: ab.name,
-        });
-        events.push({
-          type: 'heal',
-          target: side,
-          amount: healAmt,
-          hpAfter: c.currentHp,
-          maxHp: c.stats.hp,
-        });
-      }
-
-      // Held item end-of-turn regen (e.g. Esencia Musgo)
-      const held = getHeldItemDef(c);
-      if (held?.heldHooks?.onTurnEnd?.healRatio && c.currentHp > 0 && c.currentHp < c.stats.hp) {
-        const healAmt = Math.max(1, Math.floor(c.stats.hp * held.heldHooks.onTurnEnd.healRatio));
-        healBodyParts(c, healAmt);
-        events.push({
-          type: 'held_item_triggered',
-          side,
-          itemId: held.id,
-          itemName: held.name,
-        });
-        events.push({
-          type: 'heal',
-          target: side,
-          amount: healAmt,
-          hpAfter: c.currentHp,
-          maxHp: c.stats.hp,
-        });
-      }
-    }
-
-    // Battle weather end-of-turn ticks & duration countdown
-    if (!this.state.finished && this.state.weather !== 'none') {
-      const weather = this.state.weather;
-      if (weather === 'sandstorm' || weather === 'snow') {
-        for (const side of speedOrder) {
-          if (this.state.finished) break;
-          const c = this.getActive(side);
-          if (c.currentHp <= 0) continue;
-          const types = getSpecies(c.speciesId).types;
-          const immune =
-            weather === 'sandstorm'
-              ? types.includes('roca')
-              : types.includes('marea') || types.includes('brisa');
-          if (immune) continue;
-
-          const dmg = Math.max(1, Math.floor(c.stats.hp / 16));
+        if (c.status === 'burn' || c.status === 'poison') {
+          const divisor = c.status === 'burn' ? 12 : 8;
+          const dmg = Math.max(1, Math.floor(c.stats.hp / divisor));
           applyDamageToBodyParts(c, dmg, 'torso');
+          const name = getCreatureDisplayName(c);
           events.push({
-            type: 'weather_tick',
-            weather,
+            type: 'status_tick',
             target: side,
+            status: c.status,
             damage: dmg,
             hpAfter: c.currentHp,
             maxHp: c.stats.hp,
           });
           events.push({
             type: 'text',
-            message: ES.battle.weatherTick[weather](getCreatureDisplayName(c)),
+            message: c.status === 'burn' ? ES.battle.burnDamage(name) : ES.battle.poisonDamage(name),
           });
           if (c.currentHp <= 0) {
             this.handleFaint(side, events);
+            continue;
           }
+        }
+
+        if (sState.trappedTurns > 0 && c.currentHp > 0) {
+          sState.trappedTurns -= 1;
+          const dmg = Math.max(1, Math.floor(c.stats.hp / 10));
+          const partRes = applyDamageToBodyParts(c, dmg, 'legs');
+          events.push({
+            type: 'damage',
+            target: side,
+            amount: dmg,
+            hpAfter: c.currentHp,
+            maxHp: c.stats.hp,
+            effectiveness: 1,
+            crit: false,
+            damagedPart: partRes.damagedPart,
+            partBroken: partRes.partBroken,
+          });
+          events.push({ type: 'text', message: ES.battle.trapDamage(getCreatureDisplayName(c)) });
+          if (c.currentHp <= 0) {
+            this.handleFaint(side, events);
+            continue;
+          }
+        }
+
+        if (sState.leechSeeded && c.currentHp > 0) {
+          const oppSide: 'player' | 'enemy' = side === 'player' ? 'enemy' : 'player';
+          const opp = this.getActive(oppSide);
+          const drain = Math.max(1, Math.floor(c.stats.hp / 8));
+          const partRes = applyDamageToBodyParts(c, drain, 'torso');
+          events.push({
+            type: 'damage',
+            target: side,
+            amount: drain,
+            hpAfter: c.currentHp,
+            maxHp: c.stats.hp,
+            effectiveness: 1,
+            crit: false,
+            damagedPart: partRes.damagedPart,
+            partBroken: partRes.partBroken,
+          });
+          if (opp.currentHp > 0) {
+            healBodyParts(opp, drain);
+            events.push({ type: 'heal', target: oppSide, amount: drain, hpAfter: opp.currentHp, maxHp: opp.stats.hp });
+          }
+          events.push({ type: 'text', message: ES.battle.leechDamage(getCreatureDisplayName(c)) });
+          if (c.currentHp <= 0) {
+            this.handleFaint(side, events);
+            continue;
+          }
+        }
+
+        const ab = getCreatureAbilityDef(c);
+        if (ab?.hooks.onTurnEnd?.healRatio && c.currentHp > 0 && c.currentHp < c.stats.hp) {
+          const healAmt = Math.max(1, Math.floor(c.stats.hp * ab.hooks.onTurnEnd.healRatio));
+          healBodyParts(c, healAmt);
+          events.push({ type: 'ability_triggered', side, abilityId: ab.id, abilityName: ab.name });
+          events.push({ type: 'heal', target: side, amount: healAmt, hpAfter: c.currentHp, maxHp: c.stats.hp });
+        }
+
+        const held = getHeldItemDef(c);
+        if (held?.heldHooks?.onTurnEnd?.healRatio && c.currentHp > 0 && c.currentHp < c.stats.hp) {
+          const healAmt = Math.max(1, Math.floor(c.stats.hp * held.heldHooks.onTurnEnd.healRatio));
+          healBodyParts(c, healAmt);
+          events.push({ type: 'held_item_triggered', side, itemId: held.id, itemName: held.name });
+          events.push({ type: 'heal', target: side, amount: healAmt, hpAfter: c.currentHp, maxHp: c.stats.hp });
         }
       }
 
-      if (!this.state.finished && this.state.weatherTurns > 0) {
+      // Weather affects every deployed combatant, but its duration ticks once.
+      if (!this.state.finished && (this.state.weather === 'sandstorm' || this.state.weather === 'snow')) {
+        const weather = this.state.weather;
+        const weatherTargets = (['player', 'enemy'] as const).flatMap((side) =>
+          this.getActivePartyIndices(side).map((partyIndex) => ({ side, partyIndex, creature: this.getSide(side).party[partyIndex] }))
+        );
+        for (const target of weatherTargets) {
+          if (this.state.finished) break;
+          const { side, partyIndex, creature } = target;
+          if (!creature || creature.currentHp <= 0) continue;
+          this.getSide(side).activeIndex = partyIndex;
+          const types = getSpecies(creature.speciesId).types;
+          const immune = weather === 'sandstorm'
+            ? types.includes('roca')
+            : types.includes('marea') || types.includes('brisa');
+          if (immune) continue;
+          const dmg = Math.max(1, Math.floor(creature.stats.hp / 16));
+          applyDamageToBodyParts(creature, dmg, 'torso');
+          events.push({ type: 'weather_tick', weather, target: side, damage: dmg, hpAfter: creature.currentHp, maxHp: creature.stats.hp });
+          events.push({ type: 'text', message: ES.battle.weatherTick[weather](getCreatureDisplayName(creature)) });
+          if (creature.currentHp <= 0) this.handleFaint(side, events);
+        }
+      }
+
+      if (!this.state.finished && this.state.weather !== 'none' && this.state.weatherTurns > 0) {
         this.state.weatherTurns -= 1;
         if (this.state.weatherTurns === 0) {
           this.state.weather = 'none';
@@ -1190,21 +1316,31 @@ export class BattleEngine {
           events.push({ type: 'text', message: ES.battle.weatherClear });
         }
       }
+    } finally {
+      // Restore the legacy player slot. Keep an enemy replacement selected by
+      // handleFaint(); restoring the old index here would resurrect a fainted foe.
+      this.state.player.activeIndex = originalIndices.player;
     }
   }
 
   private handleFaint(faintedSide: 'player' | 'enemy', events: BattleEvent[]): void {
     const fainted = this.getActive(faintedSide);
     const faintedName = getCreatureDisplayName(fainted);
-    events.push({ type: 'faint', target: faintedSide, creatureName: faintedName });
+    events.push({
+      type: 'faint',
+      target: faintedSide,
+      creatureName: faintedName,
+      targetUid: fainted.uid,
+      targetPartyIndex: this.state[faintedSide].activeIndex,
+    });
     events.push({ type: 'text', message: ES.battle.fainted(faintedName) });
 
     if (faintedSide === 'enemy') {
-      const pIdx = this.state.player.activeIndex;
+      const deployedIndices = new Set(this.getActivePartyIndices('player'));
       const baseXp = computeBattleXp(fainted, !this.state.isWild);
       const grantXpToSlot = (slotIdx: number, amount: number): void => {
         const ally = this.state.player.party[slotIdx];
-        if (!ally || ally.currentHp <= 0) return;
+        if (!ally) return;
         const xpRes = awardExperience(ally, amount);
         const allyName = getCreatureDisplayName(ally);
         events.push({ type: 'xp_gain', partyIndex: slotIdx, amount, xpAfter: ally.xp });
@@ -1228,10 +1364,16 @@ export class BattleEngine {
         }
       };
 
-      grantXpToSlot(pIdx, baseXp);
+      // Every deployed ally participated in the boss battle and receives full
+      // participant XP. Reserve members keep the existing shared-party amount.
+      for (const partyIndex of deployedIndices) {
+        grantXpToSlot(partyIndex, baseXp);
+      }
       const benchXp = computeSharedPartyXp(baseXp);
       for (let i = 0; i < this.state.player.party.length; i++) {
-        if (i === pIdx) continue;
+        if (deployedIndices.has(i)) continue;
+        const reserve = this.state.player.party[i];
+        if (!reserve || reserve.currentHp <= 0) continue;
         grantXpToSlot(i, benchXp);
       }
 
@@ -1260,8 +1402,8 @@ export class BattleEngine {
         events.push({ type: 'battle_end', outcome: 'win', rewardMoney: reward });
       } else {
         this.state.enemy.activeIndex = nextEnemyIdx;
-        this.resetSideVolatiles(this.state.enemy);
         const nextEnemy = this.getActive('enemy');
+        this.resetCombatantVolatiles('enemy', nextEnemy);
         events.push({
           type: 'switch_in',
           side: 'enemy',

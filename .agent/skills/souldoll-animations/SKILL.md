@@ -5,6 +5,12 @@ description: Pipeline estándar para ingerir, limpiar (fondo verde/gris/sólido)
 
 # Pipeline de Ingesta de Animaciones SoulDoll
 
+## Contexto de diseño obligatorio
+Antes de ingerir o registrar assets, respeta `AGENTS.md` y `docs/SOULDOLLS_DESIGN.md`. SoulDolls son muñecas artificiales habitadas por almas dentro de un RPG anime ecchi; cualquier personaje mostrado en contenido ecchi debe ser adulto. Esta skill solo administra assets y registros de animación: no autoriza cambiar mecánicas, arquitectura, tamaños de equipo ni reglas de combate.
+
+Distingue diseño objetivo de implementación actual. Los encuentros normales están definidos como individuales; los jefes de hasta tres enemigos simultáneos son una meta de diseño y no deben darse por implementados por añadir una animación o un asset.
+
+
 Sigue este flujo exactamente cada vez que el usuario suba una imagen o video (`.mp4`/`.webm`) y pida agregar o reemplazar una animación de una SoulDoll en lenguaje natural.
 
 ## Regla Crítica de Seguridad de Assets

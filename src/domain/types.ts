@@ -630,6 +630,8 @@ export interface TrainerDef {
   introText: string;
   defeatText: string;
   isBoss?: boolean;
+  /** Marks the story-ending boss; ordinary bosses must not open the ending modal. */
+  isFinalBoss?: boolean;
   isRival?: boolean;
   isLeague?: boolean;
   awardsBadge?: string;
@@ -643,9 +645,25 @@ export type BattleAction =
   | { type: 'item'; itemId: string; targetPartyIndex?: number }
   | { type: 'run' };
 
+/** Volatile battle data belongs to an individual combatant, not its whole party. */
+export interface BattleCombatantState {
+  stages: StatStages;
+  flinched: boolean;
+  confusedTurns: number;
+  trappedTurns: number;
+  leechSeeded: boolean;
+  protected: boolean;
+  statDropGuarded: boolean;
+  lowHpBerryUsed: boolean;
+}
+
 export interface BattleSideState {
   party: CreatureInstance[];
   activeIndex: number;
+  /** Runtime formation slots. Empty/undefined keeps the legacy single-active behavior. */
+  activeIndices?: number[];
+  /** Per-creature volatile state; legacy side fields remain during the staged migration. */
+  combatants?: Record<string, BattleCombatantState>;
   stages: StatStages;
   flinched: boolean;
   confusedTurns?: number;
@@ -672,7 +690,7 @@ export interface BattleState {
 
 export type BattleEvent =
   | { type: 'text'; message: string }
-  | { type: 'move_use'; side: 'player' | 'enemy'; moveId: string; moveName: string }
+  | { type: 'move_use'; side: 'player' | 'enemy'; moveId: string; moveName: string; actorUid?: string; actorPartyIndex?: number }
   | { type: 'miss'; side: 'player' | 'enemy' }
   | {
       type: 'damage';
@@ -684,6 +702,8 @@ export type BattleEvent =
       crit: boolean;
       damagedPart?: BodyPartName;
       partBroken?: BodyPartName;
+      targetUid?: string;
+      targetPartyIndex?: number;
     }
   | {
       type: 'heal';
@@ -723,7 +743,7 @@ export type BattleEvent =
       itemName: string;
       consumed?: boolean;
     }
-  | { type: 'faint'; target: 'player' | 'enemy'; creatureName: string }
+  | { type: 'faint'; target: 'player' | 'enemy'; creatureName: string; targetUid?: string; targetPartyIndex?: number }
   | { type: 'switch_out'; side: 'player' | 'enemy'; creatureName: string }
   | { type: 'switch_in'; side: 'player' | 'enemy'; partyIndex: number; creature: CreatureInstance }
   | { type: 'catch_attempt'; itemId: string; shakes: number; caught: boolean; speciesId: number }
@@ -747,6 +767,15 @@ export type BattleEvent =
 
 export type GraphicsQualitySetting = 'auto' | 'low' | 'medium' | 'high';
 export type CameraMode = 'fixed' | 'free_orbit';
+export type CameraLabProfileId = 'A' | 'B' | 'C';
+
+export interface CameraLabConfig {
+  fov: number;
+  distance: number;
+  height: number;
+}
+
+export type CameraLabProfiles = Record<CameraLabProfileId, CameraLabConfig>;
 
 export interface GameOptions {
   volume: number;
@@ -765,6 +794,10 @@ export interface GameOptions {
   vignette: boolean;
   textSpeed: 'normal' | 'fast';
   cameraMode: CameraMode;
+  cameraLabEnabled: boolean;
+  cameraLabConfig: CameraLabConfig;
+  cameraLabProfiles: CameraLabProfiles;
+  cameraLabActiveProfile: CameraLabProfileId;
 }
 
 export interface PlayStats {

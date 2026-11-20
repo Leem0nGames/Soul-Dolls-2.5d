@@ -17,10 +17,32 @@ import type {
   CardRarity,
   CreatureInstance,
   GameOptions,
+  CameraLabConfig,
+  CameraLabProfiles,
+  CameraLabProfileId,
   SaveData,
 } from '../domain/types.ts';
 
 export const CURRENT_SAVE_VERSION = 7;
+
+export const DEFAULT_CAMERA_LAB_PROFILES: CameraLabProfiles = {
+  A: { fov: 58, distance: 6.4, height: 2.65 },
+  B: { fov: 50, distance: 9, height: 5 },
+  C: { fov: 45, distance: 11, height: 7 },
+};
+
+function normalizeCameraLabConfig(raw: unknown, fallback: CameraLabConfig): CameraLabConfig {
+  if (!raw || typeof raw !== 'object') return { ...fallback };
+  const value = raw as Record<string, unknown>;
+  return {
+    fov: typeof value.fov === 'number' && Number.isFinite(value.fov)
+      ? Math.round(Math.max(35, Math.min(75, value.fov))) : fallback.fov,
+    distance: typeof value.distance === 'number' && Number.isFinite(value.distance)
+      ? Math.round(Math.max(4, Math.min(14, value.distance)) * 10) / 10 : fallback.distance,
+    height: typeof value.height === 'number' && Number.isFinite(value.height)
+      ? Math.round(Math.max(1.5, Math.min(8, value.height)) * 10) / 10 : fallback.height,
+  };
+}
 
 export function defaultOptions(): GameOptions {
   return {
@@ -40,6 +62,14 @@ export function defaultOptions(): GameOptions {
     vignette: true,
     textSpeed: 'normal',
     cameraMode: 'fixed',
+    cameraLabEnabled: false,
+    cameraLabConfig: { ...DEFAULT_CAMERA_LAB_PROFILES.A },
+    cameraLabProfiles: {
+      A: { ...DEFAULT_CAMERA_LAB_PROFILES.A },
+      B: { ...DEFAULT_CAMERA_LAB_PROFILES.B },
+      C: { ...DEFAULT_CAMERA_LAB_PROFILES.C },
+    },
+    cameraLabActiveProfile: 'A',
   };
 }
 
@@ -81,6 +111,23 @@ export function normalizeGameOptions(
     vignette: typeof opt.vignette === 'boolean' ? opt.vignette : def.vignette,
     textSpeed: opt.textSpeed === 'fast' ? 'fast' : 'normal',
     cameraMode: opt.cameraMode === 'free_orbit' ? 'free_orbit' : def.cameraMode,
+    cameraLabEnabled:
+      typeof opt.cameraLabEnabled === 'boolean' ? opt.cameraLabEnabled : def.cameraLabEnabled,
+    cameraLabConfig: normalizeCameraLabConfig(opt.cameraLabConfig, def.cameraLabConfig),
+    cameraLabProfiles: (() => {
+      const rawProfiles = opt.cameraLabProfiles && typeof opt.cameraLabProfiles === 'object'
+        ? opt.cameraLabProfiles as Record<string, unknown>
+        : {};
+      const profiles = {} as CameraLabProfiles;
+      for (const id of ['A', 'B', 'C'] as const) {
+        profiles[id] = normalizeCameraLabConfig(rawProfiles[id], def.cameraLabProfiles[id]);
+      }
+      return profiles;
+    })(),
+    cameraLabActiveProfile:
+      opt.cameraLabActiveProfile === 'B' || opt.cameraLabActiveProfile === 'C'
+        ? opt.cameraLabActiveProfile as CameraLabProfileId
+        : 'A',
   };
 }
 

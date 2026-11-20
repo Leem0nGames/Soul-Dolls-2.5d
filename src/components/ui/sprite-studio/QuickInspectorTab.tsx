@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   isIdleRole,
-  PLACEHOLDER_ATTACK_SHEET_PATH,
+  GENERIC_ATTACK_FALLBACK_SHEET_PATH,
   SPECIES_ANIMATION_REGISTRY,
 } from '../../../data/animations.ts';
 import { stepBounded } from '../../../domain/SpriteStudioLogic.ts';
@@ -35,8 +35,8 @@ export const QUICK_INSPECTOR_PRESETS: QuickInspectorPreset[] = [
   })),
   {
     id: 'placeholder-5x5',
-    name: 'Placeholder Ataque Genérico (5×5)',
-    path: PLACEHOLDER_ATTACK_SHEET_PATH,
+    name: 'Ataque Genérico (Fallback 5×5)',
+    path: GENERIC_ATTACK_FALLBACK_SHEET_PATH,
     cols: 5,
     rows: 5,
     totalFrames: 25,

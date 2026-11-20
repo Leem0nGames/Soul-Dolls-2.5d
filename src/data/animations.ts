@@ -56,8 +56,8 @@ export interface SpeciesAnimationEntry {
   spec: AttackSheetSpec;
 }
 
-export const PLACEHOLDER_ATTACK_SHEET_PATH =
-  '/assets/aistudio/004-special_attack-v1_5431e7bd.png';
+export const GENERIC_ATTACK_FALLBACK_SHEET_PATH =
+  '/assets/attacks/generic_attack_fallback.png';
 export const SOULDOLL_01_ATTACK_SHEET_PATH =
   '/assets/attacks/physical_attack_01.webp';
 export const SOULDOLL_15_ATTACK_SHEET_PATH =
@@ -115,8 +115,8 @@ export const SOULDOLL_15_ATTACK_SPEC: AttackSheetSpec = {
   facing: 'right',
 };
 
-export const PLACEHOLDER_ATTACK_SPEC: AttackSheetSpec = {
-  path: PLACEHOLDER_ATTACK_SHEET_PATH,
+export const GENERIC_ATTACK_FALLBACK_SPEC: AttackSheetSpec = {
+  path: GENERIC_ATTACK_FALLBACK_SHEET_PATH,
   cols: 5,
   rows: 5,
   totalFrames: 25,
@@ -157,8 +157,8 @@ export const SPECIES_ANIMATION_REGISTRY: SpeciesAnimationEntry[] = [
   },
   {
     speciesId: 15,
-    role: 'physical_attack',
-    label: 'SoulDoll #15 — Alabarda Rúnica (4×5)',
+    role: 'special_attack',
+    label: 'SoulDoll #15 — Alabarda Rúnica (Ataque Especial 4×5)',
     spec: SOULDOLL_15_ATTACK_SPEC,
   },
 ];
@@ -217,7 +217,7 @@ export function getSpeciesAttackSpec(
   speciesId?: number,
   role: AttackRole = 'physical_attack'
 ): AttackSheetSpec {
-  if (speciesId === undefined) return PLACEHOLDER_ATTACK_SPEC;
+  if (speciesId === undefined) return GENERIC_ATTACK_FALLBACK_SPEC;
   const exact = SPECIES_ANIMATION_REGISTRY.find(
     (entry) => entry.speciesId === speciesId && entry.role === role
   );
@@ -226,5 +226,5 @@ export function getSpeciesAttackSpec(
   const anyAttack = SPECIES_ANIMATION_REGISTRY.find(
     (entry) => entry.speciesId === speciesId && isAttackRole(entry.role)
   );
-  return anyAttack ? anyAttack.spec : PLACEHOLDER_ATTACK_SPEC;
+  return anyAttack ? anyAttack.spec : GENERIC_ATTACK_FALLBACK_SPEC;
 }
