@@ -146,7 +146,7 @@ En pantallas táctiles se muestran controles en pantalla: cruceta de movimiento,
 
 ## Arquitectura del código
 
-Las reglas de trabajo para agentes están centralizadas en [AGENTS.md](AGENTS.md), y la dirección de diseño aprobada en [docs/SOULDOLLS_DESIGN.md](docs/SOULDOLLS_DESIGN.md). Las skills específicas se encuentran en `.agent/skills/`.
+Las reglas de trabajo para agentes están centralizadas en [AGENTS.md](AGENTS.md), y la dirección de diseño aprobada en [docs/SOULDOLLS_DESIGN.md](docs/SOULDOLLS_DESIGN.md). Las skills interoperables se encuentran en `.agents/skills/` (la carpeta histórica `.agent/skills/` se conserva sincronizada). Para combate, consulta `.agents/skills/souldolls-combat/SKILL.md`.
 
 El juego está organizado por responsabilidades. Antes de modificar una mecánica, localiza su lógica y conserva el flujo existente.
 
@@ -201,7 +201,8 @@ Villa Origen, Laboratorio de Origen, Taller de Marionetas, Ruta 1, Pueblo Bruma,
 | Si vas a trabajar en… | Empieza por… |
 | --- | --- |
 | Flujo general / inicialización | `src/core/Game.ts` |
-| Reglas de combate | `src/domain/BattleEngine.ts`, `src/domain/Damage.ts` |
+| Reglas de combate | `src/domain/BattleEngine.ts`, `src/domain/Damage.ts`, `.agents/skills/souldolls-combat/SKILL.md` |
+| Sincronización de impactos | `src/domain/BattleImpactSync.ts`, `src/scenes/BattleScene.ts` |
 | Captura | `src/domain/Catch.ts` |
 | Especies y movimientos | `src/data/species.ts`, `src/data/moves.ts` |
 | Mapas y encuentros | `src/data/maps/`, `src/data/encounters.ts` |
