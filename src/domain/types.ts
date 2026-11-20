@@ -747,6 +747,15 @@ export type BattleEvent =
 
 export type GraphicsQualitySetting = 'auto' | 'low' | 'medium' | 'high';
 export type CameraMode = 'fixed' | 'free_orbit';
+export type CameraLabProfileId = 'A' | 'B' | 'C';
+
+export interface CameraLabConfig {
+  fov: number;
+  distance: number;
+  height: number;
+}
+
+export type CameraLabProfiles = Record<CameraLabProfileId, CameraLabConfig>;
 
 export interface GameOptions {
   volume: number;
@@ -765,6 +774,10 @@ export interface GameOptions {
   vignette: boolean;
   textSpeed: 'normal' | 'fast';
   cameraMode: CameraMode;
+  cameraLabEnabled: boolean;
+  cameraLabConfig: CameraLabConfig;
+  cameraLabProfiles: CameraLabProfiles;
+  cameraLabActiveProfile: CameraLabProfileId;
 }
 
 export interface PlayStats {
